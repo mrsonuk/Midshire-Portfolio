@@ -9,6 +9,11 @@ for client demonstrations and real capacity planning.
 
 ![Redesigned dashboard](outputs/dashboard_snapshot.png)
 
+Patients move station-to-station over simulation time (coloured by acuity); the
+same view is interactive and scrubbable in the dashboard's **Flow animation** tab:
+
+![Patient flow animation](outputs/patient_flow_animation.gif)
+
 ---
 
 ## Why it was redesigned
@@ -21,7 +26,7 @@ The beta tool was built for one hospital and could not support planning. Concret
 | Only an **Emergency Department** could be modelled | Same engine runs *any* flow — an ED **and** an Acute Medical Unit ship as examples |
 | **Single run only**, no sense of variability (README's #1 priority: *"Explore variability… Monte-Carlo modelling"*) | First-class, parallelised **Monte-Carlo** with 95% confidence intervals on every KPI |
 | **No scenario comparison**; outputs overwrote each other | **Scenario modelling**: declarative what-ifs (`+4 doctors`, `+8 beds`, `winter +15%`) compared side-by-side against baseline |
-| Output was a 2-D **animation**, not analytics; no occupancy/utilisation/bottleneck reporting | **Decision dashboard**: KPI cards, patient-flow Sankey, occupancy-vs-capacity, utilisation, queue-wait bottlenecks |
+| Output was a 2-D **animation**, not analytics; no occupancy/utilisation/bottleneck reporting | **Decision dashboard**: KPI cards, patient-flow Sankey, occupancy-vs-capacity, utilisation, queue-wait bottlenecks — *plus* the patient-movement animation, now generalised and time-scrubbable |
 | Beds modelled inconsistently; diagnostics had no machine queue | Resources can be **span-held** (a bed occupied across the whole episode) and diagnostics (CT/X-ray) contend for limited machines |
 | Disabled levers (bed occupancy, exit block) | **Exit block is modelled** — admitted patients queue for a scarce inpatient/ward bed, the dominant NHS flow problem |
 
@@ -40,6 +45,9 @@ nhs_des/
 ├── montecarlo.py    Parallel replication with confidence intervals.
 ├── scenarios.py     Declarative what-if modifiers + baseline comparison.
 ├── visualize.py     Interactive Plotly figures (Sankey, occupancy, …).
+├── animation.py     Patient-movement animation — moving dots per patient,
+│                    station layout auto-derived from the pathway graph.
+│                    Interactive (Plotly) + standalone GIF renderer.
 ├── app.py           Flask dashboard (REST API + single-page UI).
 ├── snapshot.py      Renders the NHS-branded presentation image.
 ├── pathways/        emergency_department.json, acute_medical_unit.json
@@ -75,6 +83,9 @@ python -m nhs_des.app                   # http://127.0.0.1:5000
 
 # 2) Presentation snapshot (PNG)
 python -m nhs_des.snapshot nhs_des/pathways/emergency_department.json out.png
+
+# 2b) Patient-movement animation (GIF) — dots moving station to station
+python -m nhs_des.animation nhs_des/pathways/emergency_department.json out.gif
 
 # 3) Programmatic use
 python - <<'PY'

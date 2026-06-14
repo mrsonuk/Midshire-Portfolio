@@ -26,6 +26,7 @@ from .engine import Pathway, run_pathway
 from .metrics import kpis
 from .montecarlo import monte_carlo
 from .scenarios import apply_scenario, compare_scenarios
+from .animation import animation_figure
 from . import visualize as viz
 
 app = Flask(__name__)
@@ -81,6 +82,15 @@ def api_simulate():
             "waits": json.loads(viz.waits_figure(result).to_json()),
         },
     })
+
+
+@app.route("/api/animation", methods=["POST"])
+def api_animation():
+    body = request.get_json(force=True)
+    pathway = _build(body["pathway"], body.get("overrides"),
+                     float(body.get("arrivals_scale", 1.0)))
+    result = run_pathway(pathway, seed=int(body.get("seed", 5)))
+    return jsonify({"figure": json.loads(animation_figure(result, pathway).to_json())})
 
 
 @app.route("/api/montecarlo", methods=["POST"])

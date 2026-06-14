@@ -79,6 +79,7 @@
   <main class="main">
     <div class="tabs">
       <div class="tab active" data-tab="sim">Live simulation</div>
+      <div class="tab" data-tab="anim">Flow animation</div>
       <div class="tab" data-tab="mc">Monte-Carlo</div>
       <div class="tab" data-tab="scn">Scenario comparison</div>
     </div>
@@ -91,6 +92,12 @@
         <div class="chart" id="utilisation"></div>
       </div>
       <div class="chart" id="waits"></div>
+    </section>
+
+    <section class="panel" id="panel-anim">
+      <div class="hint">Watch individual patients (coloured by acuity/class) move from station to station over a representative span of the simulation — use ▶ Play or scrub the slider. Clusters reveal where patients pile up (e.g. exit block waiting for an inpatient bed).</div>
+      <button id="animBtn" style="width:auto;display:inline-block">▶ Load flow animation</button>
+      <div class="chart" id="animFig" style="margin-top:12px;min-height:540px"></div>
     </section>
 
     <section class="panel" id="panel-mc">
@@ -148,6 +155,7 @@ function overrides(){
 }
 
 function loading(id,msg){ Plotly.purge(id); $('#'+id).innerHTML='<div class="loading"><span class="spin"></span> '+(msg||'Simulating…')+'</div>'; }
+function plot(id,fig){ $('#'+id).innerHTML=''; Plotly.newPlot(id,fig.data,fig.layout,{responsive:true}).then(()=>{ if(fig.frames&&fig.frames.length) Plotly.addFrames(id,fig.frames); }); }
 
 async function post(url,body){
   const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -186,6 +194,12 @@ async function runMC(){
   const data = await post('/api/montecarlo',{pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value,replications:30});
   Plotly.newPlot('mcFig',data.figure.data,data.figure.layout,{responsive:true});
   Plotly.newPlot('mcLos',data.los_figure.data,data.los_figure.layout,{responsive:true});
+}
+
+async function runAnim(){
+  loading('animFig','Simulating &amp; building animation…');
+  const data = await post('/api/animation',{pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value});
+  plot('animFig',data.figure);
 }
 
 // ---- scenarios ----
@@ -244,6 +258,7 @@ function switchTab(name){
 document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>switchTab(t.dataset.tab));
 $('#runBtn').onclick=runSim;
 $('#mcBtn').onclick=runMC;
+$('#animBtn').onclick=runAnim;
 $('#scnAdd').onclick=()=>addScenarioRow();
 $('#scnRun').onclick=runScenarios;
 

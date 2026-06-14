@@ -49,6 +49,13 @@ def check_pathway(path: str) -> None:
 
     util = resource_utilisation(result, pathway)
     assert (util["utilisation"] <= 100.5).all(), f"{pathway.name}: utilisation > 100%"
+
+    # Animation tracks must cover every patient and stay on-canvas.
+    from .animation import build_tracks
+    _, tracks, _ = build_tracks(result, pathway)
+    assert len(tracks) == k["n_patients"], f"{pathway.name}: animation track count mismatch"
+    for tr in tracks:
+        assert (tr["x"] >= -0.01).all() and (tr["x"] <= 1.01).all()
     print(f"  OK  {pathway.name}: {k['n_patients']} patients, "
           f"{k['target_compliance']:.0f}% 4-hr, peak capacities respected")
 
