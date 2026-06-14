@@ -1,0 +1,52 @@
+{
+    "Urban": {
+        "acuity1_perc": 1,
+        "acuity2_perc": 9,
+        "acuity3_perc": 25,
+        "acuity4_perc": 30,
+        "acuity5_perc": 35
+    },
+    "Rural": {
+        "acuity1_perc": 1,
+        "acuity2_perc": 9,
+        "acuity3_perc": 40,
+        "acuity4_perc": 30,
+        "acuity5_perc": 20
+    },
+    "Urban Trauma Centre": {
+        "acuity1_perc": 1.5,
+        "acuity2_perc": 10.5,
+        "acuity3_perc": 38,
+        "acuity4_perc": 25,
+        "acuity5_perc": 25
+    },
+    "Rural Trauma": {
+        "acuity1_perc": 1.5,
+        "acuity2_perc": 10.5,
+        "acuity3_perc": 38,
+        "acuity4_perc": 30,
+        "acuity5_perc": 20
+    },
+    "Paediatric": {
+        "acuity1_perc": 1,
+        "acuity2_perc": 2,
+        "acuity3_perc": 12,
+        "acuity4_perc": 50,
+        "acuity5_perc": 35
+    },
+    "Standard": {
+        "acuity1_perc": 2,
+        "acuity2_perc": 13,
+        "acuity3_perc": 35,
+        "acuity4_perc": 20,
+        "acuity5_perc": 20
+    },
+    "PAH Acuities": {
+        "acuity1_perc": 0.88,
+        "acuity2_perc": 5.50,
+        "acuity3_perc": 24.65,
+        "acuity4_perc": 60.68,
+        "acuity5_perc": 8.29
+    }
+
+}

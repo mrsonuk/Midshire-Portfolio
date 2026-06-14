@@ -1,0 +1,65 @@
+{
+    "Small": {
+        "daily_num_patients": 150,
+        "num_doctors": 3,
+        "num_sdec_doctors": 6,
+        "num_rat_doctors": 6,
+        "num_nt_doctors": 6,
+        "max_resus": 6,
+        "max_sdec": 20,
+        "max_majors": 20,
+        "max_minors": 15,
+        "max_waiting_room": 50
+    },
+    "Medium": {
+        "daily_num_patients": 250,
+        "num_doctors": 5,
+        "num_sdec_doctors": 6,
+        "num_rat_doctors": 6,
+        "num_nt_doctors": 6,
+        "max_resus": 6,
+        "max_sdec": 20,
+        "max_majors": 15,
+        "max_minors": 6,
+        "max_waiting_room": 50
+    },
+    "Large": {
+        "daily_num_patients": 500,
+        "num_doctors": 10,
+        "num_sdec_doctors": 6,
+        "num_rat_doctors": 6,
+        "num_nt_doctors": 6,
+        "max_resus": 12,
+        "max_sdec": 20,
+        "max_majors": 30,
+        "max_minors": 12,
+        "max_waiting_room": 100
+    },
+    "Extra Large": {
+        "daily_num_patients": 750,
+        "num_doctors": 15,
+        "num_sdec_doctors": 6,
+        "num_rat_doctors": 6,
+        "num_nt_doctors": 6,
+        "max_resus": 18,
+        "max_sdec": 20,
+        "max_majors": 45,
+        "max_minors": 18,
+        "max_waiting_room": 150
+    },
+    "PAH with SDEC": {
+        "daily_num_patients": 216,
+        "num_doctors": 25,
+        "num_sdec_doctors": 6,
+        "num_rat_doctors": 6,
+        "num_nt_doctors": 6,
+        "max_resus": 5,
+        "max_sdec": 20,
+        "max_majors": 26,
+        "max_minors": 25,
+        "max_waiting_room": 40
+    }
+    
+    
+}
+

@@ -1,0 +1,297 @@
+{
+    "Acuity_Percentages": {
+        "Acuity 1": 0.88,
+        "Acuity 2": 5.50,
+        "Acuity 3": 24.65,
+        "Acuity 4": 60.68,
+        "Acuity 5": 8.29
+    },
+
+    "Sim_Parameters": {
+        "daily_num_patients": 335,
+        "num_doctors": 16,
+        "num_sdec_doctors": 10,
+        "num_rat_doctors": 2,
+        "num_nt_doctors": 2,
+        "max_resus": 5,
+        "max_sdec": 10,
+        "max_majors": 26,
+        "max_minors": 25,
+        "max_waiting_room": 40,
+        "sdec_Percentage": 1,
+        "ambulance_vs_nonambulance_Percentage": 31.57,
+        "ac12_ambulance_Majors_vs_Resus_Percentage": 50,
+        "ac12_nonambulanceNonResus_MajorsDirect_Vs_WR_Percentage": 50,
+        "a12_nonambulance_resus_vs_non_resus_Percentage": 50,
+        "a3_AmbulanceMHPatient_Percentage": 1.9,
+        "a3_NonAmbulance_MHPatient_Percentage": 1.9,
+        "sdec_opening_hour": 8,
+        "sdec_closing_hour": 20
+    },
+
+    "Target_Parameters": {
+        "W": {
+            "mean_target": 212,
+            "std_target": 0.0
+        },
+        "S": {
+            "mean_target": 212,
+            "std_target": 0.0
+        }
+    },
+
+    "Target_Parameters_Default_Values": {
+        "W": {
+            "mean_target": 120,
+            "std_target": 60.0
+        },
+        "S": {
+            "mean_target": 30,
+            "std_target": 15.0
+        }
+    },
+    
+    "Bed_Occupancy": {
+        "80": {
+            "mean_bed": 90,
+            "std_bed": 0.0
+        },
+        "85": {
+            "mean_bed": 90,
+            "std_bed": 0.0
+        },
+        "90": {
+            "mean_bed": 90,
+            "std_bed": 0.0
+        },
+        "95": {
+            "mean_bed": 90,
+            "std_bed": 0.0
+        }
+    },
+
+    "Bed_Occupancy_Default_Values": {
+        "80": {
+            "mean_bed": 30,
+            "std_bed": 30.0
+        },
+        "85": {
+            "mean_bed": 120,
+            "std_bed": 60.0
+        },
+        "90": {
+            "mean_bed": 480,
+            "std_bed": 120.0
+        },
+        "95": {
+            "mean_bed": 600,
+            "std_bed": 240.0
+        }
+    },
+
+    "Doctor_Times": {
+        "acuity 1":{
+            "time_assess_nt": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_assess_rat": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_wait_mh": 0,
+            "time_assess": 15,
+            "time_treat": 110,
+            "time_discharge": {
+                "mean": 45,
+                "stdev": 0.0
+            }
+        },
+        "acuity 2":{
+            "time_assess_nt": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_assess_rat": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_wait_mh": 0,
+            "time_assess": 15,
+            "time_treat": 90,
+            "time_discharge": {
+                "mean": 35,
+                "stdev": 0.0
+            }
+        },
+        "acuity 3":{
+            "time_assess_nt": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_assess_rat": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_wait_mh": 120,
+            "time_assess": 10,
+            "time_treat": 65,
+            "time_discharge": {
+                "mean": 25,
+                "stdev": 0.0
+            }
+        },
+        "acuity 4":{
+            "time_assess_nt": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_assess_rat": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_wait_mh": 0,
+            "time_assess": 5,
+            "time_treat": 10,
+            "time_discharge": {
+                "mean": 10,
+                "stdev": 0.0
+            }
+        },
+        "acuity 5":{
+            "time_assess_nt": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_assess_rat": {
+                "mean": 3,
+                "stdev": 0.0
+            },
+            "time_wait_mh": 0,
+            "time_assess": 5,
+            "time_treat": 5,
+            "time_discharge": {
+                "mean": 5,
+                "stdev": 0.0
+            } 
+        }
+    },
+
+    "Registration_Times": {
+        "acuity 1": 1,
+        "acuity 2": 1,
+        "acuity 3": 1,
+        "acuity 4": 1,
+        "acuity 5": 1
+    },
+    
+    "Max_Waiting_Times": {
+        "30": 0.56,
+        "60": 0.68,
+        "120": 1.11,
+        "240": 3.11,
+        "300": 2.53,
+        "100000000": 92.02
+        
+    },
+
+    "Prob_Admission": {
+        "acuity 1": 0.585,
+        "acuity 2": 0.489,
+        "acuity 3": 0.264,
+        "acuity 4": 0.103,
+        "acuity 5": 0.036
+    },
+    
+    "Diagnostic_Tests":{
+        "acuity 1":{
+            "ct_percentage": 21.5,
+            "time_ct_mean": 52,
+            "time_ct_stdev": 0.0,
+            "XRay_percentage": 26.2,
+            "time_XRay_mean": 28,
+            "time_XRay_stdev": 0.0,
+            "blood_percentage": 59.5,
+            "time_blood_mean": 10,
+            "time_blood_stdev": 0.0
+        },
+        "acuity 2":{
+            "ct_percentage": 17.7,
+            "time_ct_mean": 87,
+            "time_ct_stdev": 0.0,
+            "XRay_percentage": 32.9,
+            "time_XRay_mean": 54,
+            "time_XRay_stdev": 0.0,
+            "blood_percentage": 74.9,
+            "time_blood_mean": 12,
+            "time_blood_stdev": 0.0
+        },
+        "acuity 3":{
+            "ct_percentage": 12.8,
+            "time_ct_mean": 96,
+            "time_ct_stdev": 0.0,
+            "XRay_percentage": 22.3,
+            "time_XRay_mean": 57,
+            "time_XRay_stdev": 0.0,
+            "blood_percentage": 60.9,
+            "time_blood_mean": 16,
+            "time_blood_stdev": 0.0
+        },
+        "acuity 4":{
+            "ct_percentage": 4.7,
+            "time_ct_mean": 98,
+            "time_ct_stdev": 0.0,
+            "XRay_percentage": 9.8,
+            "time_XRay_mean": 48,
+            "time_XRay_stdev": 0.0,
+            "blood_percentage": 30.2,
+            "time_blood_mean": 18,
+            "time_blood_stdev": 0.0
+        },
+        "acuity 5":{
+            "ct_percentage": 1.8,
+            "time_ct_mean": 100,
+            "time_ct_stdev": 0.0,
+            "XRay_percentage": 4.4,
+            "time_XRay_mean": 33,
+            "time_XRay_stdev": 0.0,
+            "blood_percentage": 16.6,
+            "time_blood_mean": 20,
+            "time_blood_stdev": 0.0
+        }
+    },
+
+    "Time_to_Exit": {
+        "mean": 10,
+        "stdev": 10
+    },
+
+    "Hourly_Arrivals": {
+        "0": 6,
+        "1": 4,
+        "2": 4,
+        "3": 3,
+        "4": 3,
+        "5": 4,
+        "6": 4,
+        "7": 6,
+        "8": 13,
+        "9": 20,
+        "10": 23,
+        "11": 25,
+        "12": 25,
+        "13": 22,
+        "14": 21,
+        "15": 21,
+        "16": 21,
+        "17": 21,
+        "18": 20,
+        "19": 17,
+        "20": 16,
+        "21": 14,
+        "22": 10,
+        "23": 8        
+    }
+        
+     
+}

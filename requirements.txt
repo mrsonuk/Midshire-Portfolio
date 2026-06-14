@@ -1,0 +1,8 @@
+Flask==2.3.2
+fpdf==1.7.2
+matplotlib==3.7.3
+numpy==1.24.2
+pandas==2.1.1
+seaborn==0.12.2
+simpy==4.0.1
+matplotlib==3.7.1
