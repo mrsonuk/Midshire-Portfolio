@@ -1,0 +1,17 @@
+Customise Acuity Percentages
+Acuity 1: 2
+Acuity 2: 8
+Acuity 3: 40
+Acuity 4: 30
+Acuity 5: 20
+
+Customise simulation type parameters
+daily_num_patients: 400
+num_doctors: 6
+max_resus: 6
+max_majors: 20
+max_minors: 10
+max_waiting_room: 30
+
+XRay Percentage: 70
+CTScan Percentage: 40
