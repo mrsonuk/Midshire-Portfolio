@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+outputs/*.png
+!outputs/dashboard_snapshot.png
+!outputs/amu_snapshot.png
