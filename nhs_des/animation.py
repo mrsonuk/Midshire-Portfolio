@@ -15,6 +15,13 @@ Two renderers share the same track-building logic:
 """
 from __future__ import annotations
 
+# Allow running directly (``python animation.py`` / ``python -m animation``)
+# as well as ``python -m nhs_des.animation``.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 from pathlib import Path
 
 import numpy as np

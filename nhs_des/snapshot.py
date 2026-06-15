@@ -17,6 +17,15 @@ Run:  python -m nhs_des.snapshot
 """
 from __future__ import annotations
 
+# Allow running this file directly (``python snapshot.py`` or, from inside the
+# package directory, ``python -m snapshot``) as well as the canonical
+# ``python -m nhs_des.snapshot``. When run as a loose script there is no parent
+# package for the relative imports below, so register it on the fly.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 from pathlib import Path
 
 import matplotlib

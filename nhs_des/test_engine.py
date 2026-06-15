@@ -9,6 +9,13 @@ scenario comparison run, and that headline KPIs are sane.
 """
 from __future__ import annotations
 
+# Allow running directly (``python test_engine.py`` / ``python -m test_engine``)
+# as well as ``python -m nhs_des.test_engine``.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 import glob
 from pathlib import Path
 

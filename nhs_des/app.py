@@ -15,6 +15,13 @@ Run:  python -m nhs_des.app   (then open http://127.0.0.1:5000)
 """
 from __future__ import annotations
 
+# Allow running directly (``python app.py`` / ``python -m app``) as well as
+# ``python -m nhs_des.app``.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 import glob
 import json
 import os

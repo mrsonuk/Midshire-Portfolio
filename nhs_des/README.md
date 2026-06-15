@@ -78,6 +78,10 @@ to freeze the 4-hour performance clock at transfer while still modelling bed tur
 ```bash
 pip install -r requirements.txt        # flask, plotly, simpy, numpy, pandas, matplotlib, scipy
 
+# Commands below are shown from the repo root. They also run from inside the
+# nhs_des/ folder (e.g. `python -m snapshot ...`) - the scripts self-register
+# their package either way.
+
 # 1) Interactive dashboard
 python -m nhs_des.app                   # http://127.0.0.1:5000
 
