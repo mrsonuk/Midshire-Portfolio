@@ -46,28 +46,64 @@ def _node_colour(name: str) -> str:
     return PALETTE[hash(name) % len(PALETTE)]
 
 
+def _layer_of(edges, labels):
+    """Longest-path depth of each node from a source, so the Sankey can be laid
+    out strictly left-to-right instead of collapsing into one overlapping row."""
+    succ = {n: [] for n in labels}
+    indeg = {n: 0 for n in labels}
+    for _, r in edges.iterrows():
+        succ[r["source"]].append(r["target"])
+        indeg[r["target"]] += 1
+    layer = {n: 0 for n in labels}
+    for _ in range(len(labels)):
+        changed = False
+        for s in labels:
+            for t in succ[s]:
+                if layer[t] < layer[s] + 1:
+                    layer[t] = layer[s] + 1
+                    changed = True
+        if not changed:
+            break
+    return layer
+
+
 def sankey_figure(result, pathway: Pathway) -> go.Figure:
     edges = flow_counts(result, pathway)
     if edges.empty:
         return go.Figure(layout=_LAYOUT)
     labels = sorted(set(edges["source"]) | set(edges["target"]))
     idx = {n: i for i, n in enumerate(labels)}
+    layer = _layer_of(edges, labels)
+    max_layer = max(layer.values()) or 1
+    # Spread nodes within each column so labels don't stack.
+    col_members: dict[int, list] = {}
+    for n in labels:
+        col_members.setdefault(layer[n], []).append(n)
+    xs, ys = [], []
+    for n in labels:
+        members = col_members[layer[n]]
+        i = members.index(n)
+        k = len(members)
+        xs.append(min(0.95, max(0.01, layer[n] / max_layer)))
+        ys.append(0.5 if k == 1 else 0.05 + 0.9 * (i / (k - 1)))
+
     fig = go.Figure(go.Sankey(
         arrangement="snap",
         node=dict(
             label=[f"{n} ({_inflow(edges, n):,})" for n in labels],
             color=[_node_colour(n) for n in labels],
-            pad=18, thickness=18, line=dict(color="white", width=1),
+            x=xs, y=ys,
+            pad=16, thickness=16, line=dict(color="white", width=1),
         ),
         link=dict(
             source=[idx[s] for s in edges["source"]],
             target=[idx[t] for t in edges["target"]],
             value=list(edges["value"]),
-            color="rgba(0,114,206,0.25)",
+            color="rgba(0,114,206,0.22)",
         ),
     ))
-    fig.update_layout(_LAYOUT, title="Patient flow — arrival to disposition",
-                      height=460)
+    fig.update_layout(_LAYOUT, title="Patient flow (process map) — arrival to disposition",
+                      height=460, font_size=11)
     return fig
 
 

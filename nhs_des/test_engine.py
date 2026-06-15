@@ -22,7 +22,7 @@ from pathlib import Path
 import numpy as np
 
 from .engine import Pathway, Simulation
-from .metrics import kpis, resource_utilisation
+from .metrics import kpis, resource_utilisation, diagnose
 from .montecarlo import monte_carlo
 from .scenarios import compare_scenarios
 
@@ -56,6 +56,11 @@ def check_pathway(path: str) -> None:
 
     util = resource_utilisation(result, pathway)
     assert (util["utilisation"] <= 100.5).all(), f"{pathway.name}: utilisation > 100%"
+
+    # Bottleneck diagnosis must name a worst stage and give a recommendation.
+    diag = diagnose(result, pathway)
+    assert diag["worst_stage"] and diag["recommendation"], \
+        f"{pathway.name}: diagnosis incomplete"
 
     # Animation tracks must cover every patient and stay on-canvas.
     from .animation import build_tracks
