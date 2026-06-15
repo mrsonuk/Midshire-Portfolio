@@ -17,6 +17,15 @@ Run:  python -m nhs_des.snapshot
 """
 from __future__ import annotations
 
+# Allow running this file directly (``python snapshot.py`` or, from inside the
+# package directory, ``python -m snapshot``) as well as the canonical
+# ``python -m nhs_des.snapshot``. When run as a loose script there is no parent
+# package for the relative imports below, so register it on the fly.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 from pathlib import Path
 
 import matplotlib
@@ -158,13 +167,14 @@ def _kpi_card(fig, x, y, w, h, title, value, sub, accent):
 
 
 def build_snapshot(pathway_file: str, out_path: str, replications: int = 40,
-                   scenarios: list | None = None, seed: int = 7) -> str:
+                   scenarios: list | None = None, seed: int = 7,
+                   return_fig: bool = False):
     pathway = Pathway.load(pathway_file)
-    if scenarios is None:
-        scenarios = _default_scenarios(pathway)
-
     base = run_pathway(pathway, seed=seed)
     base_kpi = kpis(base, pathway)
+    if scenarios is None:
+        from .metrics import diagnose
+        scenarios = _default_scenarios(pathway, diagnose(base, pathway)["constraint"])
     mc = monte_carlo(pathway, replications=replications, base_seed=1000)
     util = resource_utilisation(base, pathway)
     flows = flow_counts(base, pathway)
@@ -334,6 +344,8 @@ def build_snapshot(pathway_file: str, out_path: str, replications: int = 40,
     fig.text(0.985, 0.018, "For demonstration — synthetic data", fontsize=8.5,
              color=NHS_GREY, ha="right")
 
+    if return_fig:
+        return fig
     Path(out_path).parent.mkdir(parents=True, exist_ok=True)
     fig.savefig(out_path, facecolor=fig.get_facecolor())
     plt.close(fig)
@@ -368,18 +380,25 @@ def _wrap(names):
     return out
 
 
-def _default_scenarios(pathway: Pathway) -> list:
-    """Heuristic scenarios: relieve the top staffing bottleneck, add beds,
-    and stress with a demand surge."""
+def _default_scenarios(pathway: Pathway, constraint: str | None = None) -> list:
+    """Heuristic scenarios that actually target the diagnosed bottleneck: relieve
+    the binding resource, add beds, and stress with a demand surge. When a
+    ``constraint`` resource is supplied (from ``metrics.diagnose``), the first
+    scenario adds capacity there so the report's recommendation and its evidence
+    agree."""
     res = pathway.resources
-    doctor = next((r for r in ("ed_doctor", "junior_doctor", "consultant", "sdec_doctor")
-                   if r in res), None)
-    bed = next((r for r in ("inpatient_bed", "ward_bed", "majors_bed", "amu_bed")
-                if r in res), None)
     scenarios = []
-    if doctor:
-        scenarios.append({"name": f"+3 {doctor.replace('_',' ')}",
-                          "resources": {doctor: "+3"}})
+    if constraint and constraint in res:
+        scenarios.append({"name": f"+3 {constraint.replace('_',' ')}",
+                          "resources": {constraint: "+3"}})
+    else:
+        doctor = next((r for r in ("ed_doctor", "junior_doctor", "consultant",
+                                   "sdec_doctor") if r in res), None)
+        if doctor:
+            scenarios.append({"name": f"+3 {doctor.replace('_',' ')}",
+                              "resources": {doctor: "+3"}})
+    bed = next((r for r in ("inpatient_bed", "ward_bed", "majors_bed", "amu_bed")
+                if r in res and r != constraint), None)
     if bed:
         scenarios.append({"name": f"+8 {bed.replace('_',' ')}",
                           "resources": {bed: "+8"}})

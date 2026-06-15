@@ -123,3 +123,60 @@ def flow_counts(result: dict[str, pd.DataFrame], pathway: Pathway) -> pd.DataFra
 
     rows = [{"source": a, "target": b, "value": v} for (a, b), v in edges.items()]
     return pd.DataFrame(rows)
+
+
+def diagnose(result: dict[str, pd.DataFrame], pathway: Pathway) -> dict:
+    """Plain-English bottleneck diagnosis for the planning team.
+
+    Ranks stages by *total patient-hours lost to queueing* (mean wait x patients
+    seen) - the right way to prioritise, since a long wait at a rarely-used stage
+    matters less than a moderate wait everywhere. Names the binding resource and
+    gives an actionable recommendation.
+    """
+    util = resource_utilisation(result, pathway)
+    waits = stage_waits(result)
+    if waits.empty:
+        return {"headline": "No activity simulated.", "recommendation": "",
+                "constraint": None, "constraint_util": 0.0,
+                "worst_stage": None, "worst_wait": 0.0, "lost_hours": 0.0,
+                "table": []}
+
+    waits = waits.assign(lost_hours=lambda d: d["mean_wait"] * d["n"] / 60.0)
+    waits = waits.sort_values("lost_hours", ascending=False).reset_index(drop=True)
+    worst = waits.iloc[0]
+
+    # Which resource does the worst-wait stage depend on?
+    node = pathway.nodes.get(worst["stage"], {})
+    stage_resources = list(node.get("acquire", []) or []) + (
+        node.get("resources") or ([node["resource"]] if node.get("resource") else []))
+    constraint, constraint_util = None, 0.0
+    if not util.empty:
+        if stage_resources:
+            cand = util[util["resource"].isin(stage_resources)]
+            row = (cand.iloc[0] if not cand.empty else util.iloc[0])
+        else:
+            row = util.iloc[0]
+        constraint, constraint_util = row["resource"], float(row["utilisation"])
+
+    pretty = (constraint or "").replace("_", " ")
+    headline = (f"Biggest delay: <b>{worst['stage_label']}</b> — patients wait "
+                f"{worst['mean_wait']:.0f} min on average "
+                f"({worst['lost_hours']:.0f} patient-hours lost over the run).")
+    if constraint and constraint_util >= 80:
+        rec = (f"<b>{pretty}</b> is the binding constraint at "
+               f"{constraint_util:.0f}% utilisation. Adding {pretty} capacity is "
+               f"the highest-impact lever — test it under Scenario comparison.")
+    elif constraint and constraint_util >= 60:
+        rec = (f"<b>{pretty}</b> is busy ({constraint_util:.0f}% utilisation) and "
+               f"likely drives this queue; trial extra capacity in Scenario comparison.")
+    else:
+        rec = (f"No single resource is saturated (top is {pretty} at "
+               f"{constraint_util:.0f}%); the delay is structural — review routing "
+               f"or demand timing rather than headcount.")
+
+    table = (waits[["stage_label", "n", "mean_wait", "p95_wait", "lost_hours"]]
+             .head(6).to_dict("records"))
+    return {"headline": headline, "recommendation": rec,
+            "constraint": constraint, "constraint_util": constraint_util,
+            "worst_stage": worst["stage_label"], "worst_wait": float(worst["mean_wait"]),
+            "lost_hours": float(worst["lost_hours"]), "table": table}

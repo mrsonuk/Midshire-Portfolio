@@ -27,6 +27,8 @@ The beta tool was built for one hospital and could not support planning. Concret
 | **Single run only**, no sense of variability (README's #1 priority: *"Explore variability… Monte-Carlo modelling"*) | First-class, parallelised **Monte-Carlo** with 95% confidence intervals on every KPI |
 | **No scenario comparison**; outputs overwrote each other | **Scenario modelling**: declarative what-ifs (`+4 doctors`, `+8 beds`, `winter +15%`) compared side-by-side against baseline |
 | Output was a 2-D **animation**, not analytics; no occupancy/utilisation/bottleneck reporting | **Decision dashboard**: KPI cards, patient-flow Sankey, occupancy-vs-capacity, utilisation, queue-wait bottlenecks — *plus* the patient-movement animation, now generalised and time-scrubbable |
+| No bottleneck call-out, no written interpretation, no PDF for the planning team | **Named bottleneck diagnosis** with a recommendation, **plain-English Monte-Carlo readout**, and a **downloadable PDF decision report** |
+| Front end depended on an external CDN (breaks on locked-down NHS networks) | Plotly is **vendored locally** — fully offline-capable |
 | Beds modelled inconsistently; diagnostics had no machine queue | Resources can be **span-held** (a bed occupied across the whole episode) and diagnostics (CT/X-ray) contend for limited machines |
 | Disabled levers (bed occupancy, exit block) | **Exit block is modelled** — admitted patients queue for a scarce inpatient/ward bed, the dominant NHS flow problem |
 
@@ -48,8 +50,10 @@ nhs_des/
 ├── animation.py     Patient-movement animation — moving dots per patient,
 │                    station layout auto-derived from the pathway graph.
 │                    Interactive (Plotly) + standalone GIF renderer.
-├── app.py           Flask dashboard (REST API + single-page UI).
+├── app.py           Flask dashboard (REST API + single-page UI; Plotly vendored
+│                    locally in static/ so it runs with no external CDN).
 ├── snapshot.py      Renders the NHS-branded presentation image.
+├── report.py        Two-page PDF decision report (summary + bottleneck + charts).
 ├── pathways/        emergency_department.json, acute_medical_unit.json
 └── templates/       dashboard.html
 ```
@@ -78,6 +82,10 @@ to freeze the 4-hour performance clock at transfer while still modelling bed tur
 ```bash
 pip install -r requirements.txt        # flask, plotly, simpy, numpy, pandas, matplotlib, scipy
 
+# Commands below are shown from the repo root. They also run from inside the
+# nhs_des/ folder (e.g. `python -m snapshot ...`) - the scripts self-register
+# their package either way.
+
 # 1) Interactive dashboard
 python -m nhs_des.app                   # http://127.0.0.1:5000
 
@@ -86,6 +94,9 @@ python -m nhs_des.snapshot nhs_des/pathways/emergency_department.json out.png
 
 # 2b) Patient-movement animation (GIF) — dots moving station to station
 python -m nhs_des.animation nhs_des/pathways/emergency_department.json out.gif
+
+# 2c) Decision report (PDF) — executive summary + bottleneck + scenarios + charts
+python -m nhs_des.report nhs_des/pathways/emergency_department.json report.pdf
 
 # 3) Programmatic use
 python - <<'PY'

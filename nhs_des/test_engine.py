@@ -9,13 +9,20 @@ scenario comparison run, and that headline KPIs are sane.
 """
 from __future__ import annotations
 
+# Allow running directly (``python test_engine.py`` / ``python -m test_engine``)
+# as well as ``python -m nhs_des.test_engine``.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 import glob
 from pathlib import Path
 
 import numpy as np
 
 from .engine import Pathway, Simulation
-from .metrics import kpis, resource_utilisation
+from .metrics import kpis, resource_utilisation, diagnose
 from .montecarlo import monte_carlo
 from .scenarios import compare_scenarios
 
@@ -49,6 +56,11 @@ def check_pathway(path: str) -> None:
 
     util = resource_utilisation(result, pathway)
     assert (util["utilisation"] <= 100.5).all(), f"{pathway.name}: utilisation > 100%"
+
+    # Bottleneck diagnosis must name a worst stage and give a recommendation.
+    diag = diagnose(result, pathway)
+    assert diag["worst_stage"] and diag["recommendation"], \
+        f"{pathway.name}: diagnosis incomplete"
 
     # Animation tracks must cover every patient and stay on-canvas.
     from .animation import build_tracks
