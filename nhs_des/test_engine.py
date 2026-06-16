@@ -9,13 +9,20 @@ scenario comparison run, and that headline KPIs are sane.
 """
 from __future__ import annotations
 
+# Allow running directly (``python test_engine.py`` / ``python -m test_engine``)
+# as well as ``python -m nhs_des.test_engine``.
+if __package__ in (None, ""):
+    import sys as _sys, pathlib as _pl
+    _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
+    __package__ = "nhs_des"
+
 import glob
 from pathlib import Path
 
 import numpy as np
 
 from .engine import Pathway, Simulation
-from .metrics import kpis, resource_utilisation
+from .metrics import kpis, resource_utilisation, diagnose
 from .montecarlo import monte_carlo
 from .scenarios import compare_scenarios
 
@@ -50,6 +57,11 @@ def check_pathway(path: str) -> None:
     util = resource_utilisation(result, pathway)
     assert (util["utilisation"] <= 100.5).all(), f"{pathway.name}: utilisation > 100%"
 
+    # Bottleneck diagnosis must name a worst stage and give a recommendation.
+    diag = diagnose(result, pathway)
+    assert diag["worst_stage"] and diag["recommendation"], \
+        f"{pathway.name}: diagnosis incomplete"
+
     # Animation tracks must cover every patient and stay on-canvas.
     from .animation import build_tracks
     _, tracks, _ = build_tracks(result, pathway)
@@ -71,6 +83,17 @@ def main() -> None:
     mc = monte_carlo(p, replications=6, base_seed=0, parallel=False)
     assert mc["summary"]["target_compliance"]["ci_low"] <= mc["summary"]["target_compliance"]["ci_high"]
     print("  OK  Monte-Carlo produced confidence intervals")
+
+    print("Checking calibration...")
+    from .calibration import generate_sample, calibrate
+    import json as _json
+    # ECDS sample is acuity-based, so calibrate an acuity-based pathway.
+    ed_file = next((f for f in files if "emergency" in f), files[0])
+    raw, summary = calibrate(generate_sample(days=7, seed=1), _json.load(open(ed_file)))
+    cp = Pathway.from_dict(raw)
+    cres = Simulation(cp, seed=1).run()
+    assert not cres["patients"].empty and len(summary) >= 4
+    print(f"  OK  calibration produced a runnable pathway ({len(summary)} changes)")
 
     print("Checking scenarios...")
     cmp = compare_scenarios(p, [{"name": "test", "resources": {list(p.resources)[0]: "+1"}}],

@@ -14,13 +14,15 @@ import numpy as np
 import pandas as pd
 
 from .engine import Pathway, run_pathway
-from .metrics import kpis
+from .metrics import kpis, uec_metrics
 
 
 def _single_run(seed: int, pathway_raw: dict) -> dict:
     pathway = Pathway.from_dict(pathway_raw)
     result = run_pathway(pathway, seed=seed)
-    return kpis(result, pathway)
+    # Carry the cohort UEC measures alongside the headline KPIs so Monte-Carlo
+    # and scenario comparison get confidence intervals on them too.
+    return {**kpis(result, pathway), **uec_metrics(result, pathway)}
 
 
 def monte_carlo(pathway: Pathway, replications: int = 50, base_seed: int = 0,

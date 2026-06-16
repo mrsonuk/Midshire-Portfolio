@@ -5,3 +5,4 @@ outputs/*
 !outputs/amu_snapshot.png
 !outputs/patient_flow_animation.gif
 !outputs/amu_flow_animation.gif
+!outputs/decision_report.pdf

@@ -4,15 +4,19 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>NHS Patient Flow Simulator</title>
-<script src="https://cdn.plot.ly/plotly-2.35.2.min.js" charset="utf-8"></script>
+<!-- Plotly is vendored locally so the tool works offline / on locked-down NHS
+     networks with no external CDN dependency. -->
+<script src="{{ url_for('static', filename='plotly.min.js') }}" charset="utf-8"></script>
 <style>
   :root{
-    --nhs-blue:#005EB8; --nhs-dark:#003087; --nhs-bright:#0072CE; --nhs-light:#41B6E6;
-    --nhs-aqua:#00A499; --nhs-green:#009639; --nhs-yellow:#FFB81C; --nhs-orange:#ED8B00;
-    --nhs-red:#DA291C; --nhs-grey:#425563; --nhs-lightgrey:#E8EDEE; --page:#F0F4F7;
+    /* Official NHS identity palette (nhsengland.github.io/nhs-r-reporting nhs-colours) */
+    --nhs-dark:#003087; --nhs-blue:#005EB8; --nhs-bright:#0072CE;
+    --nhs-aqua:#00A9CE; --nhs-light:#41B6E6;
+    --nhs-green:#009639; --nhs-yellow:#FFB81C; --nhs-orange:#ED8B00; --nhs-red:#DA291C;
+    --nhs-grey:#425563; --nhs-black:#231F20; --nhs-lightgrey:#E8EDEE; --page:#E8EDEE;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:var(--page);color:var(--nhs-grey)}
+  body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:var(--page);color:var(--nhs-black)}
   header{background:var(--nhs-blue);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:18px}
   .logo{background:#fff;color:var(--nhs-blue);font-weight:800;font-size:22px;padding:4px 10px;border-radius:4px;letter-spacing:1px}
   header h1{font-size:20px;margin:0}
@@ -48,6 +52,40 @@
   .hint{font-size:12px;color:var(--nhs-grey);background:#fff;border:1px dashed var(--nhs-light);border-radius:6px;padding:10px;margin-bottom:12px}
   .spin{display:inline-block;width:16px;height:16px;border:3px solid var(--nhs-lightgrey);border-top-color:var(--nhs-blue);border-radius:50%;animation:s 1s linear infinite;vertical-align:middle}
   @keyframes s{to{transform:rotate(360deg)}}
+  .status{margin-top:10px;font-size:12px;font-weight:700;min-height:18px;text-align:center}
+  .status.run{color:var(--nhs-blue)} .status.ok{color:var(--nhs-green)} .status.err{color:var(--nhs-red)}
+  .diagnosis{background:#fff;border:1px solid var(--nhs-lightgrey);border-left:6px solid var(--nhs-orange);border-radius:8px;padding:14px 16px;margin-bottom:14px}
+  .diagnosis .dh{font-size:13px;font-weight:800;color:var(--nhs-dark);text-transform:uppercase;letter-spacing:.5px;margin-bottom:6px}
+  .diagnosis p{margin:4px 0;font-size:13.5px;line-height:1.5}
+  .diagnosis .rec{color:var(--nhs-dark);font-weight:600}
+  button:disabled{opacity:.55;cursor:not-allowed}
+  .presets{display:flex;gap:4px;margin-bottom:6px}
+  .presets button{margin-top:0;padding:6px 4px;font-size:11px;background:#fff;color:var(--nhs-grey);border:1px solid var(--nhs-lightgrey);font-weight:700}
+  .presets button.active{background:var(--nhs-blue);color:#fff;border-color:var(--nhs-blue)}
+  .scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;margin-bottom:14px}
+  .scorehead{font-size:13px;font-weight:800;color:var(--nhs-dark);margin:2px 0 8px;text-transform:uppercase;letter-spacing:.5px}
+  .sc{background:#fff;border:1px solid var(--nhs-lightgrey);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:14px}
+  .sc .ring{flex:0 0 54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff}
+  .sc.green .ring{background:var(--nhs-green)} .sc.amber .ring{background:var(--nhs-orange)} .sc.red .ring{background:var(--nhs-red)}
+  .sc.green{border-left:6px solid var(--nhs-green)} .sc.amber{border-left:6px solid var(--nhs-orange)} .sc.red{border-left:6px solid var(--nhs-red)}
+  .sc .lbl{font-size:13px;font-weight:800;color:var(--nhs-dark)}
+  .sc .tgt{font-size:11.5px;color:var(--nhs-grey);margin-top:2px}
+  .sc .badge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 8px;border-radius:10px;color:#fff}
+  .sc.green .badge{background:var(--nhs-green)} .sc.amber .badge{background:var(--nhs-orange)} .sc.red .badge{background:var(--nhs-red)}
+  .fm-head{font-size:13px;font-weight:800;color:var(--nhs-dark);padding:6px 8px 0;display:flex;justify-content:space-between;align-items:center}
+  .fm-legend{font-weight:600;color:var(--nhs-grey);font-size:11px}
+  .fm-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 3px 0 10px;vertical-align:middle}
+  .fm-legend i.g{background:var(--nhs-green)} .fm-legend i.a{background:var(--nhs-orange)} .fm-legend i.r{background:var(--nhs-red)}
+  .flowmap{position:relative;width:100%;height:480px;overflow:hidden}
+  .fm-node{position:absolute;transform:translate(-50%,-50%);background:#fff;border:1px solid var(--nhs-lightgrey);border-top:4px solid var(--nhs-grey);border-radius:8px;padding:6px 9px;min-width:96px;max-width:120px;box-shadow:0 1px 4px rgba(0,0,0,.08);text-align:center;z-index:2}
+  .fm-node.green{border-top-color:var(--nhs-green)} .fm-node.amber{border-top-color:var(--nhs-orange)} .fm-node.red{border-top-color:var(--nhs-red)}
+  .fm-node.source{border-top-color:var(--nhs-grey)} .fm-node.admitted{border-top-color:var(--nhs-red);background:#fdeceb} .fm-node.discharged{border-top-color:var(--nhs-green);background:#eaf6ee}
+  .fm-node .nm{font-size:11px;font-weight:800;color:var(--nhs-dark);line-height:1.1}
+  .fm-node .vol{font-size:17px;font-weight:800;color:var(--nhs-blue);margin:1px 0}
+  .fm-node .wt{font-size:10px;color:var(--nhs-grey)}
+  .fm-node.bottleneck{border:2px solid var(--nhs-red);box-shadow:0 0 0 0 rgba(218,41,28,.5);animation:pulse 1.6s infinite}
+  .fm-node .flag{position:absolute;top:-10px;right:-8px;background:var(--nhs-red);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(218,41,28,.45)}70%{box-shadow:0 0 0 10px rgba(218,41,28,0)}100%{box-shadow:0 0 0 0 rgba(218,41,28,0)}}
 </style>
 </head>
 <body>
@@ -61,9 +99,22 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <label for="pathway">Care pathway</label>
+    <label for="pathway">ED type / care pathway</label>
     <select id="pathway"></select>
     <p class="desc" id="pathwayDesc"></p>
+
+    <label>ED size (scales all capacity)</label>
+    <div id="sizePresets" class="presets">
+      <button type="button" data-size="0.6">Small</button>
+      <button type="button" data-size="0.8">Medium</button>
+      <button type="button" data-size="1.0" class="active">Baseline</button>
+      <button type="button" data-size="1.3">Large</button>
+      <button type="button" data-size="1.7">XL</button>
+    </div>
+
+    <label>Hospital bed occupancy: <span id="occVal">92%</span></label>
+    <input type="range" id="occupancy" min="80" max="99" step="1" value="92" style="width:100%">
+    <p class="desc" style="margin-top:2px">Higher occupancy → longer waits for an inpatient bed (exit block / corridor care).</p>
 
     <label>Demand (× baseline arrivals)</label>
     <input type="number" id="arrivals" value="1.0" min="0.5" max="2" step="0.05">
@@ -71,8 +122,11 @@
     <label style="margin-top:14px">Resource capacities</label>
     <div id="resources"></div>
 
-    <button id="runBtn">▶ Run simulation</button>
-    <button id="mcBtn" class="secondary">📊 Monte-Carlo (30 runs)</button>
+    <button id="runBtn">Run simulation</button>
+    <button id="mcBtn" class="secondary">Monte-Carlo (30 runs)</button>
+    <button id="reportBtn" style="background:var(--nhs-grey)">Download decision report (PDF)</button>
+    <div id="status" class="status"></div>
+    <div id="calibState" class="desc" style="margin-top:8px;font-weight:700;color:var(--nhs-grey)">Data source: synthetic (placeholder)</div>
     <p class="desc" style="margin-top:14px">The same engine drives every pathway. Add a new pathway by dropping a JSON file in <code>pathways/</code> — no code changes.</p>
   </aside>
 
@@ -82,11 +136,18 @@
       <div class="tab" data-tab="anim">Flow animation</div>
       <div class="tab" data-tab="mc">Monte-Carlo</div>
       <div class="tab" data-tab="scn">Scenario comparison</div>
+      <div class="tab" data-tab="data">Data &amp; calibration</div>
     </div>
 
     <section class="panel active" id="panel-sim">
       <div class="cards" id="kpis"></div>
-      <div class="chart full" id="sankey"></div>
+      <div class="scorehead">UEC Plan 2025/26 scorecard — performance vs national standards</div>
+      <div id="scorecard" class="scorecard"></div>
+      <div id="diagnosis" class="diagnosis"></div>
+      <div class="chart full">
+        <div class="fm-head">Patient flow map — live department <span class="fm-legend"><i class="g"></i>&lt;15 min wait <i class="a"></i>15–60 min <i class="r"></i>&gt;60 min (bottleneck)</span></div>
+        <div id="flowmap" class="flowmap"></div>
+      </div>
       <div class="grid2">
         <div class="chart" id="occupancy"></div>
         <div class="chart" id="utilisation"></div>
@@ -95,13 +156,14 @@
     </section>
 
     <section class="panel" id="panel-anim">
-      <div class="hint">Watch individual patients (coloured by acuity/class) move from station to station over a representative span of the simulation — use ▶ Play or scrub the slider. Clusters reveal where patients pile up (e.g. exit block waiting for an inpatient bed).</div>
-      <button id="animBtn" style="width:auto;display:inline-block">▶ Load flow animation</button>
+      <div class="hint">Watch individual patients (coloured by acuity/class) move from station to station over a representative span of the simulation — use Play or scrub the slider. Clusters reveal where patients pile up (e.g. exit block waiting for an inpatient bed).</div>
+      <button id="animBtn" style="width:auto;display:inline-block">Load flow animation</button>
       <div class="chart" id="animFig" style="margin-top:12px;min-height:540px"></div>
     </section>
 
     <section class="panel" id="panel-mc">
       <div class="hint">Monte-Carlo runs the current configuration many times with different random seeds to quantify variability — the original tool reported a single run with no confidence interval. Click <b>Monte-Carlo</b> in the sidebar.</div>
+      <div id="mcInterp" class="diagnosis" style="display:none"></div>
       <div class="grid2">
         <div class="chart" id="mcFig"></div>
         <div class="chart" id="mcLos"></div>
@@ -117,89 +179,269 @@
         <div class="chart" id="scnCompliance"></div>
         <div class="chart" id="scnLos"></div>
       </div>
+      <div class="chart" id="scnTableWrap" style="padding:14px"></div>
+    </section>
+
+    <section class="panel" id="panel-data">
+      <div class="hint">The model currently runs on <b>synthetic data</b> seeded from the beta config. Upload a real attendance extract (ECDS-style) to <b>auto-calibrate</b> the arrival profile, acuity mix, ambulance/paediatric/mental-health prevalence and admission rates. Per-stage service times need stage-level timestamps and are left at modelled values until then.</div>
+      <div class="chart" style="padding:16px">
+        <p style="margin:0 0 10px"><b>1.</b> Download the template to see the expected columns: <a id="sampleLink" href="/api/sample-data">sample_ecds_template.csv</a></p>
+        <p style="margin:0 0 6px"><b>2.</b> Upload your extract (CSV, one row per attendance):</p>
+        <input type="file" id="dataFile" accept=".csv" style="margin-bottom:10px">
+        <div>
+          <button id="calibBtn" style="width:auto;display:inline-block">Calibrate from data</button>
+          <button id="resetBtn" class="secondary" style="width:auto;display:inline-block;margin-left:8px">Reset to synthetic</button>
+        </div>
+        <div id="calibSummary" class="diagnosis" style="display:none;margin-top:14px;border-left-color:var(--nhs-aqua)"></div>
+      </div>
     </section>
   </main>
 </div>
 
 <script>
 const PATHWAYS = {{ pathways|tojson }};
-let current = Object.keys(PATHWAYS)[0];
+const KEYS = Object.keys(PATHWAYS);
+let current = KEYS.includes('emergency_department') ? 'emergency_department' : KEYS[0];
+let busy = false;
 
 const $ = s => document.querySelector(s);
 const el = (t, c, h) => { const e=document.createElement(t); if(c)e.className=c; if(h!=null)e.innerHTML=h; return e; };
 
+// One rendering path for every chart: clear the container (removing any spinner)
+// THEN draw, so loaders never linger on top of a finished plot.
+function loading(id,msg){ Plotly.purge(id); $('#'+id).innerHTML='<div class="loading"><span class="spin"></span> '+(msg||'Simulating…')+'</div>'; }
+function plot(id,fig){ Plotly.purge(id); $('#'+id).innerHTML=''; return Plotly.newPlot(id,fig.data,fig.layout,{responsive:true,displayModeBar:false}).then(()=>{ if(fig.frames&&fig.frames.length) Plotly.addFrames(id,fig.frames); }); }
+
+function setBusy(on,msg,cls){
+  busy=on;
+  document.querySelectorAll('button').forEach(b=>b.disabled=on);
+  const s=$('#status'); s.className='status '+(cls||(on?'run':'ok'));
+  s.innerHTML = on ? '<span class="spin"></span> '+(msg||'Working…') : (msg||'');
+}
+
+async function post(url,body){
+  const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+  if(!r.ok) throw new Error('server error '+r.status);
+  return r.json();
+}
+
 function fillPathways(){
-  const sel = $('#pathway');
-  sel.innerHTML = '';
-  for(const k in PATHWAYS){ sel.append(el('option', null, PATHWAYS[k].name)).value=k; }
-  Array.from(sel.options).forEach((o,i)=>o.value=Object.keys(PATHWAYS)[i]);
-  sel.onchange = () => { current = sel.value; renderPathway(); };
+  const sel=$('#pathway'); sel.innerHTML='';
+  for(const k of KEYS){ const o=document.createElement('option'); o.value=k; o.textContent=PATHWAYS[k].name; sel.append(o); }
+  sel.value=current;
+  sel.onchange=()=>{ current=sel.value; renderPathway(); runSim(); };
   renderPathway();
 }
 
 function renderPathway(){
-  const p = PATHWAYS[current];
-  $('#pathwayDesc').textContent = p.description;
-  const box = $('#resources'); box.innerHTML='';
+  const p=PATHWAYS[current];
+  $('#pathwayDesc').textContent=p.description;
+  const box=$('#resources'); box.innerHTML='';
   for(const [name,cap] of Object.entries(p.resources)){
-    const row = el('div','res-row');
+    const row=el('div','res-row');
     row.append(el('span',null,name.replace(/_/g,' ')));
-    const inp = el('input'); inp.type='number'; inp.min=0; inp.value=cap; inp.dataset.res=name;
+    const inp=el('input'); inp.type='number'; inp.min=0; inp.value=cap; inp.dataset.res=name;
     row.append(inp); box.append(row);
   }
   buildScenarioPresets();
 }
 
-function overrides(){
-  const o={}; document.querySelectorAll('#resources input').forEach(i=>o[i.dataset.res]=+i.value); return o;
-}
+let edSize = 1.0;
+function overrides(){ const o={}; document.querySelectorAll('#resources input').forEach(i=>o[i.dataset.res]=+i.value); return o; }
+function cfg(extra){ return Object.assign({pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value,size:edSize,occupancy:+$('#occupancy').value}, extra||{}); }
 
-function loading(id,msg){ Plotly.purge(id); $('#'+id).innerHTML='<div class="loading"><span class="spin"></span> '+(msg||'Simulating…')+'</div>'; }
-function plot(id,fig){ $('#'+id).innerHTML=''; Plotly.newPlot(id,fig.data,fig.layout,{responsive:true}).then(()=>{ if(fig.frames&&fig.frames.length) Plotly.addFrames(id,fig.frames); }); }
-
-async function post(url,body){
-  const r = await fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-  return r.json();
+function renderScorecard(cards){
+  const box=$('#scorecard'); box.innerHTML='';
+  for(const c of cards){
+    const div=el('div','sc '+c.status);
+    const arrow=c.higher_better?'≥':'<';
+    div.innerHTML='<div class="ring">'+c.value.toFixed(0)+c.unit+'</div>'+
+      '<div><div class="lbl">'+c.label+'</div><div class="tgt">National target '+arrow+' '+c.target+c.unit+' · '+c.note+'</div></div>'+
+      '<div class="badge">'+c.status.toUpperCase()+'</div>';
+    box.append(div);
+  }
 }
 
 function kpiCards(k){
   const box=$('#kpis'); box.innerHTML='';
   const cards=[
-    ['4-hour performance', k.target_compliance.toFixed(0)+'%', k.breaches+' breaches', 'var(--nhs-blue)'],
+    ['4-hour performance', k.target_compliance.toFixed(0)+'%', k.breaches.toLocaleString()+' breaches', 'var(--nhs-blue)'],
     ['Mean time in dept', (k.mean_los/60).toFixed(1)+'h', 'median '+(k.median_los/60).toFixed(1)+'h', 'var(--nhs-bright)'],
     ['95th percentile', (k.p95_los/60).toFixed(1)+'h', 'longest typical', 'var(--nhs-yellow)'],
     ['Admitted', k.admit_rate.toFixed(0)+'%', (k.mean_los_admitted/60).toFixed(1)+'h LOS', 'var(--nhs-orange)'],
     ['Attendances/day', k.throughput_per_day.toFixed(0), k.n_patients.toLocaleString()+' total', 'var(--nhs-aqua)'],
   ];
-  for(const [t,v,s,col] of cards){
-    const c=el('div','card'); c.style.borderLeftColor=col;
-    c.append(el('div','t',t),el('div','v',v),el('div','s',s)); box.append(c);
-  }
+  for(const [t,v,s,col] of cards){ const c=el('div','card'); c.style.borderLeftColor=col; c.append(el('div','t',t),el('div','v',v),el('div','s',s)); box.append(c); }
+}
+
+function showDiagnosis(d){
+  $('#diagnosis').innerHTML='<div class="dh">Bottleneck diagnosis</div>'+
+    '<p>'+d.headline+'</p><p class="rec">'+d.recommendation+'</p>';
+}
+
+function applySim(data){
+  kpiCards(data.kpis); renderScorecard(data.scorecard); showDiagnosis(data.diagnosis);
+  renderFlowMap(data.flow_map);
+  return Promise.all([plot('occupancy',data.figures.occupancy),
+                      plot('utilisation',data.figures.utilisation),
+                      plot('waits',data.figures.waits)]);
 }
 
 async function runSim(){
-  kpiCards({target_compliance:0,mean_los:0,median_los:0,p95_los:0,admit_rate:0,mean_los_admitted:0,throughput_per_day:0,breaches:0,n_patients:0});
-  ['sankey','occupancy','utilisation','waits'].forEach(id=>loading(id));
-  const data = await post('/api/simulate',{pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value});
-  kpiCards(data.kpis);
-  Plotly.newPlot('sankey',data.figures.sankey.data,data.figures.sankey.layout,{responsive:true});
-  Plotly.newPlot('occupancy',data.figures.occupancy.data,data.figures.occupancy.layout,{responsive:true});
-  Plotly.newPlot('utilisation',data.figures.utilisation.data,data.figures.utilisation.layout,{responsive:true});
-  Plotly.newPlot('waits',data.figures.waits.data,data.figures.waits.layout,{responsive:true});
+  if(busy) return;
+  try{
+    setBusy(true,'Simulating one week…');
+    ['occupancy','utilisation','waits'].forEach(id=>loading(id));
+    await applySim(await post('/api/simulate',cfg()));
+    setBusy(false,'Simulation complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+// ---- data upload + auto-calibration ----
+function setCalibState(on){
+  const e=$('#calibState');
+  e.textContent='Data source: '+(on?'uploaded extract (calibrated)':'synthetic (placeholder)');
+  e.style.color=on?'var(--nhs-green)':'var(--nhs-grey)';
+}
+function showCalibSummary(lines,calibrated){
+  const box=$('#calibSummary'); box.style.display='block';
+  box.style.borderLeftColor=calibrated?'var(--nhs-aqua)':'var(--nhs-grey)';
+  box.innerHTML='<div class="dh">'+(calibrated?'Calibration applied':'Synthetic baseline')+'</div>'+
+    '<ul style="margin:6px 0 0 18px;padding:0">'+(lines||[]).map(l=>'<li style="font-size:13px;margin:3px 0">'+l+'</li>').join('')+'</ul>';
+}
+async function runCalibrate(){
+  if(busy) return;
+  const f=$('#dataFile').files[0];
+  if(!f){ setBusy(false,'Choose a CSV file first','err'); return; }
+  try{
+    setBusy(true,'Calibrating from uploaded data…');
+    const fd=new FormData(); fd.append('file',f); fd.append('pathway',current);
+    const r=await fetch('/api/calibrate',{method:'POST',body:fd});
+    const data=await r.json();
+    if(!r.ok||data.error) throw new Error(data.error||'calibration failed');
+    showCalibSummary(data.summary,true); setCalibState(true); await applySim(data);
+    setBusy(false,'Calibrated from uploaded data','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+async function resetCalib(){
+  if(busy) return;
+  try{
+    setBusy(true,'Resetting to synthetic baseline…');
+    const data=await post('/api/calibrate/reset',{pathway:current});
+    showCalibSummary(data.summary,false); setCalibState(false); await applySim(data);
+    setBusy(false,'Reset to synthetic baseline','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+// ---- animated patient-flow map (SVG links + flowing dots + HTML node cards) ----
+const SVGNS='http://www.w3.org/2000/svg';
+let fmRAF=null, lastFlow=null;
+function renderFlowMap(data){
+  lastFlow=data;
+  const host=$('#flowmap');
+  if(fmRAF){ cancelAnimationFrame(fmRAF); fmRAF=null; }
+  host.innerHTML='';
+  if(!data||!data.nodes.length){ host.innerHTML='<div class="loading">No flow</div>'; return; }
+  const W=host.clientWidth||1000, H=host.clientHeight||480, padX=70, padY=54, cardH=58;
+  const px=n=>padX + n.x*(W-2*padX);
+  const py=n=>padY + n.y*(H-2*padY);
+  const byId={}; data.nodes.forEach(n=>byId[n.id]=n);
+  const maxV=Math.max(...data.links.map(l=>l.value),1);
+
+  const svg=document.createElementNS(SVGNS,'svg');
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  svg.style.position='absolute'; svg.style.left=0; svg.style.top=0;
+  host.append(svg);
+
+  // links as smooth bezier paths
+  const linkInfo=[];
+  for(const l of data.links){
+    const s=byId[l.source], t=byId[l.target]; if(!s||!t) continue;
+    const x1=px(s)+50, y1=py(s), x2=px(t)-50, y2=py(t);
+    const mx=(x1+x2)/2;
+    const d=`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+    const path=document.createElementNS(SVGNS,'path');
+    path.setAttribute('d',d); path.setAttribute('fill','none');
+    path.setAttribute('stroke','#cfd8dc');
+    path.setAttribute('stroke-width', 1+6*Math.sqrt(l.value/maxV));
+    path.setAttribute('opacity','0.7'); path.setAttribute('stroke-linecap','round');
+    svg.append(path);
+    const nDots=Math.max(1,Math.round(6*l.value/maxV));
+    const dots=[];
+    for(let i=0;i<nDots;i++){
+      const c=document.createElementNS(SVGNS,'circle');
+      c.setAttribute('r',3); c.setAttribute('fill', t.is_bottleneck?'#DA291C':'#0072CE');
+      c.setAttribute('opacity','0.9'); svg.append(c);
+      dots.push({el:c,phase:Math.random()});
+    }
+    linkInfo.push({path,len:path.getTotalLength(),dots,speed:0.10+0.05*Math.random()});
+  }
+
+  // node cards (HTML overlay)
+  for(const n of data.nodes){
+    const card=el('div','fm-node '+(n.type==='source'||n.type==='admitted'||n.type==='discharged'?n.type:n.status));
+    if(n.is_bottleneck) card.classList.add('bottleneck');
+    card.style.left=px(n)+'px'; card.style.top=py(n)+'px';
+    let inner='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
+    if(n.type!=='source'&&n.type!=='admitted'&&n.type!=='discharged')
+      inner+='<div class="wt">wait '+n.mean_wait.toFixed(0)+'m · '+n.utilisation.toFixed(0)+'% busy</div>';
+    if(n.is_bottleneck) inner+='<div class="flag">BOTTLENECK</div>';
+    card.innerHTML=inner; card.title=n.label+': '+n.volume+' patients';
+    host.append(card);
+  }
+
+  let last=performance.now();
+  function frame(now){
+    const dt=(now-last)/1000; last=now;
+    for(const li of linkInfo){
+      for(const d of li.dots){
+        d.phase=(d.phase+dt*li.speed)%1;
+        const pt=li.path.getPointAtLength(d.phase*li.len);
+        d.el.setAttribute('cx',pt.x); d.el.setAttribute('cy',pt.y);
+      }
+    }
+    fmRAF=requestAnimationFrame(frame);
+  }
+  fmRAF=requestAnimationFrame(frame);
 }
 
 async function runMC(){
+  if(busy) return;
   switchTab('mc');
-  loading('mcFig','Running 30 replications…'); loading('mcLos','Running 30 replications…');
-  const data = await post('/api/montecarlo',{pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value,replications:30});
-  Plotly.newPlot('mcFig',data.figure.data,data.figure.layout,{responsive:true});
-  Plotly.newPlot('mcLos',data.los_figure.data,data.los_figure.layout,{responsive:true});
+  try{
+    setBusy(true,'Running 30 replications…');
+    loading('mcFig','Running 30 replications…'); loading('mcLos','Running 30 replications…');
+    const data=await post('/api/montecarlo',cfg({replications:30}));
+    const ip=$('#mcInterp'); ip.style.display='block';
+    ip.innerHTML='<div class="dh">What this means</div><p>'+data.interpretation+'</p>';
+    await plot('mcFig',data.figure); await plot('mcLos',data.los_figure);
+    setBusy(false,'Monte-Carlo complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 async function runAnim(){
-  loading('animFig','Simulating &amp; building animation…');
-  const data = await post('/api/animation',{pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value});
-  plot('animFig',data.figure);
+  if(busy) return;
+  try{
+    setBusy(true,'Building animation…');
+    loading('animFig','Simulating &amp; building animation…');
+    const data=await post('/api/animation',cfg());
+    await plot('animFig',data.figure);
+    setBusy(false,'Animation ready — press Play','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+async function downloadReport(){
+  if(busy) return;
+  try{
+    setBusy(true,'Generating PDF report…');
+    const q=new URLSearchParams({pathway:current,overrides:JSON.stringify(overrides()),arrivals_scale:$('#arrivals').value});
+    const r=await fetch('/api/report?'+q.toString());
+    if(!r.ok) throw new Error('report failed');
+    const blob=await r.blob();
+    const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
+    a.download=current+'_decision_report.pdf'; a.click(); URL.revokeObjectURL(a.href);
+    setBusy(false,'Report downloaded','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 // ---- scenarios ----
@@ -211,44 +453,99 @@ function buildScenarioPresets(){
   if(doctor)presets.push({name:'+3 '+doctor.replace(/_/g,' '),resources:{[doctor]:'+3'}});
   if(bed)presets.push({name:'+8 '+bed.replace(/_/g,' '),resources:{[bed]:'+8'}});
   presets.push({name:'Winter +15% demand',arrivals_scale:1.15});
+  if('sdec_chair' in res || 'minors_bay' in res)
+    presets.push({name:'Redirect 20% low-acuity to UTC/SDEC',divert:{classes:['Acuity 4','Acuity 5'],fraction:0.20}});
+  if(doctor==='ed_doctor')
+    presets.push({name:'Call-before-convey −15% ambulance',divert:{attribute:'ambulance',fraction:0.15}});
+  if('mh_inpatient_bed' in res)
+    presets.push({name:'+3 MH crisis beds',resources:{mh_inpatient_bed:'+3'}});
   $('#scnList').innerHTML='';
   presets.forEach(addScenarioRow);
 }
 function addScenarioRow(preset){
-  preset=preset||{name:'New scenario',resources:{}};
+  if(!preset||preset instanceof Event) preset={name:'New scenario',resources:{}};
   const div=el('div','scn');
   div.append(el('h4',null,'Scenario'));
   const nameI=el('input'); nameI.type='text'; nameI.value=preset.name; nameI.style.marginBottom='6px'; nameI.dataset.k='name';
   div.append(nameI);
   const res=PATHWAYS[current].resources;
   const sel=el('select'); sel.dataset.k='res';
-  sel.append(el('option',null,'— adjust a resource —')).value='';
-  for(const r in res){ const o=el('option',null,r.replace(/_/g,' ')); o.value=r; sel.append(o);}
+  const opt0=document.createElement('option'); opt0.value=''; opt0.textContent='— adjust a resource —'; sel.append(opt0);
+  for(const r in res){ const o=document.createElement('option'); o.value=r; o.textContent=r.replace(/_/g,' '); sel.append(o); }
   const presetRes=Object.keys(preset.resources||{})[0]||'';
   sel.value=presetRes;
   const delta=el('input'); delta.type='number'; delta.value=presetRes?(''+preset.resources[presetRes]).replace(/[+]/,''):'0'; delta.style.cssText='width:70px;margin-left:6px'; delta.dataset.k='delta';
   const scale=el('input'); scale.type='number'; scale.step='0.05'; scale.value=preset.arrivals_scale||1.0; scale.style.cssText='width:70px;margin-left:6px'; scale.dataset.k='scale';
+  // care-setting redirection lever (UEC Plan: UTC/SDEC redirection, call-before-convey)
+  const lever=el('select'); lever.dataset.k='lever';
+  [['','— none —'],['utc','Redirect low-acuity to UTC/SDEC'],['convey','Call-before-convey (ambulance)']]
+    .forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;lever.append(o);});
+  const pre=preset.divert||{}; lever.value = pre.classes?'utc':(pre.attribute?'convey':'');
+  const lpct=el('input'); lpct.type='number'; lpct.min=0; lpct.max=60; lpct.value=Math.round((pre.fraction||0)*100); lpct.style.cssText='width:60px;margin-left:6px'; lpct.dataset.k='lpct';
   const r1=el('div','res-row'); r1.append(el('span',null,'Δ capacity'),sel,delta); div.append(r1);
   const r2=el('div','res-row'); r2.append(el('span',null,'demand ×'),scale); div.append(r2);
+  const r3=el('div','res-row'); r3.append(el('span',null,'redirect %'),lever,lpct); div.append(r3);
   $('#scnList').append(div);
 }
 function collectScenarios(){
   return Array.from(document.querySelectorAll('#scnList .scn')).map(d=>{
-    const name=d.querySelector('[data-k=name]').value;
+    const s={name:d.querySelector('[data-k=name]').value};
     const res=d.querySelector('[data-k=res]').value;
     const delta=+d.querySelector('[data-k=delta]').value;
     const scale=+d.querySelector('[data-k=scale]').value;
-    const s={name};
+    const lever=d.querySelector('[data-k=lever]').value;
+    const lpct=+d.querySelector('[data-k=lpct]').value/100;
     if(res&&delta){ s.resources={[res]:(delta>0?'+':'')+delta}; }
     if(scale&&scale!==1){ s.arrivals_scale=scale; }
+    if(lever==='utc'&&lpct>0){ s.divert={classes:['Acuity 4','Acuity 5'],fraction:lpct}; }
+    if(lever==='convey'&&lpct>0){ s.divert={attribute:'ambulance',fraction:lpct}; }
     return s;
   });
 }
 async function runScenarios(){
-  loading('scnCompliance','Comparing (Monte-Carlo)…'); loading('scnLos','Comparing…');
-  const data=await post('/api/scenarios',{pathway:current,scenarios:collectScenarios(),replications:10});
-  Plotly.newPlot('scnCompliance',data.compliance_fig.data,data.compliance_fig.layout,{responsive:true});
-  Plotly.newPlot('scnLos',data.los_fig.data,data.los_fig.layout,{responsive:true});
+  if(busy) return;
+  try{
+    setBusy(true,'Comparing scenarios (Monte-Carlo)…');
+    loading('scnCompliance','Comparing…'); loading('scnLos','Comparing…');
+    const data=await post('/api/scenarios',{pathway:current,scenarios:collectScenarios(),replications:10});
+    await plot('scnCompliance',data.compliance_fig); await plot('scnLos',data.los_fig);
+    renderScenarioTable(data.rows);
+    setBusy(false,'Comparison complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+function renderScenarioTable(rows){
+  // Every lever's effect across all UEC measures - so MH-bed / ambulance / UTC
+  // levers (which barely move the 4-hour metric) show their real impact.
+  const cols=[
+    ['target_compliance','4-hour %',true,0],
+    ['pct_over_12h','12-hour %',false,1],
+    ['ambulance_handover_45','Amb handover %',true,0],
+    ['mh_over_24h','MH >24h %',false,0],
+    ['child_4h','Children 4-hr %',true,0],
+    ['throughput_per_day','Attend/day',null,0],
+  ].filter(c=>rows[0][c[0]]!==undefined);
+  const base=rows[0];
+  let h='<div class="scorehead">Scenario impact across UEC measures (vs baseline)</div>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+  h+='<tr style="text-align:left;color:var(--nhs-grey)"><th style="padding:6px 8px">Scenario</th>'+
+     cols.map(c=>'<th style="padding:6px 8px;text-align:right">'+c[1]+'</th>').join('')+'</tr>';
+  rows.forEach((r,ri)=>{
+    h+='<tr style="border-top:1px solid var(--nhs-lightgrey)'+(ri===0?';font-weight:700':'')+'">';
+    h+='<td style="padding:6px 8px">'+r.scenario+'</td>';
+    for(const [k,,higher,dp] of cols){
+      const v=r[k]; let cell=v.toFixed(dp);
+      if(ri>0 && higher!==null){
+        const d=v-base[k]; const good=higher?d>=0:d<=0;
+        const col=Math.abs(d)<0.5?'var(--nhs-grey)':(good?'var(--nhs-green)':'var(--nhs-red)');
+        cell+=' <span style="color:'+col+';font-weight:700">('+(d>=0?'+':'')+d.toFixed(dp)+')</span>';
+      }
+      h+='<td style="padding:6px 8px;text-align:right">'+cell+'</td>';
+    }
+    h+='</tr>';
+  });
+  h+='</table>';
+  $('#scnTableWrap').innerHTML=h;
 }
 
 function switchTab(name){
@@ -259,8 +556,22 @@ document.querySelectorAll('.tab').forEach(t=>t.onclick=()=>switchTab(t.dataset.t
 $('#runBtn').onclick=runSim;
 $('#mcBtn').onclick=runMC;
 $('#animBtn').onclick=runAnim;
+$('#reportBtn').onclick=downloadReport;
 $('#scnAdd').onclick=()=>addScenarioRow();
 $('#scnRun').onclick=runScenarios;
+$('#calibBtn').onclick=runCalibrate;
+$('#resetBtn').onclick=resetCalib;
+
+// ED size presets
+document.querySelectorAll('#sizePresets button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#sizePresets button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); edSize=+b.dataset.size; runSim();
+});
+// bed occupancy slider
+$('#occupancy').oninput=()=>{ $('#occVal').textContent=$('#occupancy').value+'%'; };
+$('#occupancy').onchange=()=>runSim();
+// redraw flow map on window resize (positions are relative)
+let rT; window.addEventListener('resize',()=>{ clearTimeout(rT); rT=setTimeout(()=>{ if(lastFlow) renderFlowMap(lastFlow); },250); });
 
 fillPathways();
 runSim();
