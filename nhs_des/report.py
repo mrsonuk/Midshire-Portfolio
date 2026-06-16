@@ -55,12 +55,17 @@ def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp):
     y -= 0.04
     cl = mc["summary"]["target_compliance"]
     ll = mc["summary"]["mean_los"]
+    four = "MEETS" if base_kpi['target_compliance'] >= 78 else "BELOW"
+    twelve = "MEETS" if base_kpi['pct_over_12h'] < 10 else "BELOW"
     lines = [
         f"Modelled demand: {base_kpi['throughput_per_day']:.0f} attendances/day "
         f"({base_kpi['n_patients']:,} patients over the simulated period).",
-        f"4-hour performance: {base_kpi['target_compliance']:.0f}%  "
+        f"4-hour standard (UEC Plan 2025/26 target >=78%): "
+        f"{base_kpi['target_compliance']:.0f}% [{four}]  "
         f"(95% CI {cl['ci_low']:.0f}-{cl['ci_high']:.0f}% across {mc['replications']} "
-        f"Monte-Carlo runs) — {base_kpi['breaches']:,} breaches.",
+        f"Monte-Carlo runs) - {base_kpi['breaches']:,} breaches.",
+        f"12-hour waits (UEC Plan target <10%): {base_kpi['pct_over_12h']:.1f}% "
+        f"[{twelve}] - {base_kpi['n_over_12h']:,} patients waited over 12 hours.",
         f"Mean time in department: {base_kpi['mean_los']/60:.1f} h "
         f"(95% CI {ll['ci_low']/60:.1f}-{ll['ci_high']/60:.1f} h); "
         f"95th percentile {base_kpi['p95_los']/60:.1f} h.",

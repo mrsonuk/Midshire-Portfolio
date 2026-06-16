@@ -38,11 +38,44 @@ def kpis(result: dict[str, pd.DataFrame], pathway: Pathway) -> dict:
         "p95_los": float(los.quantile(0.95)),
         "target_compliance": float((los <= target).mean() * 100),
         "breaches": int((los > target).sum()),
+        # NHS UEC Plan 2025/26: patients waiting >12h for admission/discharge,
+        # which should occur on <10% of attendances.
+        "pct_over_12h": float((los > 720).mean() * 100),
+        "n_over_12h": int((los > 720).sum()),
         "admit_rate": float(admitted.mean() * 100),
         "mean_los_admitted": float(los[admitted].mean()) if admitted.any() else 0.0,
         "mean_los_discharged": float(los[~admitted].mean()) if (~admitted).any() else 0.0,
         "throughput_per_day": float(len(patients) / sim_days),
     }
+
+
+# NHS UEC Plan 2025/26 headline standards, used to RAG-rate the scorecard.
+UEC_TARGETS = {
+    "target_compliance": {"label": "4-hour standard", "target": 78.0,
+                          "unit": "%", "higher_better": True,
+                          "note": "≥78% admitted, transferred or discharged within 4h"},
+    "pct_over_12h": {"label": "12-hour waits", "target": 10.0,
+                     "unit": "%", "higher_better": False,
+                     "note": "<10% of attendances wait over 12h for a bed/decision"},
+}
+
+
+def uec_scorecard(kpi: dict) -> list:
+    """Rate the run against the UEC Plan 2025/26 national standards (RAG)."""
+    out = []
+    for key, spec in UEC_TARGETS.items():
+        val = kpi.get(key, 0.0)
+        if spec["higher_better"]:
+            status = "green" if val >= spec["target"] else (
+                "amber" if val >= spec["target"] - 6 else "red")
+        else:
+            status = "green" if val <= spec["target"] else (
+                "amber" if val <= spec["target"] + 5 else "red")
+        out.append({"key": key, "label": spec["label"], "value": val,
+                    "target": spec["target"], "unit": spec["unit"],
+                    "status": status, "note": spec["note"],
+                    "higher_better": spec["higher_better"]})
+    return out
 
 
 def stage_waits(result: dict[str, pd.DataFrame]) -> pd.DataFrame:
@@ -123,6 +156,79 @@ def flow_counts(result: dict[str, pd.DataFrame], pathway: Pathway) -> pd.DataFra
 
     rows = [{"source": a, "target": b, "value": v} for (a, b), v in edges.items()]
     return pd.DataFrame(rows)
+
+
+def flow_map_data(result: dict[str, pd.DataFrame], pathway: Pathway) -> dict:
+    """Nodes + links for the animated patient-flow map (the Sankey replacement).
+
+    Each node carries its position (auto-laid-out left-to-right), patient volume,
+    mean queue wait and a traffic-light status; each link carries the patient
+    count flowing along it. Rendered as a living, colour-coded process map.
+    """
+    edges = flow_counts(result, pathway)
+    if edges.empty:
+        return {"nodes": [], "links": []}
+
+    labels = sorted(set(edges["source"]) | set(edges["target"]))
+    # longest-path layering for left-to-right columns
+    succ = {n: [] for n in labels}
+    for _, r in edges.iterrows():
+        succ[r["source"]].append(r["target"])
+    layer = {n: 0 for n in labels}
+    for _ in range(len(labels)):
+        changed = False
+        for s in labels:
+            for t in succ[s]:
+                if layer[t] < layer[s] + 1:
+                    layer[t] = layer[s] + 1
+                    changed = True
+        if not changed:
+            break
+    max_layer = max(layer.values()) or 1
+    cols: dict[int, list] = {}
+    for n in labels:
+        cols.setdefault(layer[n], []).append(n)
+
+    inflow = {n: int(edges[edges["target"] == n]["value"].sum()) for n in labels}
+    for n in labels:
+        if inflow[n] == 0:
+            inflow[n] = int(edges[edges["source"] == n]["value"].sum())
+
+    waits = stage_waits(result).set_index("stage_label")
+    util = resource_utilisation(result, pathway).set_index("resource")["utilisation"].to_dict()
+    label_to_id = {nd.get("label", nid): nid for nid, nd in pathway.nodes.items()}
+    diag = diagnose(result, pathway)
+
+    nodes = []
+    for n in labels:
+        members = sorted(cols[layer[n]])
+        i, k = members.index(n), len(members)
+        nid = label_to_id.get(n)
+        node = pathway.nodes.get(nid, {})
+        res_list = list(node.get("acquire", []) or []) + (
+            node.get("resources") or ([node["resource"]] if node.get("resource") else []))
+        u = max([util.get(r, 0.0) for r in res_list], default=0.0)
+        mean_wait = float(waits.loc[n, "mean_wait"]) if n in waits.index else 0.0
+        ntype = node.get("type", "process")
+        if "admit" in n.lower():
+            ntype = "admitted"
+        elif "discharg" in n.lower():
+            ntype = "discharged"
+        elif n == "Arrival" or "referral" in n.lower():
+            ntype = "source"
+        # traffic-light status by queue wait
+        status = "green" if mean_wait < 15 else ("amber" if mean_wait < 60 else "red")
+        nodes.append({
+            "id": n, "label": n, "layer": layer[n],
+            "x": layer[n] / max_layer,
+            "y": 0.5 if k == 1 else 0.08 + 0.84 * (i / (k - 1)),
+            "volume": inflow[n], "mean_wait": round(mean_wait, 1),
+            "utilisation": round(u, 1), "type": ntype, "status": status,
+            "is_bottleneck": (n == diag.get("worst_stage")),
+        })
+    links = [{"source": r["source"], "target": r["target"], "value": int(r["value"])}
+             for _, r in edges.iterrows()]
+    return {"nodes": nodes, "links": links, "bottleneck": diag.get("worst_stage")}
 
 
 def diagnose(result: dict[str, pd.DataFrame], pathway: Pathway) -> dict:

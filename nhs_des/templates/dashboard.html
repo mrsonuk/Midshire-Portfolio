@@ -57,6 +57,32 @@
   .diagnosis p{margin:4px 0;font-size:13.5px;line-height:1.5}
   .diagnosis .rec{color:var(--nhs-dark);font-weight:600}
   button:disabled{opacity:.55;cursor:not-allowed}
+  .presets{display:flex;gap:4px;margin-bottom:6px}
+  .presets button{margin-top:0;padding:6px 4px;font-size:11px;background:#fff;color:var(--nhs-grey);border:1px solid var(--nhs-lightgrey);font-weight:700}
+  .presets button.active{background:var(--nhs-blue);color:#fff;border-color:var(--nhs-blue)}
+  .scorecard{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .sc{background:#fff;border:1px solid var(--nhs-lightgrey);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:14px}
+  .sc .ring{flex:0 0 54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff}
+  .sc.green .ring{background:var(--nhs-green)} .sc.amber .ring{background:var(--nhs-orange)} .sc.red .ring{background:var(--nhs-red)}
+  .sc.green{border-left:6px solid var(--nhs-green)} .sc.amber{border-left:6px solid var(--nhs-orange)} .sc.red{border-left:6px solid var(--nhs-red)}
+  .sc .lbl{font-size:13px;font-weight:800;color:var(--nhs-dark)}
+  .sc .tgt{font-size:11.5px;color:var(--nhs-grey);margin-top:2px}
+  .sc .badge{margin-left:auto;font-size:11px;font-weight:800;padding:3px 8px;border-radius:10px;color:#fff}
+  .sc.green .badge{background:var(--nhs-green)} .sc.amber .badge{background:var(--nhs-orange)} .sc.red .badge{background:var(--nhs-red)}
+  .fm-head{font-size:13px;font-weight:800;color:var(--nhs-dark);padding:6px 8px 0;display:flex;justify-content:space-between;align-items:center}
+  .fm-legend{font-weight:600;color:var(--nhs-grey);font-size:11px}
+  .fm-legend i{display:inline-block;width:10px;height:10px;border-radius:50%;margin:0 3px 0 10px;vertical-align:middle}
+  .fm-legend i.g{background:var(--nhs-green)} .fm-legend i.a{background:var(--nhs-orange)} .fm-legend i.r{background:var(--nhs-red)}
+  .flowmap{position:relative;width:100%;height:480px;overflow:hidden}
+  .fm-node{position:absolute;transform:translate(-50%,-50%);background:#fff;border:1px solid var(--nhs-lightgrey);border-top:4px solid var(--nhs-grey);border-radius:8px;padding:6px 9px;min-width:96px;max-width:120px;box-shadow:0 1px 4px rgba(0,0,0,.08);text-align:center;z-index:2}
+  .fm-node.green{border-top-color:var(--nhs-green)} .fm-node.amber{border-top-color:var(--nhs-orange)} .fm-node.red{border-top-color:var(--nhs-red)}
+  .fm-node.source{border-top-color:var(--nhs-grey)} .fm-node.admitted{border-top-color:var(--nhs-red);background:#fdeceb} .fm-node.discharged{border-top-color:var(--nhs-green);background:#eaf6ee}
+  .fm-node .nm{font-size:11px;font-weight:800;color:var(--nhs-dark);line-height:1.1}
+  .fm-node .vol{font-size:17px;font-weight:800;color:var(--nhs-blue);margin:1px 0}
+  .fm-node .wt{font-size:10px;color:var(--nhs-grey)}
+  .fm-node.bottleneck{border:2px solid var(--nhs-red);box-shadow:0 0 0 0 rgba(218,41,28,.5);animation:pulse 1.6s infinite}
+  .fm-node .flag{position:absolute;top:-10px;right:-8px;background:var(--nhs-red);color:#fff;font-size:9px;font-weight:800;padding:1px 5px;border-radius:8px}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(218,41,28,.45)}70%{box-shadow:0 0 0 10px rgba(218,41,28,0)}100%{box-shadow:0 0 0 0 rgba(218,41,28,0)}}
 </style>
 </head>
 <body>
@@ -70,9 +96,22 @@
 
 <div class="layout">
   <aside class="sidebar">
-    <label for="pathway">Care pathway</label>
+    <label for="pathway">ED type / care pathway</label>
     <select id="pathway"></select>
     <p class="desc" id="pathwayDesc"></p>
+
+    <label>ED size (scales all capacity)</label>
+    <div id="sizePresets" class="presets">
+      <button type="button" data-size="0.6">Small</button>
+      <button type="button" data-size="0.8">Medium</button>
+      <button type="button" data-size="1.0" class="active">Baseline</button>
+      <button type="button" data-size="1.3">Large</button>
+      <button type="button" data-size="1.7">XL</button>
+    </div>
+
+    <label>Hospital bed occupancy: <span id="occVal">92%</span></label>
+    <input type="range" id="occupancy" min="80" max="99" step="1" value="92" style="width:100%">
+    <p class="desc" style="margin-top:2px">Higher occupancy → longer waits for an inpatient bed (exit block / corridor care).</p>
 
     <label>Demand (× baseline arrivals)</label>
     <input type="number" id="arrivals" value="1.0" min="0.5" max="2" step="0.05">
@@ -97,8 +136,12 @@
 
     <section class="panel active" id="panel-sim">
       <div class="cards" id="kpis"></div>
+      <div id="scorecard" class="scorecard"></div>
       <div id="diagnosis" class="diagnosis"></div>
-      <div class="chart full" id="sankey"></div>
+      <div class="chart full">
+        <div class="fm-head">Patient flow map — live department <span class="fm-legend"><i class="g"></i>&lt;15 min wait <i class="a"></i>15–60 min <i class="r"></i>&gt;60 min (bottleneck)</span></div>
+        <div id="flowmap" class="flowmap"></div>
+      </div>
       <div class="grid2">
         <div class="chart" id="occupancy"></div>
         <div class="chart" id="utilisation"></div>
@@ -182,8 +225,21 @@ function renderPathway(){
   buildScenarioPresets();
 }
 
+let edSize = 1.0;
 function overrides(){ const o={}; document.querySelectorAll('#resources input').forEach(i=>o[i.dataset.res]=+i.value); return o; }
-function cfg(extra){ return Object.assign({pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value}, extra||{}); }
+function cfg(extra){ return Object.assign({pathway:current,overrides:overrides(),arrivals_scale:+$('#arrivals').value,size:edSize,occupancy:+$('#occupancy').value}, extra||{}); }
+
+function renderScorecard(cards){
+  const box=$('#scorecard'); box.innerHTML='';
+  for(const c of cards){
+    const div=el('div','sc '+c.status);
+    const arrow=c.higher_better?'≥':'<';
+    div.innerHTML='<div class="ring">'+c.value.toFixed(0)+c.unit+'</div>'+
+      '<div><div class="lbl">'+c.label+'</div><div class="tgt">National target '+arrow+' '+c.target+c.unit+' · '+c.note+'</div></div>'+
+      '<div class="badge">'+c.status.toUpperCase()+'</div>';
+    box.append(div);
+  }
+}
 
 function kpiCards(k){
   const box=$('#kpis'); box.innerHTML='';
@@ -206,15 +262,87 @@ async function runSim(){
   if(busy) return;
   try{
     setBusy(true,'Simulating one week…');
-    ['sankey','occupancy','utilisation','waits'].forEach(id=>loading(id));
+    ['occupancy','utilisation','waits'].forEach(id=>loading(id));
     const data=await post('/api/simulate',cfg());
-    kpiCards(data.kpis); showDiagnosis(data.diagnosis);
-    await plot('sankey',data.figures.sankey);
+    kpiCards(data.kpis); renderScorecard(data.scorecard); showDiagnosis(data.diagnosis);
+    renderFlowMap(data.flow_map);
     await plot('occupancy',data.figures.occupancy);
     await plot('utilisation',data.figures.utilisation);
     await plot('waits',data.figures.waits);
     setBusy(false,'✓ Simulation complete','ok');
   }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+}
+
+// ---- animated patient-flow map (SVG links + flowing dots + HTML node cards) ----
+const SVGNS='http://www.w3.org/2000/svg';
+let fmRAF=null, lastFlow=null;
+function renderFlowMap(data){
+  lastFlow=data;
+  const host=$('#flowmap');
+  if(fmRAF){ cancelAnimationFrame(fmRAF); fmRAF=null; }
+  host.innerHTML='';
+  if(!data||!data.nodes.length){ host.innerHTML='<div class="loading">No flow</div>'; return; }
+  const W=host.clientWidth||1000, H=host.clientHeight||480, padX=70, padY=54, cardH=58;
+  const px=n=>padX + n.x*(W-2*padX);
+  const py=n=>padY + n.y*(H-2*padY);
+  const byId={}; data.nodes.forEach(n=>byId[n.id]=n);
+  const maxV=Math.max(...data.links.map(l=>l.value),1);
+
+  const svg=document.createElementNS(SVGNS,'svg');
+  svg.setAttribute('width',W); svg.setAttribute('height',H);
+  svg.style.position='absolute'; svg.style.left=0; svg.style.top=0;
+  host.append(svg);
+
+  // links as smooth bezier paths
+  const linkInfo=[];
+  for(const l of data.links){
+    const s=byId[l.source], t=byId[l.target]; if(!s||!t) continue;
+    const x1=px(s)+50, y1=py(s), x2=px(t)-50, y2=py(t);
+    const mx=(x1+x2)/2;
+    const d=`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`;
+    const path=document.createElementNS(SVGNS,'path');
+    path.setAttribute('d',d); path.setAttribute('fill','none');
+    path.setAttribute('stroke','#cfd8dc');
+    path.setAttribute('stroke-width', 1+6*Math.sqrt(l.value/maxV));
+    path.setAttribute('opacity','0.7'); path.setAttribute('stroke-linecap','round');
+    svg.append(path);
+    const nDots=Math.max(1,Math.round(6*l.value/maxV));
+    const dots=[];
+    for(let i=0;i<nDots;i++){
+      const c=document.createElementNS(SVGNS,'circle');
+      c.setAttribute('r',3); c.setAttribute('fill', t.is_bottleneck?'#DA291C':'#0072CE');
+      c.setAttribute('opacity','0.9'); svg.append(c);
+      dots.push({el:c,phase:Math.random()});
+    }
+    linkInfo.push({path,len:path.getTotalLength(),dots,speed:0.10+0.05*Math.random()});
+  }
+
+  // node cards (HTML overlay)
+  for(const n of data.nodes){
+    const card=el('div','fm-node '+(n.type==='source'||n.type==='admitted'||n.type==='discharged'?n.type:n.status));
+    if(n.is_bottleneck) card.classList.add('bottleneck');
+    card.style.left=px(n)+'px'; card.style.top=py(n)+'px';
+    let inner='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
+    if(n.type!=='source'&&n.type!=='admitted'&&n.type!=='discharged')
+      inner+='<div class="wt">wait '+n.mean_wait.toFixed(0)+'m · '+n.utilisation.toFixed(0)+'% busy</div>';
+    if(n.is_bottleneck) inner+='<div class="flag">⚠ BOTTLENECK</div>';
+    card.innerHTML=inner; card.title=n.label+': '+n.volume+' patients';
+    host.append(card);
+  }
+
+  let last=performance.now();
+  function frame(now){
+    const dt=(now-last)/1000; last=now;
+    for(const li of linkInfo){
+      for(const d of li.dots){
+        d.phase=(d.phase+dt*li.speed)%1;
+        const pt=li.path.getPointAtLength(d.phase*li.len);
+        d.el.setAttribute('cx',pt.x); d.el.setAttribute('cy',pt.y);
+      }
+    }
+    fmRAF=requestAnimationFrame(frame);
+  }
+  fmRAF=requestAnimationFrame(frame);
 }
 
 async function runMC(){
@@ -319,6 +447,17 @@ $('#animBtn').onclick=runAnim;
 $('#reportBtn').onclick=downloadReport;
 $('#scnAdd').onclick=()=>addScenarioRow();
 $('#scnRun').onclick=runScenarios;
+
+// ED size presets
+document.querySelectorAll('#sizePresets button').forEach(b=>b.onclick=()=>{
+  document.querySelectorAll('#sizePresets button').forEach(x=>x.classList.remove('active'));
+  b.classList.add('active'); edSize=+b.dataset.size; runSim();
+});
+// bed occupancy slider
+$('#occupancy').oninput=()=>{ $('#occVal').textContent=$('#occupancy').value+'%'; };
+$('#occupancy').onchange=()=>runSim();
+// redraw flow map on window resize (positions are relative)
+let rT; window.addEventListener('resize',()=>{ clearTimeout(rT); rT=setTimeout(()=>{ if(lastFlow) renderFlowMap(lastFlow); },250); });
 
 fillPathways();
 runSim();

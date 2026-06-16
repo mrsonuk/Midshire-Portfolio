@@ -22,6 +22,7 @@ if __package__ in (None, ""):
     _sys.path.insert(0, str(_pl.Path(__file__).resolve().parent.parent))
     __package__ = "nhs_des"
 
+import copy
 import glob
 import json
 import os
@@ -31,7 +32,7 @@ from pathlib import Path
 from flask import Flask, jsonify, render_template, request, send_file
 
 from .engine import Pathway, run_pathway
-from .metrics import kpis, diagnose
+from .metrics import kpis, diagnose, uec_scorecard, flow_map_data
 from .montecarlo import monte_carlo
 from .scenarios import apply_scenario, compare_scenarios
 from .animation import animation_figure
@@ -58,12 +59,42 @@ def list_pathways() -> dict:
     return out
 
 
-def _build(pathway_key: str, overrides: dict | None, arrivals_scale: float) -> Pathway:
+def _occupancy_factor(occ: float) -> float:
+    """Map hospital bed occupancy (%) to a multiplier on the time admitted
+    patients wait for an inpatient bed. Waits stay flat up to ~85% then climb
+    steeply as the hospital fills - the classic exit-block / corridor-care curve
+    the UEC Plan targets. 85%→x1.0, 92%→~x1.4, 95%→~x2, 99%→~x3.7."""
+    occ = max(70.0, min(99.5, float(occ)))
+    return 1.0 + 1.8 * (max(0.0, occ - 85.0) / 10.0) ** 1.7
+
+
+def _build(pathway_key: str, overrides: dict | None, arrivals_scale: float,
+           size: float = 1.0, occupancy: float | None = None) -> Pathway:
     base = Pathway.load(PATHWAY_DIR / f"{pathway_key}.json")
+    raw = copy.deepcopy(base.raw)
+
+    # ED size preset: scale every physical/staff capacity together.
+    if size and abs(size - 1.0) > 1e-6:
+        for r, cap in raw.get("resources", {}).items():
+            raw["resources"][r] = max(1, int(round(cap * size)))
+
+    # Bed occupancy: stretch the time admitted patients wait for an inpatient bed.
+    if occupancy is not None:
+        f = _occupancy_factor(occupancy)
+        for node in raw.get("nodes", []):
+            if "await" in node.get("id", "") and isinstance(node.get("service"), dict):
+                for k in ("mean", "stdev"):
+                    if k in node["service"]:
+                        node["service"][k] = node["service"][k] * f
+
+    pathway = Pathway.from_dict(raw)
     scenario = {"name": "configured",
                 "resources": {k: int(v) for k, v in (overrides or {}).items()},
                 "arrivals_scale": arrivals_scale}
-    return apply_scenario(base, scenario) if (overrides or arrivals_scale != 1.0) else base
+    if overrides or arrivals_scale != 1.0:
+        pathway = apply_scenario(pathway, scenario)
+        pathway.name = base.name
+    return pathway
 
 
 @app.route("/")
@@ -76,17 +107,25 @@ def api_pathways():
     return jsonify(list_pathways())
 
 
+def _pathway_from_body(body):
+    return _build(body["pathway"], body.get("overrides"),
+                  float(body.get("arrivals_scale", 1.0)),
+                  size=float(body.get("size", 1.0)),
+                  occupancy=(float(body["occupancy"]) if body.get("occupancy") else None))
+
+
 @app.route("/api/simulate", methods=["POST"])
 def api_simulate():
     body = request.get_json(force=True)
-    pathway = _build(body["pathway"], body.get("overrides"),
-                     float(body.get("arrivals_scale", 1.0)))
+    pathway = _pathway_from_body(body)
     result = run_pathway(pathway, seed=int(body.get("seed", 0)))
+    kpi = kpis(result, pathway)
     return jsonify({
-        "kpis": kpis(result, pathway),
+        "kpis": kpi,
+        "scorecard": uec_scorecard(kpi),
         "diagnosis": diagnose(result, pathway),
+        "flow_map": flow_map_data(result, pathway),
         "figures": {
-            "sankey": json.loads(viz.sankey_figure(result, pathway).to_json()),
             "occupancy": json.loads(viz.occupancy_figure(result, pathway).to_json()),
             "utilisation": json.loads(viz.utilisation_figure(result, pathway).to_json()),
             "waits": json.loads(viz.waits_figure(result).to_json()),
@@ -97,8 +136,7 @@ def api_simulate():
 @app.route("/api/animation", methods=["POST"])
 def api_animation():
     body = request.get_json(force=True)
-    pathway = _build(body["pathway"], body.get("overrides"),
-                     float(body.get("arrivals_scale", 1.0)))
+    pathway = _pathway_from_body(body)
     result = run_pathway(pathway, seed=int(body.get("seed", 5)))
     return jsonify({"figure": json.loads(animation_figure(result, pathway).to_json())})
 
@@ -106,8 +144,7 @@ def api_animation():
 @app.route("/api/montecarlo", methods=["POST"])
 def api_montecarlo():
     body = request.get_json(force=True)
-    pathway = _build(body["pathway"], body.get("overrides"),
-                     float(body.get("arrivals_scale", 1.0)))
+    pathway = _pathway_from_body(body)
     reps = int(body.get("replications", 30))
     mc = monte_carlo(pathway, replications=reps, base_seed=1000)
     c = mc["summary"]["target_compliance"]

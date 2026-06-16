@@ -29,6 +29,9 @@ The beta tool was built for one hospital and could not support planning. Concret
 | Output was a 2-D **animation**, not analytics; no occupancy/utilisation/bottleneck reporting | **Decision dashboard**: KPI cards, patient-flow Sankey, occupancy-vs-capacity, utilisation, queue-wait bottlenecks — *plus* the patient-movement animation, now generalised and time-scrubbable |
 | No bottleneck call-out, no written interpretation, no PDF for the planning team | **Named bottleneck diagnosis** with a recommendation, **plain-English Monte-Carlo readout**, and a **downloadable PDF decision report** |
 | Front end depended on an external CDN (breaks on locked-down NHS networks) | Plotly is **vendored locally** — fully offline-capable |
+| Not tied to any national standard | **UEC Plan 2025/26 scorecard**: RAG-rated against the 4-hour (≥78%) and 12-hour (<10%) national targets |
+| ED type / size / bed-occupancy selectors were non-functional in the beta | **Functional controls**: ED type (pathway, incl. Type 1 ED, Type 3 UTC, AMU), ED size presets (Small→XL scale capacity), and a **bed-occupancy slider that actually drives exit block** (higher occupancy → longer waits for an inpatient bed → worse 12-hour metric) |
+| Static Sankey | **Animated patient-flow map**: stage cards sized by volume, traffic-light coloured by wait, the bottleneck pulsing red, with patients flowing along the links |
 | Beds modelled inconsistently; diagnostics had no machine queue | Resources can be **span-held** (a bed occupied across the whole episode) and diagnostics (CT/X-ray) contend for limited machines |
 | Disabled levers (bed occupancy, exit block) | **Exit block is modelled** — admitted patients queue for a scarce inpatient/ward bed, the dominant NHS flow problem |
 
