@@ -84,6 +84,17 @@ def main() -> None:
     assert mc["summary"]["target_compliance"]["ci_low"] <= mc["summary"]["target_compliance"]["ci_high"]
     print("  OK  Monte-Carlo produced confidence intervals")
 
+    print("Checking calibration...")
+    from .calibration import generate_sample, calibrate
+    import json as _json
+    # ECDS sample is acuity-based, so calibrate an acuity-based pathway.
+    ed_file = next((f for f in files if "emergency" in f), files[0])
+    raw, summary = calibrate(generate_sample(days=7, seed=1), _json.load(open(ed_file)))
+    cp = Pathway.from_dict(raw)
+    cres = Simulation(cp, seed=1).run()
+    assert not cres["patients"].empty and len(summary) >= 4
+    print(f"  OK  calibration produced a runnable pathway ({len(summary)} changes)")
+
     print("Checking scenarios...")
     cmp = compare_scenarios(p, [{"name": "test", "resources": {list(p.resources)[0]: "+1"}}],
                             replications=1, seed=0)

@@ -9,12 +9,14 @@
 <script src="{{ url_for('static', filename='plotly.min.js') }}" charset="utf-8"></script>
 <style>
   :root{
-    --nhs-blue:#005EB8; --nhs-dark:#003087; --nhs-bright:#0072CE; --nhs-light:#41B6E6;
-    --nhs-aqua:#00A499; --nhs-green:#009639; --nhs-yellow:#FFB81C; --nhs-orange:#ED8B00;
-    --nhs-red:#DA291C; --nhs-grey:#425563; --nhs-lightgrey:#E8EDEE; --page:#F0F4F7;
+    /* Official NHS identity palette (nhsengland.github.io/nhs-r-reporting nhs-colours) */
+    --nhs-dark:#003087; --nhs-blue:#005EB8; --nhs-bright:#0072CE;
+    --nhs-aqua:#00A9CE; --nhs-light:#41B6E6;
+    --nhs-green:#009639; --nhs-yellow:#FFB81C; --nhs-orange:#ED8B00; --nhs-red:#DA291C;
+    --nhs-grey:#425563; --nhs-black:#231F20; --nhs-lightgrey:#E8EDEE; --page:#E8EDEE;
   }
   *{box-sizing:border-box}
-  body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:var(--page);color:var(--nhs-grey)}
+  body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:var(--page);color:var(--nhs-black)}
   header{background:var(--nhs-blue);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:18px}
   .logo{background:#fff;color:var(--nhs-blue);font-weight:800;font-size:22px;padding:4px 10px;border-radius:4px;letter-spacing:1px}
   header h1{font-size:20px;margin:0}
@@ -60,7 +62,8 @@
   .presets{display:flex;gap:4px;margin-bottom:6px}
   .presets button{margin-top:0;padding:6px 4px;font-size:11px;background:#fff;color:var(--nhs-grey);border:1px solid var(--nhs-lightgrey);font-weight:700}
   .presets button.active{background:var(--nhs-blue);color:#fff;border-color:var(--nhs-blue)}
-  .scorecard{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+  .scorecard{display:grid;grid-template-columns:repeat(auto-fit,minmax(330px,1fr));gap:12px;margin-bottom:14px}
+  .scorehead{font-size:13px;font-weight:800;color:var(--nhs-dark);margin:2px 0 8px;text-transform:uppercase;letter-spacing:.5px}
   .sc{background:#fff;border:1px solid var(--nhs-lightgrey);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:14px}
   .sc .ring{flex:0 0 54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:15px;color:#fff}
   .sc.green .ring{background:var(--nhs-green)} .sc.amber .ring{background:var(--nhs-orange)} .sc.red .ring{background:var(--nhs-red)}
@@ -119,10 +122,11 @@
     <label style="margin-top:14px">Resource capacities</label>
     <div id="resources"></div>
 
-    <button id="runBtn">▶ Run simulation</button>
-    <button id="mcBtn" class="secondary">📊 Monte-Carlo (30 runs)</button>
-    <button id="reportBtn" style="background:var(--nhs-grey)">⬇ Download decision report (PDF)</button>
+    <button id="runBtn">Run simulation</button>
+    <button id="mcBtn" class="secondary">Monte-Carlo (30 runs)</button>
+    <button id="reportBtn" style="background:var(--nhs-grey)">Download decision report (PDF)</button>
     <div id="status" class="status"></div>
+    <div id="calibState" class="desc" style="margin-top:8px;font-weight:700;color:var(--nhs-grey)">Data source: synthetic (placeholder)</div>
     <p class="desc" style="margin-top:14px">The same engine drives every pathway. Add a new pathway by dropping a JSON file in <code>pathways/</code> — no code changes.</p>
   </aside>
 
@@ -132,10 +136,12 @@
       <div class="tab" data-tab="anim">Flow animation</div>
       <div class="tab" data-tab="mc">Monte-Carlo</div>
       <div class="tab" data-tab="scn">Scenario comparison</div>
+      <div class="tab" data-tab="data">Data &amp; calibration</div>
     </div>
 
     <section class="panel active" id="panel-sim">
       <div class="cards" id="kpis"></div>
+      <div class="scorehead">UEC Plan 2025/26 scorecard — performance vs national standards</div>
       <div id="scorecard" class="scorecard"></div>
       <div id="diagnosis" class="diagnosis"></div>
       <div class="chart full">
@@ -150,8 +156,8 @@
     </section>
 
     <section class="panel" id="panel-anim">
-      <div class="hint">Watch individual patients (coloured by acuity/class) move from station to station over a representative span of the simulation — use ▶ Play or scrub the slider. Clusters reveal where patients pile up (e.g. exit block waiting for an inpatient bed).</div>
-      <button id="animBtn" style="width:auto;display:inline-block">▶ Load flow animation</button>
+      <div class="hint">Watch individual patients (coloured by acuity/class) move from station to station over a representative span of the simulation — use Play or scrub the slider. Clusters reveal where patients pile up (e.g. exit block waiting for an inpatient bed).</div>
+      <button id="animBtn" style="width:auto;display:inline-block">Load flow animation</button>
       <div class="chart" id="animFig" style="margin-top:12px;min-height:540px"></div>
     </section>
 
@@ -172,6 +178,20 @@
       <div class="grid2" style="margin-top:14px">
         <div class="chart" id="scnCompliance"></div>
         <div class="chart" id="scnLos"></div>
+      </div>
+    </section>
+
+    <section class="panel" id="panel-data">
+      <div class="hint">The model currently runs on <b>synthetic data</b> seeded from the beta config. Upload a real attendance extract (ECDS-style) to <b>auto-calibrate</b> the arrival profile, acuity mix, ambulance/paediatric/mental-health prevalence and admission rates. Per-stage service times need stage-level timestamps and are left at modelled values until then.</div>
+      <div class="chart" style="padding:16px">
+        <p style="margin:0 0 10px"><b>1.</b> Download the template to see the expected columns: <a id="sampleLink" href="/api/sample-data">sample_ecds_template.csv</a></p>
+        <p style="margin:0 0 6px"><b>2.</b> Upload your extract (CSV, one row per attendance):</p>
+        <input type="file" id="dataFile" accept=".csv" style="margin-bottom:10px">
+        <div>
+          <button id="calibBtn" style="width:auto;display:inline-block">Calibrate from data</button>
+          <button id="resetBtn" class="secondary" style="width:auto;display:inline-block;margin-left:8px">Reset to synthetic</button>
+        </div>
+        <div id="calibSummary" class="diagnosis" style="display:none;margin-top:14px;border-left-color:var(--nhs-aqua)"></div>
       </div>
     </section>
   </main>
@@ -254,8 +274,16 @@ function kpiCards(k){
 }
 
 function showDiagnosis(d){
-  $('#diagnosis').innerHTML='<div class="dh">🔎 Bottleneck diagnosis</div>'+
+  $('#diagnosis').innerHTML='<div class="dh">Bottleneck diagnosis</div>'+
     '<p>'+d.headline+'</p><p class="rec">'+d.recommendation+'</p>';
+}
+
+function applySim(data){
+  kpiCards(data.kpis); renderScorecard(data.scorecard); showDiagnosis(data.diagnosis);
+  renderFlowMap(data.flow_map);
+  return Promise.all([plot('occupancy',data.figures.occupancy),
+                      plot('utilisation',data.figures.utilisation),
+                      plot('waits',data.figures.waits)]);
 }
 
 async function runSim(){
@@ -263,14 +291,45 @@ async function runSim(){
   try{
     setBusy(true,'Simulating one week…');
     ['occupancy','utilisation','waits'].forEach(id=>loading(id));
-    const data=await post('/api/simulate',cfg());
-    kpiCards(data.kpis); renderScorecard(data.scorecard); showDiagnosis(data.diagnosis);
-    renderFlowMap(data.flow_map);
-    await plot('occupancy',data.figures.occupancy);
-    await plot('utilisation',data.figures.utilisation);
-    await plot('waits',data.figures.waits);
-    setBusy(false,'✓ Simulation complete','ok');
-  }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+    await applySim(await post('/api/simulate',cfg()));
+    setBusy(false,'Simulation complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+// ---- data upload + auto-calibration ----
+function setCalibState(on){
+  const e=$('#calibState');
+  e.textContent='Data source: '+(on?'uploaded extract (calibrated)':'synthetic (placeholder)');
+  e.style.color=on?'var(--nhs-green)':'var(--nhs-grey)';
+}
+function showCalibSummary(lines,calibrated){
+  const box=$('#calibSummary'); box.style.display='block';
+  box.style.borderLeftColor=calibrated?'var(--nhs-aqua)':'var(--nhs-grey)';
+  box.innerHTML='<div class="dh">'+(calibrated?'Calibration applied':'Synthetic baseline')+'</div>'+
+    '<ul style="margin:6px 0 0 18px;padding:0">'+(lines||[]).map(l=>'<li style="font-size:13px;margin:3px 0">'+l+'</li>').join('')+'</ul>';
+}
+async function runCalibrate(){
+  if(busy) return;
+  const f=$('#dataFile').files[0];
+  if(!f){ setBusy(false,'Choose a CSV file first','err'); return; }
+  try{
+    setBusy(true,'Calibrating from uploaded data…');
+    const fd=new FormData(); fd.append('file',f); fd.append('pathway',current);
+    const r=await fetch('/api/calibrate',{method:'POST',body:fd});
+    const data=await r.json();
+    if(!r.ok||data.error) throw new Error(data.error||'calibration failed');
+    showCalibSummary(data.summary,true); setCalibState(true); await applySim(data);
+    setBusy(false,'Calibrated from uploaded data','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+async function resetCalib(){
+  if(busy) return;
+  try{
+    setBusy(true,'Resetting to synthetic baseline…');
+    const data=await post('/api/calibrate/reset',{pathway:current});
+    showCalibSummary(data.summary,false); setCalibState(false); await applySim(data);
+    setBusy(false,'Reset to synthetic baseline','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 // ---- animated patient-flow map (SVG links + flowing dots + HTML node cards) ----
@@ -325,7 +384,7 @@ function renderFlowMap(data){
     let inner='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
     if(n.type!=='source'&&n.type!=='admitted'&&n.type!=='discharged')
       inner+='<div class="wt">wait '+n.mean_wait.toFixed(0)+'m · '+n.utilisation.toFixed(0)+'% busy</div>';
-    if(n.is_bottleneck) inner+='<div class="flag">⚠ BOTTLENECK</div>';
+    if(n.is_bottleneck) inner+='<div class="flag">BOTTLENECK</div>';
     card.innerHTML=inner; card.title=n.label+': '+n.volume+' patients';
     host.append(card);
   }
@@ -353,10 +412,10 @@ async function runMC(){
     loading('mcFig','Running 30 replications…'); loading('mcLos','Running 30 replications…');
     const data=await post('/api/montecarlo',cfg({replications:30}));
     const ip=$('#mcInterp'); ip.style.display='block';
-    ip.innerHTML='<div class="dh">📊 What this means</div><p>'+data.interpretation+'</p>';
+    ip.innerHTML='<div class="dh">What this means</div><p>'+data.interpretation+'</p>';
     await plot('mcFig',data.figure); await plot('mcLos',data.los_figure);
-    setBusy(false,'✓ Monte-Carlo complete','ok');
-  }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+    setBusy(false,'Monte-Carlo complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 async function runAnim(){
@@ -366,8 +425,8 @@ async function runAnim(){
     loading('animFig','Simulating &amp; building animation…');
     const data=await post('/api/animation',cfg());
     await plot('animFig',data.figure);
-    setBusy(false,'✓ Animation ready — press ▶ Play','ok');
-  }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+    setBusy(false,'Animation ready — press Play','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 async function downloadReport(){
@@ -380,8 +439,8 @@ async function downloadReport(){
     const blob=await r.blob();
     const a=document.createElement('a'); a.href=URL.createObjectURL(blob);
     a.download=current+'_decision_report.pdf'; a.click(); URL.revokeObjectURL(a.href);
-    setBusy(false,'✓ Report downloaded','ok');
-  }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+    setBusy(false,'Report downloaded','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 // ---- scenarios ----
@@ -432,8 +491,8 @@ async function runScenarios(){
     loading('scnCompliance','Comparing…'); loading('scnLos','Comparing…');
     const data=await post('/api/scenarios',{pathway:current,scenarios:collectScenarios(),replications:10});
     await plot('scnCompliance',data.compliance_fig); await plot('scnLos',data.los_fig);
-    setBusy(false,'✓ Comparison complete','ok');
-  }catch(e){ setBusy(false,'✗ '+e.message,'err'); }
+    setBusy(false,'Comparison complete','ok');
+  }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
 }
 
 function switchTab(name){
@@ -447,6 +506,8 @@ $('#animBtn').onclick=runAnim;
 $('#reportBtn').onclick=downloadReport;
 $('#scnAdd').onclick=()=>addScenarioRow();
 $('#scnRun').onclick=runScenarios;
+$('#calibBtn').onclick=runCalibrate;
+$('#resetBtn').onclick=resetCalib;
 
 // ED size presets
 document.querySelectorAll('#sizePresets button').forEach(b=>b.onclick=()=>{

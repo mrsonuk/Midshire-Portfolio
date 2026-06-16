@@ -40,7 +40,7 @@ ACUITY_COLOURS = {
     "Acuity 1": "#DA291C", "Acuity 2": "#ED8B00", "Acuity 3": "#FFB81C",
     "Acuity 4": "#009639", "Acuity 5": "#0072CE",
 }
-FALLBACK_CYCLE = ["#0072CE", "#00A499", "#8A1538", "#330072", "#ED8B00"]
+FALLBACK_CYCLE = ["#0072CE", "#00A9CE", "#8A1538", "#330072", "#ED8B00"]
 
 
 def _node_layers(pathway: Pathway) -> dict[str, int]:
@@ -245,10 +245,10 @@ def animation_figure(result: dict, pathway: Pathway, hours=18.0, step=12.0,
         updatemenus=[dict(
             type="buttons", showactive=False, x=0.02, y=1.12, xanchor="left",
             buttons=[
-                dict(label="▶ Play", method="animate",
+                dict(label="Play", method="animate",
                      args=[None, dict(frame=dict(duration=120, redraw=True),
                                       fromcurrent=True, transition=dict(duration=60))]),
-                dict(label="❚❚ Pause", method="animate",
+                dict(label="Pause", method="animate",
                      args=[[None], dict(frame=dict(duration=0, redraw=False),
                                         mode="immediate")]),
             ])],

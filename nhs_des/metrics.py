@@ -60,21 +60,94 @@ UEC_TARGETS = {
 }
 
 
-def uec_scorecard(kpi: dict) -> list:
-    """Rate the run against the UEC Plan 2025/26 national standards (RAG)."""
+def _rag(val, target, higher_better, amber_band):
+    if higher_better:
+        return "green" if val >= target else ("amber" if val >= target - amber_band else "red")
+    return "green" if val <= target else ("amber" if val <= target + amber_band else "red")
+
+
+def uec_metrics(result: dict[str, pd.DataFrame], pathway: Pathway) -> dict:
+    """Cohort-specific UEC Plan 2025/26 measures, computed only where the pathway
+    carries the relevant patient attributes (ambulance / paediatric /
+    mental-health). Returns {} keys absent when the pathway doesn't model them."""
+    patients = result["patients"]
+    events = result["events"]
+    uec = pathway.raw.get("uec", {})
+    out = {}
+    if patients.empty:
+        return out
+    arr = patients.set_index("pid")["arrival"]
+
+    amb_attr = uec.get("ambulance_attr")
+    if amb_attr and f"attr_{amb_attr}" in patients.columns and not events.empty:
+        amb_pids = set(patients.loc[patients[f"attr_{amb_attr}"], "pid"])
+        stages = uec.get("ambulance_handover_stages", [])
+        ev = events[events["pid"].isin(amb_pids) & events["stage"].isin(stages)]
+        if not ev.empty:
+            first = ev.sort_values("service_start").groupby("pid").first()
+            handover = first["service_start"] - arr.loc[first.index]
+            out["ambulance_handover_45"] = float((handover <= 45).mean() * 100)
+            out["ambulance_handover_mean"] = float(handover.mean())
+            out["ambulance_n"] = int(len(handover))
+
+    mh_attr = uec.get("mental_health_attr")
+    if mh_attr and f"attr_{mh_attr}" in patients.columns:
+        mh = patients[patients[f"attr_{mh_attr}"]]
+        if len(mh):
+            out["mh_over_24h"] = float((mh["los"] > 1440).mean() * 100)
+            out["mh_over_24h_n"] = int((mh["los"] > 1440).sum())
+            out["mh_n"] = int(len(mh))
+
+    paed_attr = uec.get("paediatric_attr")
+    if paed_attr and f"attr_{paed_attr}" in patients.columns:
+        paed = patients[patients[f"attr_{paed_attr}"]]
+        if len(paed):
+            out["child_4h"] = float((paed["los"] <= pathway.target_minutes).mean() * 100)
+            out["child_n"] = int(len(paed))
+    return out
+
+
+def uec_scorecard(kpi: dict, result=None, pathway=None) -> list:
+    """Rate the run against the UEC Plan 2025/26 national standards (RAG).
+
+    Always reports the two whole-system standards (4-hour, 12-hour). When a
+    ``result``/``pathway`` modelling the relevant cohorts is supplied, also reports
+    ambulance handover, mental-health 24-hour waits and the children's 4-hour
+    standard.
+    """
     out = []
     for key, spec in UEC_TARGETS.items():
         val = kpi.get(key, 0.0)
-        if spec["higher_better"]:
-            status = "green" if val >= spec["target"] else (
-                "amber" if val >= spec["target"] - 6 else "red")
-        else:
-            status = "green" if val <= spec["target"] else (
-                "amber" if val <= spec["target"] + 5 else "red")
         out.append({"key": key, "label": spec["label"], "value": val,
                     "target": spec["target"], "unit": spec["unit"],
-                    "status": status, "note": spec["note"],
-                    "higher_better": spec["higher_better"]})
+                    "status": _rag(val, spec["target"], spec["higher_better"],
+                                   6 if spec["higher_better"] else 5),
+                    "note": spec["note"], "higher_better": spec["higher_better"]})
+
+    if result is None or pathway is None:
+        return out
+    m = uec_metrics(result, pathway)
+
+    if "ambulance_handover_45" in m:
+        v = m["ambulance_handover_45"]
+        out.append({"key": "ambulance_handover_45", "label": "Ambulance handover <45 min",
+                    "value": v, "target": 95.0, "unit": "%", "higher_better": True,
+                    "status": _rag(v, 95.0, True, 10),
+                    "note": f"{m['ambulance_handover_mean']:.0f} min mean handover "
+                            f"({m['ambulance_n']:,} ambulance arrivals); target ≥95% within 45 min"})
+    if "mh_over_24h" in m:
+        v = m["mh_over_24h"]
+        out.append({"key": "mh_over_24h", "label": "Mental health >24h in ED",
+                    "value": v, "target": 5.0, "unit": "%", "higher_better": False,
+                    "status": _rag(v, 5.0, False, 10),
+                    "note": f"{m['mh_over_24h_n']:,} of {m['mh_n']:,} MH patients waited "
+                            f">24h for admission; plan aims to reduce toward zero"})
+    if "child_4h" in m:
+        v = m["child_4h"]
+        out.append({"key": "child_4h", "label": "Children's 4-hour standard",
+                    "value": v, "target": 80.0, "unit": "%", "higher_better": True,
+                    "status": _rag(v, 80.0, True, 6),
+                    "note": f"{m['child_n']:,} children; plan aims to see more children within 4h"})
     return out
 
 

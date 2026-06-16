@@ -154,6 +154,16 @@ class Simulation:
         weights = weights / weights.sum()
         return str(self.rng.choice(labels, p=weights))
 
+    def _attributes_for(self) -> set:
+        """Independent patient flags (e.g. ambulance, paediatric, mental_health)
+        drawn from ``arrivals.attributes`` prevalences. These let one model carry
+        the cross-cutting cohorts the UEC Plan tracks without separate pathways."""
+        attrs = set()
+        for name, prob in (self.pathway.arrivals.get("attributes") or {}).items():
+            if self.rng.random() < float(prob):
+                attrs.add(name)
+        return attrs
+
     def _arrival_generator(self):
         """Generate arrivals following an hourly profile (patients/hour) or a
         constant Poisson rate."""
@@ -172,7 +182,8 @@ class Simulation:
             yield self.env.timeout(inter)
             self._pid += 1
             acuity = self._acuity_for()
-            self.env.process(self._patient(self._pid, acuity, source))
+            self.env.process(self._patient(self._pid, acuity, source,
+                                           self._attributes_for()))
 
     # -- patient journey --------------------------------------------------- #
     def _service_spec(self, node: dict, acuity: str):
@@ -181,14 +192,22 @@ class Simulation:
             return by_class[acuity]
         return node.get("service")
 
-    def _route(self, node: dict, acuity: str) -> str | None:
-        # Class-specific routing takes precedence; fall back to the default
-        # "routes" list when a node routes everyone the same way.
-        by_class = node.get("routes_by_class")
-        if by_class and acuity in by_class:
-            routes = by_class[acuity]
-        else:
-            routes = node.get("routes")
+    def _route(self, node: dict, acuity: str, attrs: set) -> str | None:
+        # Attribute-specific routing wins (e.g. mental-health patients diverting
+        # to an MH branch), then class-specific, then the default "routes" list.
+        routes = None
+        by_attr = node.get("routes_by_attribute")
+        if by_attr:
+            for name, r in by_attr.items():
+                if name in attrs:
+                    routes = r
+                    break
+        if routes is None:
+            by_class = node.get("routes_by_class")
+            if by_class and acuity in by_class:
+                routes = by_class[acuity]
+            else:
+                routes = node.get("routes")
         if not routes:
             return None
         targets = [r[0] for r in routes]
@@ -196,9 +215,9 @@ class Simulation:
         probs = probs / probs.sum()
         return str(self.rng.choice(targets, p=probs))
 
-    def _patient(self, pid: int, acuity: str, source: dict):
+    def _patient(self, pid: int, acuity: str, source: dict, attrs: set):
         arrival = self.env.now
-        node_id = self._route(source, acuity)
+        node_id = self._route(source, acuity, attrs)
         # Resources held across several nodes (e.g. a bed occupied for the whole
         # stay) live here until a node releases them: {resource: (request, start)}.
         held: dict[str, tuple] = {}
@@ -214,14 +233,17 @@ class Simulation:
                     self.resources[res].release(req)
                     self._hold(pid, res, start, self.env.now)
                 stop = clock_stop if clock_stop is not None else self.env.now
-                self.patient_log.append({
+                row = {
                     "pid": pid,
                     "acuity": acuity,
                     "arrival": arrival,
                     "exit": stop,
                     "los": stop - arrival,
                     "disposition": node.get("label", node_id),
-                })
+                }
+                for name in (self.pathway.arrivals.get("attributes") or {}):
+                    row[f"attr_{name}"] = name in attrs
+                self.patient_log.append(row)
                 return
 
             node_entry = self.env.now
@@ -270,7 +292,7 @@ class Simulation:
             if node.get("stops_clock") and clock_stop is None:
                 clock_stop = self.env.now
 
-            node_id = self._route(node, acuity)
+            node_id = self._route(node, acuity, attrs)
 
     def _hold(self, pid, resource, start, end) -> None:
         if end > start:

@@ -25,7 +25,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
 from .engine import Pathway, run_pathway
-from .metrics import kpis, diagnose
+from .metrics import kpis, diagnose, uec_scorecard
 from .montecarlo import monte_carlo
 from .scenarios import compare_scenarios
 from .snapshot import (build_snapshot, _default_scenarios,
@@ -37,7 +37,7 @@ def _clean(text: str) -> str:
     return text.replace("<b>", "").replace("</b>", "")
 
 
-def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp):
+def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp, scorecard):
     fig = plt.figure(figsize=(11.69, 8.27), dpi=150)  # A4 landscape
     fig.patch.set_facecolor("white")
     ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
@@ -60,12 +60,9 @@ def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp):
     lines = [
         f"Modelled demand: {base_kpi['throughput_per_day']:.0f} attendances/day "
         f"({base_kpi['n_patients']:,} patients over the simulated period).",
-        f"4-hour standard (UEC Plan 2025/26 target >=78%): "
-        f"{base_kpi['target_compliance']:.0f}% [{four}]  "
-        f"(95% CI {cl['ci_low']:.0f}-{cl['ci_high']:.0f}% across {mc['replications']} "
-        f"Monte-Carlo runs) - {base_kpi['breaches']:,} breaches.",
-        f"12-hour waits (UEC Plan target <10%): {base_kpi['pct_over_12h']:.1f}% "
-        f"[{twelve}] - {base_kpi['n_over_12h']:,} patients waited over 12 hours.",
+        f"4-hour standard: {base_kpi['target_compliance']:.0f}% [{four} the >=78% target]; "
+        f"95% CI {cl['ci_low']:.0f}-{cl['ci_high']:.0f}% over {mc['replications']} runs; "
+        f"{base_kpi['breaches']:,} breaches.",
         f"Mean time in department: {base_kpi['mean_los']/60:.1f} h "
         f"(95% CI {ll['ci_low']/60:.1f}-{ll['ci_high']/60:.1f} h); "
         f"95th percentile {base_kpi['p95_los']/60:.1f} h.",
@@ -81,6 +78,18 @@ def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp):
             wrap=True); y -= 0.032
     ax.text(0.04, y, "Recommendation: " + _clean(diag["recommendation"]), fontsize=10.5,
             color=NHS_DARK_BLUE, wrap=True); y -= 0.05
+
+    # UEC cohort scorecard (RAG)
+    rag = {"green": NHS_GREEN, "amber": "#ED8B00", "red": NHS_RED}
+    ax.text(0.03, y, "UEC Plan 2025/26 scorecard", fontsize=14, color=NHS_DARK_BLUE,
+            weight="bold"); y -= 0.036
+    for s in scorecard:
+        arrow = ">=" if s["higher_better"] else "<"
+        ax.text(0.04, y, f"{s['label']}: {s['value']:.0f}{s['unit']} "
+                f"(target {arrow}{s['target']:.0f}{s['unit']})", fontsize=10, color=NHS_GREY)
+        ax.text(0.62, y, s["status"].upper(), fontsize=10, weight="bold",
+                color=rag.get(s["status"], NHS_GREY)); y -= 0.026
+    y -= 0.02
 
     # scenario table
     ax.text(0.03, y, "What-if scenarios (ranked)", fontsize=14, color=NHS_DARK_BLUE,
@@ -117,10 +126,11 @@ def build_report(pathway_file: str, out_pdf: str, replications: int = 24,
     mc = monte_carlo(pathway, replications=replications, base_seed=1000)
     cmp = compare_scenarios(pathway, scenarios,
                             replications=max(6, replications // 4), seed=2000)
+    scorecard = uec_scorecard(base_kpi, base, pathway)
 
     Path(out_pdf).parent.mkdir(parents=True, exist_ok=True)
     with PdfPages(out_pdf) as pdf:
-        _summary_page(pdf, pathway, base_kpi, mc, diag, cmp)
+        _summary_page(pdf, pathway, base_kpi, mc, diag, cmp, scorecard)
         # Visual dashboard page (reuse the snapshot figure)
         fig = build_snapshot(pathway_file, "", replications=replications,
                              scenarios=scenarios, seed=seed, return_fig=True)

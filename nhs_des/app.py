@@ -24,6 +24,7 @@ if __package__ in (None, ""):
 
 import copy
 import glob
+import io
 import json
 import os
 import tempfile
@@ -37,6 +38,7 @@ from .montecarlo import monte_carlo
 from .scenarios import apply_scenario, compare_scenarios
 from .animation import animation_figure
 from .report import build_report
+from .calibration import read_table, calibrate, generate_sample
 from . import visualize as viz
 
 app = Flask(__name__)
@@ -68,10 +70,21 @@ def _occupancy_factor(occ: float) -> float:
     return 1.0 + 1.8 * (max(0.0, occ - 85.0) / 10.0) ** 1.7
 
 
+# Calibration overlays keyed by pathway: a full pathway dict re-derived from an
+# uploaded data extract. Replaces the synthetic defaults until reset.
+CALIBRATIONS: dict[str, dict] = {}
+
+
+def _base_raw(pathway_key: str) -> dict:
+    if pathway_key in CALIBRATIONS:
+        return copy.deepcopy(CALIBRATIONS[pathway_key])
+    return copy.deepcopy(Pathway.load(PATHWAY_DIR / f"{pathway_key}.json").raw)
+
+
 def _build(pathway_key: str, overrides: dict | None, arrivals_scale: float,
            size: float = 1.0, occupancy: float | None = None) -> Pathway:
-    base = Pathway.load(PATHWAY_DIR / f"{pathway_key}.json")
-    raw = copy.deepcopy(base.raw)
+    raw = _base_raw(pathway_key)
+    base_name = raw.get("name", pathway_key)
 
     # ED size preset: scale every physical/staff capacity together.
     if size and abs(size - 1.0) > 1e-6:
@@ -93,7 +106,7 @@ def _build(pathway_key: str, overrides: dict | None, arrivals_scale: float,
                 "arrivals_scale": arrivals_scale}
     if overrides or arrivals_scale != 1.0:
         pathway = apply_scenario(pathway, scenario)
-        pathway.name = base.name
+    pathway.name = base_name
     return pathway
 
 
@@ -122,7 +135,7 @@ def api_simulate():
     kpi = kpis(result, pathway)
     return jsonify({
         "kpis": kpi,
-        "scorecard": uec_scorecard(kpi),
+        "scorecard": uec_scorecard(kpi, result, pathway),
         "diagnosis": diagnose(result, pathway),
         "flow_map": flow_map_data(result, pathway),
         "figures": {
@@ -131,6 +144,62 @@ def api_simulate():
             "waits": json.loads(viz.waits_figure(result).to_json()),
         },
     })
+
+
+def _simulate_payload(pathway):
+    result = run_pathway(pathway, seed=0)
+    kpi = kpis(result, pathway)
+    return {
+        "kpis": kpi,
+        "scorecard": uec_scorecard(kpi, result, pathway),
+        "diagnosis": diagnose(result, pathway),
+        "flow_map": flow_map_data(result, pathway),
+        "figures": {
+            "occupancy": json.loads(viz.occupancy_figure(result, pathway).to_json()),
+            "utilisation": json.loads(viz.utilisation_figure(result, pathway).to_json()),
+            "waits": json.loads(viz.waits_figure(result).to_json()),
+        },
+    }
+
+
+@app.route("/api/sample-data")
+def api_sample_data():
+    """Download the synthetic ECDS-style template, so the expected schema for
+    real hospital data is self-documenting."""
+    buf = io.StringIO()
+    generate_sample().to_csv(buf, index=False)
+    return app.response_class(buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_ecds_template.csv"})
+
+
+@app.route("/api/calibrate", methods=["POST"])
+def api_calibrate():
+    """Calibrate a pathway from an uploaded attendance extract, replacing the
+    synthetic defaults, then return a fresh simulation with the change summary."""
+    key = request.form.get("pathway")
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    try:
+        df = read_table(request.files["file"].read())
+        base = copy.deepcopy(Pathway.load(PATHWAY_DIR / f"{key}.json").raw)
+        calibrated, summary = calibrate(df, base)
+        CALIBRATIONS[key] = calibrated
+    except Exception as e:  # surface a clean message to the UI
+        return jsonify({"error": f"could not calibrate: {e}"}), 400
+    payload = _simulate_payload(_build(key, None, 1.0))
+    payload["summary"] = summary
+    payload["calibrated"] = True
+    return jsonify(payload)
+
+
+@app.route("/api/calibrate/reset", methods=["POST"])
+def api_calibrate_reset():
+    key = request.get_json(force=True).get("pathway")
+    CALIBRATIONS.pop(key, None)
+    payload = _simulate_payload(_build(key, None, 1.0))
+    payload["summary"] = ["Reset to synthetic baseline parameters."]
+    payload["calibrated"] = False
+    return jsonify(payload)
 
 
 @app.route("/api/animation", methods=["POST"])

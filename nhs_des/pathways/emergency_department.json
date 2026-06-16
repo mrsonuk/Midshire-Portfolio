@@ -12,7 +12,18 @@
             "Acuity 3": 24.65,
             "Acuity 4": 60.68,
             "Acuity 5": 8.29
+        },
+        "attributes": {
+            "ambulance": 0.316,
+            "paediatric": 0.22,
+            "mental_health": 0.019
         }
+    },
+    "uec": {
+        "ambulance_handover_stages": ["resus", "majors", "minors"],
+        "ambulance_attr": "ambulance",
+        "paediatric_attr": "paediatric",
+        "mental_health_attr": "mental_health"
     },
     "resources": {
         "receptionist": 3,
@@ -25,7 +36,8 @@
         "sdec_doctor": 4,
         "ct_scanner": 2,
         "xray_room": 3,
-        "inpatient_bed": 30
+        "inpatient_bed": 30,
+        "mh_assessment_room": 4
     },
     "nodes": [
         {
@@ -140,6 +152,9 @@
             "label": "Clinical decision",
             "release": ["resus_bay", "majors_bed", "minors_bay", "sdec_chair"],
             "service": {"dist": "lognormal", "mean": 20, "stdev": 10},
+            "routes_by_attribute": {
+                "mental_health": [["mh_assessment", 1.0]]
+            },
             "routes_by_class": {
                 "Acuity 1": [["await_bed", 0.585], ["discharge", 0.415]],
                 "Acuity 2": [["await_bed", 0.489], ["discharge", 0.511]],
@@ -147,6 +162,23 @@
                 "Acuity 4": [["await_bed", 0.103], ["discharge", 0.897]],
                 "Acuity 5": [["await_bed", 0.036], ["discharge", 0.964]]
             }
+        },
+        {
+            "id": "mh_assessment",
+            "type": "process",
+            "label": "Mental health assessment",
+            "acquire": ["mh_assessment_room"],
+            "resource": "ed_doctor",
+            "service": {"dist": "lognormal", "mean": 40, "stdev": 20},
+            "routes": [["mh_await_bed", 1.0]]
+        },
+        {
+            "id": "mh_await_bed",
+            "type": "process",
+            "label": "Wait for MH bed",
+            "release": ["mh_assessment_room"],
+            "service": {"dist": "lognormal", "mean": 760, "stdev": 520},
+            "routes": [["admitted_mh", 1.0]]
         },
         {
             "id": "await_bed",
@@ -164,6 +196,7 @@
             "routes": [["discharged", 1.0]]
         },
         {"id": "admitted", "type": "sink", "label": "Admitted"},
+        {"id": "admitted_mh", "type": "sink", "label": "Admitted (MH)"},
         {"id": "discharged", "type": "sink", "label": "Discharged"}
     ]
 }

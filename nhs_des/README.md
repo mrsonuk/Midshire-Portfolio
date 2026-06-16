@@ -29,7 +29,8 @@ The beta tool was built for one hospital and could not support planning. Concret
 | Output was a 2-D **animation**, not analytics; no occupancy/utilisation/bottleneck reporting | **Decision dashboard**: KPI cards, patient-flow Sankey, occupancy-vs-capacity, utilisation, queue-wait bottlenecks — *plus* the patient-movement animation, now generalised and time-scrubbable |
 | No bottleneck call-out, no written interpretation, no PDF for the planning team | **Named bottleneck diagnosis** with a recommendation, **plain-English Monte-Carlo readout**, and a **downloadable PDF decision report** |
 | Front end depended on an external CDN (breaks on locked-down NHS networks) | Plotly is **vendored locally** — fully offline-capable |
-| Not tied to any national standard | **UEC Plan 2025/26 scorecard**: RAG-rated against the 4-hour (≥78%) and 12-hour (<10%) national targets |
+| Not tied to any national standard | **UEC Plan 2025/26 scorecard**: RAG-rated against the 4-hour (≥78%), 12-hour (<10%), **ambulance-handover (<45 min), mental-health 24-hour, and children's 4-hour** priorities |
+| Synthetic data only, no way to use real data | **Data upload + auto-calibration**: drop in an ECDS-style attendance extract and the arrival profile, acuity mix, ambulance/paediatric/mental-health prevalence and admission rates are re-derived from it (with a documented template and an honest note on what can't be inferred) |
 | ED type / size / bed-occupancy selectors were non-functional in the beta | **Functional controls**: ED type (pathway, incl. Type 1 ED, Type 3 UTC, AMU), ED size presets (Small→XL scale capacity), and a **bed-occupancy slider that actually drives exit block** (higher occupancy → longer waits for an inpatient bed → worse 12-hour metric) |
 | Static Sankey | **Animated patient-flow map**: stage cards sized by volume, traffic-light coloured by wait, the bottleneck pulsing red, with patients flowing along the links |
 | Beds modelled inconsistently; diagnostics had no machine queue | Resources can be **span-held** (a bed occupied across the whole episode) and diagnostics (CT/X-ray) contend for limited machines |
@@ -57,6 +58,9 @@ nhs_des/
 │                    locally in static/ so it runs with no external CDN).
 ├── snapshot.py      Renders the NHS-branded presentation image.
 ├── report.py        Two-page PDF decision report (summary + bottleneck + charts).
+├── calibration.py   Data-driven calibration from an ECDS-style extract + a
+│                    synthetic sample generator (the placeholder for real data).
+├── data/            sample_ecds.csv — the documented data template.
 ├── pathways/        emergency_department.json, acute_medical_unit.json
 └── templates/       dashboard.html
 ```
@@ -132,5 +136,22 @@ The Acute Medical Unit pathway exhibits a *different* bottleneck profile
 (AMU-bed access and exit block), demonstrating the tool generalises across the
 diverse pathways found in NHS hospitals.
 
-> Parameters are illustrative/synthetic and seeded from the beta `config.json`;
-> validate against local data before operational use.
+## Working with real data
+
+The model ships on **synthetic** parameters (seeded from the beta `config.json`),
+but every data-derived parameter is a **placeholder designed to be replaced**:
+
+1. In the dashboard, open **Data & calibration** and download the CSV template
+   (`/api/sample-data`) to see the expected ECDS-style columns.
+2. Upload a real attendance extract. The tool re-derives the arrival profile,
+   acuity mix, ambulance/paediatric/mental-health prevalence and admission rates,
+   shows a summary of what changed, and re-runs — the sidebar flips to
+   "Data source: uploaded extract (calibrated)".
+3. Per-stage service times are **not** inferred (they aren't identifiable from
+   attendance data); supply stage-level timestamps to calibrate those.
+
+> Until calibrated, results are illustrative — validate against local data
+> before operational use.
+
+Colours follow the official NHS identity palette
+(nhsengland.github.io/nhs-r-reporting/tutorials/nhs-colours.html).
