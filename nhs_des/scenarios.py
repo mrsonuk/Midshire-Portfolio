@@ -20,7 +20,7 @@ from __future__ import annotations
 import copy
 
 from .engine import Pathway, run_pathway
-from .metrics import kpis
+from .metrics import kpis, uec_metrics
 from .montecarlo import monte_carlo
 
 
@@ -51,9 +51,55 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> Pathway:
             max(0.0, h * float(scale)) for h in raw["arrivals"]["hourly_profile"]
         ]
 
+    # Care-setting redirection: a fraction of a cohort is managed elsewhere
+    # (UTC/SDEC for low-acuity, or 'call before convey' / see-and-treat for
+    # ambulances), so total demand falls and the case-mix shifts.
+    _apply_divert(raw, scenario.get("divert"))
+
     new = Pathway.from_dict(raw)
     new.name = f"{pathway.name} - {scenario.get('name', 'scenario')}"
     return new
+
+
+def _attr_prevalence(attributes: dict, attr: str, mix: dict) -> float:
+    p = attributes.get(attr, 0)
+    if isinstance(p, dict):
+        tot = sum(mix.values()) or 1
+        return sum(mix.get(c, 0) / tot * p.get(c, 0) for c in mix)
+    return float(p)
+
+
+def _apply_divert(raw: dict, divert) -> None:
+    if not divert:
+        return
+    arrivals = raw.get("arrivals", {})
+    mix = arrivals.get("acuity_mix", {})
+    fraction = float(divert.get("fraction", 0.0))
+    if fraction <= 0:
+        return
+
+    if divert.get("classes") and mix:
+        classes = [c for c in divert["classes"] if c in mix]
+        tot = sum(mix.values()) or 1
+        diverted_share = sum(mix[c] for c in classes) / tot * fraction
+        for c in classes:
+            mix[c] = mix[c] * (1 - fraction)
+    elif divert.get("attribute"):
+        attr = divert["attribute"]
+        attrs = arrivals.get("attributes", {})
+        prev = _attr_prevalence(attrs, attr, mix)
+        diverted_share = prev * fraction
+        cur = attrs.get(attr)
+        if isinstance(cur, dict):
+            attrs[attr] = {k: v * (1 - fraction) for k, v in cur.items()}
+        elif cur is not None:
+            attrs[attr] = float(cur) * (1 - fraction)
+    else:
+        return
+
+    if "hourly_profile" in arrivals:
+        arrivals["hourly_profile"] = [max(0.0, h * (1 - diverted_share))
+                                      for h in arrivals["hourly_profile"]]
 
 
 def compare_scenarios(pathway: Pathway, scenarios: list[dict],
@@ -81,5 +127,6 @@ def compare_scenarios(pathway: Pathway, scenarios: list[dict],
             result = run_pathway(variant, seed=seed)
             row = {"scenario": sc["name"]}
             row.update(kpis(result, variant))
+            row.update(uec_metrics(result, variant))
             rows.append(row)
     return {"rows": rows, "replications": replications}

@@ -15,12 +15,18 @@
         },
         "attributes": {
             "ambulance": 0.316,
-            "paediatric": 0.22,
-            "mental_health": 0.019
+            "mental_health": 0.04,
+            "paediatric": {
+                "Acuity 1": 0.08,
+                "Acuity 2": 0.10,
+                "Acuity 3": 0.16,
+                "Acuity 4": 0.26,
+                "Acuity 5": 0.34
+            }
         }
     },
     "uec": {
-        "ambulance_handover_stages": ["resus", "majors", "minors"],
+        "ambulance_handover_stages": ["resus", "majors", "minors", "paeds_assessment"],
         "ambulance_attr": "ambulance",
         "paediatric_attr": "paediatric",
         "mental_health_attr": "mental_health"
@@ -32,12 +38,15 @@
         "majors_bed": 26,
         "minors_bay": 25,
         "sdec_chair": 10,
-        "ed_doctor": 16,
+        "paeds_bay": 12,
+        "ed_doctor": 13,
         "sdec_doctor": 4,
+        "paeds_doctor": 3,
         "ct_scanner": 2,
         "xray_room": 3,
         "inpatient_bed": 30,
-        "mh_assessment_room": 4
+        "mh_assessment_room": 5,
+        "mh_inpatient_bed": 6
     },
     "nodes": [
         {
@@ -60,6 +69,9 @@
             "label": "Triage / streaming",
             "resource": "triage_nurse",
             "service": {"dist": "lognormal", "mean": 5, "stdev": 2},
+            "routes_by_attribute": {
+                "paediatric": [["paeds_assessment", 1.0]]
+            },
             "routes_by_class": {
                 "Acuity 1": [["resus", 0.7], ["majors", 0.3]],
                 "Acuity 2": [["resus", 0.3], ["majors", 0.7]],
@@ -67,6 +79,22 @@
                 "Acuity 4": [["sdec", 0.35], ["minors", 0.65]],
                 "Acuity 5": [["minors", 1.0]]
             }
+        },
+        {
+            "id": "paeds_assessment",
+            "type": "process",
+            "label": "Paediatric area",
+            "acquire": ["paeds_bay"],
+            "resource": "paeds_doctor",
+            "service_by_class": {
+                "Acuity 1": {"dist": "lognormal", "mean": 110, "stdev": 40},
+                "Acuity 2": {"dist": "lognormal", "mean": 80, "stdev": 30},
+                "Acuity 3": {"dist": "lognormal", "mean": 50, "stdev": 22},
+                "Acuity 4": {"dist": "lognormal", "mean": 22, "stdev": 10},
+                "Acuity 5": {"dist": "lognormal", "mean": 14, "stdev": 7}
+            },
+            "service": {"dist": "lognormal", "mean": 35, "stdev": 18},
+            "routes": [["imaging_decision", 1.0]]
         },
         {
             "id": "resus",
@@ -150,7 +178,7 @@
             "id": "outcome",
             "type": "process",
             "label": "Clinical decision",
-            "release": ["resus_bay", "majors_bed", "minors_bay", "sdec_chair"],
+            "release": ["resus_bay", "majors_bed", "minors_bay", "sdec_chair", "paeds_bay"],
             "service": {"dist": "lognormal", "mean": 20, "stdev": 10},
             "routes_by_attribute": {
                 "mental_health": [["mh_assessment", 1.0]]
@@ -168,6 +196,7 @@
             "type": "process",
             "label": "Mental health assessment",
             "acquire": ["mh_assessment_room"],
+            "release": ["mh_assessment_room"],
             "resource": "ed_doctor",
             "service": {"dist": "lognormal", "mean": 40, "stdev": 20},
             "routes": [["mh_await_bed", 1.0]]
@@ -176,8 +205,8 @@
             "id": "mh_await_bed",
             "type": "process",
             "label": "Wait for MH bed",
-            "release": ["mh_assessment_room"],
-            "service": {"dist": "lognormal", "mean": 760, "stdev": 520},
+            "acquire": ["mh_inpatient_bed"],
+            "service": {"dist": "lognormal", "mean": 600, "stdev": 360},
             "routes": [["admitted_mh", 1.0]]
         },
         {

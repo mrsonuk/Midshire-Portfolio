@@ -179,6 +179,7 @@
         <div class="chart" id="scnCompliance"></div>
         <div class="chart" id="scnLos"></div>
       </div>
+      <div class="chart" id="scnTableWrap" style="padding:14px"></div>
     </section>
 
     <section class="panel" id="panel-data">
@@ -452,6 +453,12 @@ function buildScenarioPresets(){
   if(doctor)presets.push({name:'+3 '+doctor.replace(/_/g,' '),resources:{[doctor]:'+3'}});
   if(bed)presets.push({name:'+8 '+bed.replace(/_/g,' '),resources:{[bed]:'+8'}});
   presets.push({name:'Winter +15% demand',arrivals_scale:1.15});
+  if('sdec_chair' in res || 'minors_bay' in res)
+    presets.push({name:'Redirect 20% low-acuity to UTC/SDEC',divert:{classes:['Acuity 4','Acuity 5'],fraction:0.20}});
+  if(doctor==='ed_doctor')
+    presets.push({name:'Call-before-convey −15% ambulance',divert:{attribute:'ambulance',fraction:0.15}});
+  if('mh_inpatient_bed' in res)
+    presets.push({name:'+3 MH crisis beds',resources:{mh_inpatient_bed:'+3'}});
   $('#scnList').innerHTML='';
   presets.forEach(addScenarioRow);
 }
@@ -469,8 +476,15 @@ function addScenarioRow(preset){
   sel.value=presetRes;
   const delta=el('input'); delta.type='number'; delta.value=presetRes?(''+preset.resources[presetRes]).replace(/[+]/,''):'0'; delta.style.cssText='width:70px;margin-left:6px'; delta.dataset.k='delta';
   const scale=el('input'); scale.type='number'; scale.step='0.05'; scale.value=preset.arrivals_scale||1.0; scale.style.cssText='width:70px;margin-left:6px'; scale.dataset.k='scale';
+  // care-setting redirection lever (UEC Plan: UTC/SDEC redirection, call-before-convey)
+  const lever=el('select'); lever.dataset.k='lever';
+  [['','— none —'],['utc','Redirect low-acuity to UTC/SDEC'],['convey','Call-before-convey (ambulance)']]
+    .forEach(([v,t])=>{const o=document.createElement('option');o.value=v;o.textContent=t;lever.append(o);});
+  const pre=preset.divert||{}; lever.value = pre.classes?'utc':(pre.attribute?'convey':'');
+  const lpct=el('input'); lpct.type='number'; lpct.min=0; lpct.max=60; lpct.value=Math.round((pre.fraction||0)*100); lpct.style.cssText='width:60px;margin-left:6px'; lpct.dataset.k='lpct';
   const r1=el('div','res-row'); r1.append(el('span',null,'Δ capacity'),sel,delta); div.append(r1);
   const r2=el('div','res-row'); r2.append(el('span',null,'demand ×'),scale); div.append(r2);
+  const r3=el('div','res-row'); r3.append(el('span',null,'redirect %'),lever,lpct); div.append(r3);
   $('#scnList').append(div);
 }
 function collectScenarios(){
@@ -479,8 +493,12 @@ function collectScenarios(){
     const res=d.querySelector('[data-k=res]').value;
     const delta=+d.querySelector('[data-k=delta]').value;
     const scale=+d.querySelector('[data-k=scale]').value;
+    const lever=d.querySelector('[data-k=lever]').value;
+    const lpct=+d.querySelector('[data-k=lpct]').value/100;
     if(res&&delta){ s.resources={[res]:(delta>0?'+':'')+delta}; }
     if(scale&&scale!==1){ s.arrivals_scale=scale; }
+    if(lever==='utc'&&lpct>0){ s.divert={classes:['Acuity 4','Acuity 5'],fraction:lpct}; }
+    if(lever==='convey'&&lpct>0){ s.divert={attribute:'ambulance',fraction:lpct}; }
     return s;
   });
 }
@@ -491,8 +509,43 @@ async function runScenarios(){
     loading('scnCompliance','Comparing…'); loading('scnLos','Comparing…');
     const data=await post('/api/scenarios',{pathway:current,scenarios:collectScenarios(),replications:10});
     await plot('scnCompliance',data.compliance_fig); await plot('scnLos',data.los_fig);
+    renderScenarioTable(data.rows);
     setBusy(false,'Comparison complete','ok');
   }catch(e){ setBusy(false,'Error: '+e.message,'err'); }
+}
+
+function renderScenarioTable(rows){
+  // Every lever's effect across all UEC measures - so MH-bed / ambulance / UTC
+  // levers (which barely move the 4-hour metric) show their real impact.
+  const cols=[
+    ['target_compliance','4-hour %',true,0],
+    ['pct_over_12h','12-hour %',false,1],
+    ['ambulance_handover_45','Amb handover %',true,0],
+    ['mh_over_24h','MH >24h %',false,0],
+    ['child_4h','Children 4-hr %',true,0],
+    ['throughput_per_day','Attend/day',null,0],
+  ].filter(c=>rows[0][c[0]]!==undefined);
+  const base=rows[0];
+  let h='<div class="scorehead">Scenario impact across UEC measures (vs baseline)</div>';
+  h+='<table style="width:100%;border-collapse:collapse;font-size:12.5px">';
+  h+='<tr style="text-align:left;color:var(--nhs-grey)"><th style="padding:6px 8px">Scenario</th>'+
+     cols.map(c=>'<th style="padding:6px 8px;text-align:right">'+c[1]+'</th>').join('')+'</tr>';
+  rows.forEach((r,ri)=>{
+    h+='<tr style="border-top:1px solid var(--nhs-lightgrey)'+(ri===0?';font-weight:700':'')+'">';
+    h+='<td style="padding:6px 8px">'+r.scenario+'</td>';
+    for(const [k,,higher,dp] of cols){
+      const v=r[k]; let cell=v.toFixed(dp);
+      if(ri>0 && higher!==null){
+        const d=v-base[k]; const good=higher?d>=0:d<=0;
+        const col=Math.abs(d)<0.5?'var(--nhs-grey)':(good?'var(--nhs-green)':'var(--nhs-red)');
+        cell+=' <span style="color:'+col+';font-weight:700">('+(d>=0?'+':'')+d.toFixed(dp)+')</span>';
+      }
+      h+='<td style="padding:6px 8px;text-align:right">'+cell+'</td>';
+    }
+    h+='</tr>';
+  });
+  h+='</table>';
+  $('#scnTableWrap').innerHTML=h;
 }
 
 function switchTab(name){

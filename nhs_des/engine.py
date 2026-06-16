@@ -154,13 +154,15 @@ class Simulation:
         weights = weights / weights.sum()
         return str(self.rng.choice(labels, p=weights))
 
-    def _attributes_for(self) -> set:
+    def _attributes_for(self, acuity: str) -> set:
         """Independent patient flags (e.g. ambulance, paediatric, mental_health)
-        drawn from ``arrivals.attributes`` prevalences. These let one model carry
-        the cross-cutting cohorts the UEC Plan tracks without separate pathways."""
+        drawn from ``arrivals.attributes`` prevalences. A prevalence may be a flat
+        probability or a per-class dict, letting a cohort correlate with acuity
+        (e.g. children skewing to lower-acuity presentations)."""
         attrs = set()
         for name, prob in (self.pathway.arrivals.get("attributes") or {}).items():
-            if self.rng.random() < float(prob):
+            p = float(prob.get(acuity, 0.0)) if isinstance(prob, dict) else float(prob)
+            if self.rng.random() < p:
                 attrs.add(name)
         return attrs
 
@@ -183,7 +185,7 @@ class Simulation:
             self._pid += 1
             acuity = self._acuity_for()
             self.env.process(self._patient(self._pid, acuity, source,
-                                           self._attributes_for()))
+                                           self._attributes_for(acuity)))
 
     # -- patient journey --------------------------------------------------- #
     def _service_spec(self, node: dict, acuity: str):

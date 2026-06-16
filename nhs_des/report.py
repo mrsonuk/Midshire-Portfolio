@@ -94,19 +94,28 @@ def _summary_page(pdf, pathway, base_kpi, mc, diag, cmp, scorecard):
     # scenario table
     ax.text(0.03, y, "What-if scenarios (ranked)", fontsize=14, color=NHS_DARK_BLUE,
             weight="bold"); y -= 0.04
+    has_mh = "mh_over_24h" in cmp["rows"][0]
     ax.text(0.04, y, "Scenario", fontsize=10, weight="bold", color=NHS_GREY)
-    ax.text(0.52, y, "4-hr perf.", fontsize=10, weight="bold", color=NHS_GREY)
-    ax.text(0.66, y, "vs baseline", fontsize=10, weight="bold", color=NHS_GREY)
-    ax.text(0.82, y, "Mean LOS", fontsize=10, weight="bold", color=NHS_GREY); y -= 0.028
+    ax.text(0.46, y, "4-hr perf.", fontsize=10, weight="bold", color=NHS_GREY)
+    ax.text(0.60, y, "vs baseline", fontsize=10, weight="bold", color=NHS_GREY)
+    if has_mh:
+        ax.text(0.76, y, "MH >24h", fontsize=10, weight="bold", color=NHS_GREY)
+    ax.text(0.88, y, "Mean LOS", fontsize=10, weight="bold", color=NHS_GREY); y -= 0.028
     base_val = cmp["rows"][0]["target_compliance"]
+    mh_base = cmp["rows"][0].get("mh_over_24h", 0)
     for r in cmp["rows"]:
         delta = r["target_compliance"] - base_val
         col = NHS_GREY if r["scenario"] == "Baseline" else (NHS_GREEN if delta >= 0 else NHS_RED)
         ax.text(0.04, y, r["scenario"], fontsize=10, color=NHS_GREY)
-        ax.text(0.52, y, f"{r['target_compliance']:.0f}%", fontsize=10, color=NHS_GREY)
-        ax.text(0.66, y, ("—" if r["scenario"] == "Baseline" else f"{delta:+.0f} pts"),
+        ax.text(0.46, y, f"{r['target_compliance']:.0f}%", fontsize=10, color=NHS_GREY)
+        ax.text(0.60, y, ("—" if r["scenario"] == "Baseline" else f"{delta:+.0f} pts"),
                 fontsize=10, color=col, weight="bold")
-        ax.text(0.82, y, f"{r['mean_los']/60:.1f} h", fontsize=10, color=NHS_GREY)
+        if has_mh:
+            md = r["mh_over_24h"] - mh_base
+            mcol = NHS_GREY if r["scenario"] == "Baseline" else (NHS_GREEN if md <= 0 else NHS_RED)
+            txt = f"{r['mh_over_24h']:.0f}%" + ("" if r["scenario"] == "Baseline" else f" ({md:+.0f})")
+            ax.text(0.76, y, txt, fontsize=10, color=mcol)
+        ax.text(0.88, y, f"{r['mean_los']/60:.1f} h", fontsize=10, color=NHS_GREY)
         y -= 0.028
 
     ax.text(0.03, 0.03, "For demonstration — synthetic data seeded from the beta "
