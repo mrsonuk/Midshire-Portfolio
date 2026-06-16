@@ -1,8 +1,0 @@
-__pycache__/
-*.pyc
-outputs/*
-!outputs/dashboard_snapshot.png
-!outputs/amu_snapshot.png
-!outputs/patient_flow_animation.gif
-!outputs/amu_flow_animation.gif
-!outputs/decision_report.pdf
