@@ -29,6 +29,8 @@ from ..viz.flow_model import flow_model_data
 from ..demand.population import apply_population
 from ..demand.ecds_seam import read_table, calibrate, generate_sample
 from ..planning.planner import make_plan
+from ..planning.operational import today_plan
+from ..planning.forecast import forecast_from_history, generate_daily_history
 
 app = Flask(__name__)
 PATHWAY_DIR = Path(__file__).resolve().parent.parent / "pathways"
@@ -89,6 +91,37 @@ def api_plan():
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(plan)
+
+
+@app.route("/api/plan-today", methods=["POST"])
+def api_plan_today():
+    body = request.get_json(force=True)
+    try:
+        plan = today_plan(
+            attendances_today=float(body.get("attendances_today", 340)),
+            hospital_fullness_pct=float(body.get("hospital_fullness_pct", 94)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(plan)
+
+
+@app.route("/api/forecast-data", methods=["POST"])
+def api_forecast_data():
+    """Derive the winter forecast from an uploaded daily attendance history."""
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    try:
+        df = read_table(request.files["file"].read())
+        return jsonify(forecast_from_history(df))
+    except Exception as e:
+        return jsonify({"error": f"could not read history: {e}"}), 400
+
+
+@app.route("/api/sample-history")
+def api_sample_history():
+    buf = io.StringIO(); generate_daily_history().to_csv(buf, index=False)
+    return app.response_class(buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_attendance_history.csv"})
 
 
 @app.route("/analyst")

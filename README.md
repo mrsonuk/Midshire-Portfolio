@@ -1,10 +1,21 @@
 # NHS UEC Winter Demand & Capacity Planner
 
-A planning tool for **ICB winter and investment planners**: it forecasts emergency-
-care demand and answers, in plain operational language, *what winter looks like at
-your current set-up, what's driving the pressure, and which change is worth it* —
-ranked by impact with an indicative cost band. It works for **any** emergency
-department (you enter its size). Open `/` for the planner.
+A planning tool for NHS Urgent & Emergency Care. It forecasts demand and answers, in
+plain operational language (no modelling jargon), what to do — for **any** emergency
+department. Two modes:
+
+- **Plan for this winter** (ICB / investment): forecast winter demand from three
+  numbers *or from your own uploaded attendance history* (it reads off the recent
+  level, year-on-year growth and how much higher winter runs), then *what winter
+  looks like*, *what's driving the pressure*, and *which investment option is worth
+  it* — ranked by impact with an indicative cost band and a recommendation.
+- **Today / this week** (operational): enter today's expected attendances and how
+  full the hospital is, and get an **OPEL-style risk read**, the do-nothing
+  projection, and the **no-cost actions** that help most right now (discharge push,
+  SDEC hours, staff flex, escalation, redirect, community) — ranked, with who owns
+  each and a clear "do this first".
+
+Open `/` for the planner.
 
 Under the hood is a principled hybrid simulation engine (below); none of its
 modelling vocabulary appears in the planner. Analysts can open the full technical
