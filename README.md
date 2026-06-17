@@ -1,4 +1,23 @@
-# NHS UEC Hybrid Simulator — System Dynamics + Discrete-Event Simulation
+# NHS UEC Winter Demand & Capacity Planner
+
+A planning tool for **ICB winter and investment planners**: it forecasts emergency-
+care demand and answers, in plain operational language, *what winter looks like at
+your current set-up, what's driving the pressure, and which change is worth it* —
+ranked by impact with an indicative cost band. It works for **any** emergency
+department (you enter its size). Open `/` for the planner.
+
+Under the hood is a principled hybrid simulation engine (below); none of its
+modelling vocabulary appears in the planner. Analysts can open the full technical
+model at `/analyst`.
+
+```bash
+pip install -r requirements.txt
+python -m uec_hybrid.app.server     # planner at http://127.0.0.1:5000  (analyst view at /analyst)
+```
+
+---
+
+## The engine — System Dynamics + Discrete-Event Simulation
 
 A principled, evidence-based model of NHS Urgent & Emergency Care that **couples a
 patient-level Discrete-Event Simulation (DES) with a whole-system System-Dynamics

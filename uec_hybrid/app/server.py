@@ -28,6 +28,7 @@ from ..viz import figures as fig
 from ..viz.flow_model import flow_model_data
 from ..demand.population import apply_population
 from ..demand.ecds_seam import read_table, calibrate, generate_sample
+from ..planning.planner import make_plan
 
 app = Flask(__name__)
 PATHWAY_DIR = Path(__file__).resolve().parent.parent / "pathways"
@@ -73,6 +74,26 @@ def J(figure):
 
 @app.route("/")
 def home():
+    # The primary view is the plain-language planner for ICB / winter planners.
+    return render_template("planner.html")
+
+
+@app.route("/api/plan", methods=["POST"])
+def api_plan():
+    body = request.get_json(force=True)
+    try:
+        plan = make_plan(
+            attendances_now=float(body.get("attendances_now", 320)),
+            winter_uplift_pct=float(body.get("winter_uplift_pct", 12)),
+            yoy_growth_pct=float(body.get("yoy_growth_pct", 0)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(plan)
+
+
+@app.route("/analyst")
+def analyst():
+    # The technical model view, for analysts.
     return render_template("dashboard.html", pathways=list_pathways())
 
 
