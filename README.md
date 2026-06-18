@@ -1,4 +1,43 @@
-# NHS UEC Hybrid Simulator — System Dynamics + Discrete-Event Simulation
+# Model ED Optimiser
+
+A product to help any NHS trust **implement the Model Emergency Department** — design,
+staff and run a high-performing ED. It is flow-first and plain-language; the hybrid
+simulation (DES + System Dynamics + Monte-Carlo) is the hidden engine and none of its
+vocabulary appears on the product surface.
+
+Open `/` for the product. It has:
+
+- **Control tower** — a live flow map of *your* department: patients moving through your
+  areas, queues, and the busiest pinch-point (with *when* it bites). A time-of-day slider
+  shows the department at any hour; click an area to drill in. Headline standards
+  (4-hour, 15-minute assessment, 12-hour, ambulance handover) as a typical / good / tough
+  week.
+- **Workforce** — "are you staffed for the demand curve?": staffing by role and hour
+  against demand, the under-staffed windows in red, and the weekly pay-bill. (The engine
+  models **staffing that varies by hour**, so the bottleneck is time-aware.)
+- **Model ED gaps** — which Model ED elements you have vs are missing, and what each
+  missing one would add (front-door areas judged on the 4-hour standard; same-day /
+  assessment areas on the **admissions they avoid**), with an indicative cost band — the
+  investment case.
+- **Set up my ED** — switch the areas you actually have on/off (UTC, RAT, fit-to-sit,
+  EEMAC, SDEC, PAU, CDU, frailty, MH), set its size and beds; patients re-route safely.
+- **Plan ahead** (`/planner`) — the winter & today demand/capacity planner.
+- **Analyst view** (`/analyst`) — the full technical model.
+
+```bash
+pip install -r requirements.txt
+python -m uec_hybrid.app.server     # product at http://127.0.0.1:5000
+python -m uec_hybrid.tests.run      # end-to-end checks (incl. time-varying staffing)
+```
+
+```bash
+pip install -r requirements.txt
+python -m uec_hybrid.app.server     # planner at http://127.0.0.1:5000  (analyst view at /analyst)
+```
+
+---
+
+## The engine — System Dynamics + Discrete-Event Simulation
 
 A principled, evidence-based model of NHS Urgent & Emergency Care that **couples a
 patient-level Discrete-Event Simulation (DES) with a whole-system System-Dynamics

@@ -97,3 +97,65 @@ def flow_model_data(result: dict, pathway: Pathway) -> dict:
     band_legend = [{"key": b, "label": BAND_LABEL[b]} for b in BANDS]
     return {"nodes": nodes, "links": links, "stocks": stocks, "bands": band_legend,
             "bottleneck": diag.get("worst_stage")}
+
+
+# --------------------------------------------------------------------------- #
+# Control-tower extras: time-of-day occupancy, department census, when-it-bites
+# --------------------------------------------------------------------------- #
+import numpy as np
+
+
+def _occ_by_hour(starts, ends, warmup, duration, step=10):
+    if len(starts) == 0:
+        return [0.0] * 24
+    grid = np.arange(warmup, duration, step)
+    hod = (grid / 60 % 24).astype(int)
+    counts = np.array([int(((starts <= t) & (ends > t)).sum()) for t in grid])
+    return [round(float(counts[hod == h].mean()), 1) if (hod == h).any() else 0.0 for h in range(24)]
+
+
+def control_tower(result: dict, pathway: Pathway) -> dict:
+    """The flow map plus the time-of-day detail a control tower needs."""
+    data = flow_model_data(result, pathway)
+    events, patients = result["events"], result["patients"]
+    w, dur = pathway.warmup, pathway.sim_duration
+
+    # department census by hour of day (patients physically in the ED)
+    census = [0.0] * 24
+    if not patients.empty:
+        census = _occ_by_hour(patients["arrival"].to_numpy(), patients["exit"].to_numpy(), w, dur)
+
+    # per-area occupancy by hour, and the hour each area is busiest
+    label_to_id = {n.get("label", i): i for i, n in pathway.nodes.items()}
+    by_hour = {}
+    if not events.empty:
+        for n in data["nodes"]:
+            nid = label_to_id.get(n["label"])
+            sub = events[events["stage"] == nid] if nid else events.iloc[0:0]
+            if len(sub):
+                by_hour[n["label"]] = _occ_by_hour(sub["service_start"].to_numpy(),
+                                                   sub["service_end"].to_numpy(), w, dur)
+
+    # Operational bottleneck: the busiest pinch-point across the WORKING DAY
+    # (08:00–22:00, when ops teams act), not an overnight low-volume artefact.
+    peak_hours, op_bottleneck = [], data.get("bottleneck")
+    if not events.empty:
+        ev = events.copy()
+        ev["hod"] = (ev["service_start"] / 60 % 24).astype(int)
+        day = ev[(ev["hod"] >= 8) & (ev["hod"] < 22)]
+        lost = day.groupby("stage")["wait"].sum()
+        if len(lost) and lost.max() > 0:
+            sid = lost.idxmax()
+            id_to_label = {nid: n.get("label", nid) for nid, n in pathway.nodes.items()}
+            op_bottleneck = id_to_label.get(sid, op_bottleneck)
+            for n in data["nodes"]:
+                n["is_bottleneck"] = (n["label"] == op_bottleneck)
+            bs = day[day["stage"] == sid]
+            lh = bs.groupby("hod")["wait"].sum()
+            peak_hours = sorted(int(h) for h in lh[lh >= lh.max() * 0.6].index)
+
+    data["bottleneck"] = op_bottleneck
+    data["census_by_hour"] = census
+    data["area_by_hour"] = by_hour
+    data["bottleneck_peak_hours"] = peak_hours
+    return data

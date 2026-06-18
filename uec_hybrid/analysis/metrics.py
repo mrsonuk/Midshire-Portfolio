@@ -127,9 +127,13 @@ def resource_utilisation(result: dict, pathway: Pathway) -> pd.DataFrame:
     if holds is None or holds.empty or horizon <= 0:
         return pd.DataFrame(columns=["resource", "capacity", "utilisation"])
     busy = (holds["end"] - holds["start"]).groupby(holds["resource"]).sum()
-    rows = [{"resource": r, "capacity": c,
-             "utilisation": 100.0 * float(busy.get(r, 0.0)) / (c * horizon) if c else 0.0}
-            for r, c in pathway.resources.items()]
+    rows = []
+    for r, c in pathway.resources.items():
+        # a capacity may be a by-hour roster; utilisation is measured against the
+        # average staffing over the day, not the peak
+        cap = (sum(c) / len(c)) if isinstance(c, (list, tuple)) else c
+        rows.append({"resource": r, "capacity": round(cap, 1),
+                     "utilisation": 100.0 * float(busy.get(r, 0.0)) / (cap * horizon) if cap else 0.0})
     return pd.DataFrame(rows).sort_values("utilisation", ascending=False).reset_index(drop=True)
 
 

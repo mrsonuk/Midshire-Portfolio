@@ -60,11 +60,40 @@ class Simulation:
         self.env = simpy.Environment()
         if self.state is None:
             self.state = SystemState()
-        self.resources = {
-            name: simpy.PriorityResource(self.env, capacity=int(cap))
-            for name, cap in self.pathway.resources.items()
-        }
+        # A capacity may be a fixed integer OR a 24-length by-hour roster (staffing
+        # that varies through the day). For a roster we build the resource at its
+        # peak and a shift-manager parks the off-shift units each hour.
+        self.resources = {}
+        self.rosters = {}
+        for name, cap in self.pathway.resources.items():
+            if isinstance(cap, (list, tuple)):
+                roster = [int(round(c)) for c in cap]
+                peak = max(1, max(roster))
+                self.rosters[name] = roster
+                self.resources[name] = simpy.PriorityResource(self.env, capacity=peak)
+            else:
+                self.resources[name] = simpy.PriorityResource(self.env, capacity=int(cap))
         self._pid = 0
+
+    def _shift_manager(self, name, roster):
+        """Hold (peak - roster[hour]) units off-shift each hour via top-priority
+        dummy requests, so the available units track the staffing rota."""
+        res = self.resources[name]
+        peak = res.capacity
+        held = []
+        while True:
+            hour = int((self.env.now / 60) % 24)
+            target = peak - max(0, min(peak, roster[hour]))   # units to park off-shift
+            while len(held) < target:
+                req = res.request(priority=-10 ** 9)          # always wins a freed unit
+                yield req
+                held.append(req)
+            while len(held) > target:
+                res.release(held.pop())
+            # re-evaluate every 15 min so staffing reductions take effect as units
+            # free, rather than only on the hour
+            yield self.env.timeout(15)
+
 
     # -- arrivals ---------------------------------------------------------- #
     def _acuity_for(self) -> str:
@@ -235,6 +264,8 @@ class Simulation:
         """Run to completion. ``processes`` is an optional list of extra SimPy
         generator functions (e.g. the co-simulation tick) to start alongside."""
         self.env.process(self._arrival_generator())
+        for name, roster in self.rosters.items():       # staffing schedules
+            self.env.process(self._shift_manager(name, roster))
         for proc in processes or []:
             self.env.process(proc(self.env, self.state))
         self.env.run(until=self.pathway.sim_duration)
