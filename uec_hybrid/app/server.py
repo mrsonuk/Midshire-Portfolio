@@ -158,6 +158,19 @@ def api_workforce():
     return jsonify(workforce_view(_dept()))
 
 
+@app.route("/api/rota-preview", methods=["POST"])
+def api_rota_preview():
+    """Instant (no-simulation) staffing-vs-demand + cost for an edited rota, so the
+    rota editor updates live as shifts are changed."""
+    from ..workforce.view import staffing_and_cost
+    body = request.get_json(force=True)
+    d = _dept()
+    rota = body.get("rota", d.rota)
+    att = float(body.get("attendances_per_day", d.attendances_per_day))
+    present = set(build_dept(d).get("resources", {}))   # the areas this ED has
+    return jsonify(staffing_and_cost(rota, att, present=present))
+
+
 @app.route("/api/gap", methods=["POST"])
 def api_gap():
     return jsonify(gap_analysis(_dept()))

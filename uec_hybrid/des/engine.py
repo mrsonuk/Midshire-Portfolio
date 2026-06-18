@@ -133,13 +133,35 @@ class Simulation:
             return by_class[acuity]
         return node.get("service")
 
+    def _resolve_open(self, target):
+        """If the chosen target is a part-time area that is closed at the current
+        sim hour, divert to its fallback. ``open_hours`` is [open, close] (24h);
+        close<open wraps past midnight. No ``open_hours`` ⇒ always open."""
+        if target is None:
+            return target
+        node = self.pathway.nodes.get(target)
+        if not node:
+            return target
+        oh = node.get("open_hours")
+        if not oh:
+            return target
+        o, c = int(oh[0]), int(oh[1])
+        hour = int((self.env.now / 60) % 24)
+        if o == c:
+            is_open = True
+        elif o < c:
+            is_open = o <= hour < c
+        else:                                 # wraps midnight (e.g. 22–06)
+            is_open = hour >= o or hour < c
+        return target if is_open else node.get("closed_fallback", target)
+
     def _route(self, node, acuity, attrs):
         # SD-signal diversion takes first refusal (e.g. community pull),
         # then attribute, then class, then default routes.
         for div in node.get("routes_by_signal", []) or []:
             p = self.state.get(div["signal"], 0.0) * float(div.get("scale", 1.0))
             if self.rng.random() < min(1.0, max(0.0, p)):
-                return div["target"]
+                return self._resolve_open(div["target"])
         routes = None
         by_attr = node.get("routes_by_attribute")
         if by_attr:
@@ -154,7 +176,7 @@ class Simulation:
             return None
         targets = [r[0] for r in routes]
         probs = np.array([r[1] for r in routes], dtype=float)
-        return str(self.rng.choice(targets, p=probs / probs.sum()))
+        return self._resolve_open(str(self.rng.choice(targets, p=probs / probs.sum())))
 
     # -- patient journey --------------------------------------------------- #
     def _patient(self, pid, acuity, source, attrs):

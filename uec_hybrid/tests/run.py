@@ -115,6 +115,29 @@ def main():
     assert weekly_cost(Department.default().rota) > 0
     print("Department builder OK: areas off validate, route safely, conformant; rota cost computed.")
 
+    # --- area opening hours: a part-time area takes no patients while closed ---
+    dh = Department.from_dict({**Department.default().to_dict(),
+                               "enabled": ["sdec"], "hours": {"sdec": [8, 20]}})
+    pdh = Pathway.from_dict(build_dept(dh))
+    assert not validate_schema(pdh), validate_schema(pdh)
+    # entry node carries the opening hours + a real fallback
+    sdec_node = pdh.nodes["sdec"]
+    assert sdec_node.get("open_hours") == [8, 20] and sdec_node.get("closed_fallback") in pdh.nodes
+    rh = run_cosim(pdh, seed=1)
+    ev = rh["events"]
+    sd_ev = ev[ev["stage"] == "sdec"]
+    entry_hours = ((sd_ev["queue_entry"] / 60) % 24).astype(int)
+    assert sd_ev.empty or (entry_hours.between(8, 19).all()), \
+        f"SDEC took patients outside opening hours: {sorted(set(entry_hours))}"
+    assert check(rh, pdh)["passed"], "opening-hours pathway not conformant"
+    print(f"Opening hours OK: SDEC entries confined to 08:00–20:00; routes safely; conformant.")
+
+    # --- rota preview: instant staffing + cost with no simulation ---
+    from ..workforce.view import staffing_and_cost
+    prev = staffing_and_cost(Department.default().rota, 320.0)
+    assert prev["weekly_cost"] > 0 and prev["areas"] and len(prev["demand"]) == 24
+    print(f"Rota preview OK: weekly cost £{prev['weekly_cost']:,}, {len(prev['areas'])} staff areas, no sim.")
+
     print("\nAll checks passed.")
 
 

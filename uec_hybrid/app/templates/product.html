@@ -50,6 +50,14 @@
  .wfarea{border:1px solid var(--line);border-radius:9px;padding:13px 15px;margin-bottom:12px}
  .wfarea .t{font-weight:800;color:var(--dark);font-size:14.5px}
  .wfarea .m{font-size:12.5px;color:var(--grey)}
+ .rota{width:100%;border-collapse:collapse;font-size:13px;margin-top:4px}
+ .rota th{text-align:left;color:var(--grey);font-size:11.5px;text-transform:uppercase;letter-spacing:.3px;padding:5px 7px}
+ .rota td{padding:5px 7px;border-top:1px solid var(--line)}
+ .rota select{padding:7px 8px;border:1px solid var(--line);border-radius:6px;font-size:13px;max-width:100%}
+ .rota input[type=number]{width:66px;padding:6px 8px}
+ .rota .rm{background:#fff;color:var(--red);border:1px solid var(--line);margin:0;padding:6px 10px;font-weight:800}
+ .rota .rm:hover{background:var(--red);color:#fff}
+ .hint{font-size:11.5px;color:var(--grey);margin-top:7px}
  .gap{display:flex;align-items:center;gap:14px;border:1px solid var(--line);border-radius:9px;padding:12px 15px;margin-bottom:9px}
  .gap.have{border-left:6px solid var(--green)}.gap.miss{border-left:6px solid var(--orange)}
  .gap .imp{flex:0 0 86px;text-align:center}.gap .imp .d{font-size:19px;font-weight:800;color:var(--green)}.gap .imp .r{font-size:11px;color:var(--grey)}
@@ -92,6 +100,14 @@
   <div class="card"><h2>Are you staffed for the demand curve?</h2>
    <p class="sub" id="wfHeadline"></p><div id="wfAreas"></div>
    <div id="wfCost" style="font-weight:700;color:var(--dark);margin-top:6px"></div></div>
+  <div class="card"><h2>Your rota — change it and watch it move</h2>
+   <p class="sub">Edit the shifts below. The staffing-vs-demand chart and the weekly cost above update
+    instantly. When it looks right, “Apply &amp; re-run” updates the control tower’s standards and
+    pinch-point. Hours are 24-hour; a shift can run past midnight (e.g. 22 → 08).</p>
+   <div id="rotaTable"></div>
+   <button id="addShift" class="sec">+ Add a shift</button>
+   <button id="applyRota">Apply &amp; re-run</button>
+   <div class="status" id="rotaStatus"></div></div>
  </section>
 
  <section class="panel" id="panel-gaps">
@@ -110,8 +126,11 @@
    <label>Attendances on a typical day</label><input type="number" id="dAttend" min="60" max="1400" step="10">
    <label>Inpatient (ward) beds the hospital has</label><input type="number" id="dBeds" min="40" max="1500" step="10">
    <label>Community / virtual-ward capacity</label><input type="number" id="dComm" min="0" max="400" step="5">
-   <label>Which areas does your ED have?</label>
+   <label>Which areas does your ED have, and when are they open?</label>
    <p class="sub" id="coreNote"></p>
+   <p class="sub">Set each area’s opening hours (24-hour clock). Outside those hours its patients
+    are looked after on the main pathway — so same-day areas aren’t modelled as running overnight.
+    Leave as 0 to 24 for round-the-clock.</p>
    <div class="areagrid" id="areaToggles"></div>
    <button id="saveDept">Save &amp; re-run</button>
    <div class="status" id="setupStatus"></div>

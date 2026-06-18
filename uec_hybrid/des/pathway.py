@@ -109,6 +109,8 @@ def validate_schema(pathway: Pathway) -> list[str]:
             for r in routes:
                 if r[0] not in ids:
                     problems.append(f"{nid}: attribute route target {r[0]!r} does not exist")
+        if node.get("open_hours") and node.get("closed_fallback") not in ids:
+            problems.append(f"{nid}: closed_fallback {node.get('closed_fallback')!r} does not exist")
         for r in pathway.node_resources(node):
             if r not in pathway.resources:
                 problems.append(f"{nid}: uses undefined resource {r!r}")
