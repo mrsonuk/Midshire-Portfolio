@@ -96,8 +96,8 @@ function renderFlow(data){
   const kind=(n.kind==='source'||n.kind==='admitted'||n.kind==='discharged')?n.kind:n.status;
   const c=el('div','fmnode '+kind);if(n.is_bottleneck)c.classList.add('bottleneck');
   c.style.left=px(n)+'px';c.style.top=py(n)+'px';c.dataset.label=n.label;
-  c.innerHTML=`<div class="nm">${n.label}</div><div class="vol" data-vol>${n.volume.toLocaleString()}</div>`+
-    (n.kind==='process'?`<div class="wt">wait ${n.mean_wait.toFixed(0)}m</div>`:'')+(n.is_bottleneck?'<div class="flag">PINCH</div>':'');
+  c.innerHTML=`<div class="nm">${n.label}</div><div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
+    (n.kind==='process'?`<div class="wt">wait ${Math.round(n.mean_wait)}m</div>`:'')+(n.is_bottleneck?'<div class="flag">PINCH</div>':'');
   c.onclick=()=>drill(n);host.append(c);}
  let last=performance.now();
  (function f(now){const dt=(now-last)/1000;last=now;for(const L of li)for(const d of L.dots){d.ph=(d.ph+dt*L.sp)%1;const p=L.path.getPointAtLength(d.ph*L.len);d.el.setAttribute('cx',p.x);d.el.setAttribute('cy',p.y);}fmRAF=requestAnimationFrame(f);})(last);
@@ -110,7 +110,7 @@ function updateHour(){
   const lab=node.dataset.label, arr=by[lab];
   if(!arr){return;}
   const now=arr[H], peak=Math.max(...arr,1);
-  const v=node.querySelector('[data-vol]');if(v)v.textContent=now.toFixed(now<10?1:0);
+  const v=node.querySelector('[data-vol]');if(v)v.textContent=Math.round(now).toLocaleString();
   if(node.classList.contains('source')||node.classList.contains('admitted')||node.classList.contains('discharged'))return;
   const r=now/peak;node.classList.remove('green','amber','red');
   node.classList.add(r>=0.8?'red':r>=0.45?'amber':'green');
@@ -120,10 +120,10 @@ function drill(n){
  const by=(TOWER.area_by_hour||{})[n.label]||[];
  const peak=by.length?by.indexOf(Math.max(...by)):0;
  let bars='';
- if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>`<div style="flex:1"><div class="b" style="height:${Math.round(80*v/mx)}px" title="${h}:00 — ${v}"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
+ if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>`<div style="flex:1"><div class="b" style="height:${Math.round(80*v/mx)}px" title="${h}:00 — ${Math.round(v)} in area"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
  $('#drill').style.display='block';
- $('#drill').innerHTML=`<b>${n.label}</b> — ${n.volume.toLocaleString()} patients over the week`+
-   (n.kind==='process'?`, average wait ${n.mean_wait.toFixed(0)} min, ${n.utilisation.toFixed(0)}% busy. Busiest around ${peak}:00.`:'.')+
+ $('#drill').innerHTML=`<b>${n.label}</b> — ${Math.round(n.volume).toLocaleString()} patients over the week`+
+   (n.kind==='process'?`, average wait ${Math.round(n.mean_wait)} min, ${Math.round(n.utilisation)}% busy. Busiest around ${peak}:00.`:'.')+
    (by.length?'<div class="sub" style="margin-top:8px">Patients in this area through the day:</div>'+bars:'');
 }
 
@@ -160,21 +160,38 @@ function onRotaEdit(e){
  ROTA[i][f]=(f==='role')?v:Math.max(0,+v);
  refreshWorkforce();
 }
+let WF=null;
 function renderWorkforce(d){
+ WF=d;
  $('#wfHeadline').innerHTML=d.headline;
- const dmax=Math.max(...d.demand,1);
- $('#wfAreas').innerHTML=d.areas.map(a=>{
+ $('#wfDrill').style.display='none';
+ $('#wfAreas').innerHTML=d.areas.map((a,ai)=>{
   const smax=Math.max(...a.staffing,1);
   const bars=a.staffing.map((s,h)=>{
    const under=a.understaffed_hours.includes(h);
-   return `<div style="flex:1"><div class="b ${under?'under':''}" style="height:${Math.round(80*s/smax)}px" title="${h}:00 — ${s} on shift${under?' (light vs demand)':''}"></div><div class="lab">${h%6===0?h:''}</div></div>`;
+   return `<div style="flex:1"><div class="b ${under?'under':''}" data-ai="${ai}" data-h="${h}" style="height:${Math.round(80*s/smax)}px;cursor:pointer" title="${h}:00 — ${s} on shift${under?' (light vs demand)':''}"></div><div class="lab">${h%6===0?h:''}</div></div>`;
   }).join('');
   const win=a.understaffed_hours.length?`Light vs demand around ${String(Math.min(...a.understaffed_hours)).padStart(2,'0')}:00–${String((Math.max(...a.understaffed_hours)+1)%24).padStart(2,'0')}:00.`:'Broadly matches demand.';
   return `<div class="wfarea"><div class="t">${a.label}</div>
     <div class="m">Peak ${a.peak} · overnight ${a.overnight}. ${win}</div>
     <div class="hours">${bars}</div></div>`;
  }).join('');
+ $$('#wfAreas .b').forEach(b=>b.onclick=()=>wfDrill(+b.dataset.ai,+b.dataset.h));
  $('#wfCost').innerHTML=`Estimated weekly staffing cost (these roles): <b>£${d.weekly_cost.toLocaleString()}</b> · about £${Math.round(d.weekly_cost*52/1e6*10)/10}m a year.`;
+}
+function wfDrill(ai,h){
+ const a=WF.areas[ai], on=a.staffing[h], dem=Math.round(WF.demand[h]);
+ const dmax=Math.max(...WF.demand,1), share=Math.round(100*WF.demand[h]/dmax);
+ const under=a.understaffed_hours.includes(h);
+ const roles=a.roles&&a.roles.length?a.roles.map(r=>r.label).join(', '):'—';
+ const hh=String(h).padStart(2,'0'), nh=String((h+1)%24).padStart(2,'0');
+ $('#wfDrill').style.display='block';
+ $('#wfDrill').innerHTML=`<b>${a.label} — ${hh}:00–${nh}:00</b><br>
+   <b>${on}</b> on shift this hour. Roles that staff this area: ${roles}.<br>
+   Demand at this hour is about <b>${dem}</b> arrivals (${share}% of the daily peak). `+
+   (under?`<span style="color:var(--red);font-weight:700">This is one of the hours staffing looks light against demand — the most likely time to fall behind.</span>`
+        :`Staffing broadly matches demand this hour.`)+
+   `<div class="hint" style="margin-top:6px">Adjust this in the rota below, then “Apply &amp; re-run”.</div>`;
 }
 
 // ---- gaps ----
@@ -188,7 +205,7 @@ function renderGaps(d){
  $('#gapMiss').innerHTML=d.missing.length?d.missing.map(m=>{
    const sign=(typeof m.value==='number'&&m.unit.includes('4-hr')&&m.value>=0)?'+':'';
    return `<div class="gap miss">
-   <div class="imp"><div class="d">${sign}${m.value}</div><div class="r">${m.unit}</div></div>
+   <div class="imp"><div class="d">${sign}${Math.round(m.value)}</div><div class="r">${m.unit}</div></div>
    <div class="body"><div class="t">${m.label}</div><div class="w">${m.benefit}</div></div>
    <div style="text-align:right"><span class="pill ${m.cost}">${m.cost} cost</span></div></div>`;}).join(''):'<p class="sub">You have every Model ED element in place.</p>';
 }

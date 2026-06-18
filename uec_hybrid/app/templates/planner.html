@@ -62,7 +62,13 @@
  <h1>Urgent &amp; Emergency Care — Demand &amp; Capacity Planner</h1>
  <p>For ICB and operational planning · works for any emergency department</p>
 </div></header>
+<nav style="background:#fff;border-bottom:1px solid var(--line);padding:0 26px;display:flex;gap:4px">
+ <a href="/" style="padding:12px 16px;font-weight:700;font-size:14px;color:var(--blue);text-decoration:none">← Back to Model ED Optimiser</a>
+ <a href="/" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none">Control tower</a>
+ <a href="/analyst" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none;margin-left:auto">Analyst view</a>
+</nav>
 <div class="wrap">
+ <p class="sub" id="deptNote" style="margin:10px 0 0;display:none"></p>
 
  <div class="modes">
   <div class="mode active" data-mode="winter"><div class="t">Plan for this winter</div><div class="d">ICB winter &amp; investment planning — where to invest</div></div>
@@ -129,6 +135,13 @@ const $=s=>document.querySelector(s);
 function bind(id,vid,suf){const e=$('#'+id);const u=()=>$('#'+vid).textContent=e.value+suf;e.oninput=u;u();}
 bind('uplift','upV','%');bind('growth','gwV','%');bind('fullness','fullV','%');
 function rag(v){return v>=78?'green':v>=72?'amber':'red';}
+// connect to the department set up in the product: start from its attendances
+(async function(){try{const d=await fetch('/api/setup').then(r=>r.json());
+ const a=Math.round(d.department.attendances_per_day);
+ if(a){$('#attend').value=a;if($('#tAttend'))$('#tAttend').value=Math.round(a*1.06);
+  const n=$('#deptNote');n.style.display='block';
+  n.innerHTML=`Starting from <b>${d.department.name}</b> as set up in the control tower (${a} attendances a day). Change the numbers below to plan.`;}
+}catch(e){}})();
 document.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{
  document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('active',x===m));
  const t=m.dataset.mode==='today';$('#today').style.display=t?'block':'none';$('#winter').style.display=t?'none':'block';
