@@ -1,0 +1,312 @@
+"""
+Flask dashboard for the hybrid SD+DES UEC model.
+
+Tabs: Live simulation (scorecard + flow model + diagnosis), System Dynamics
+(stocks/feedback/occupancy band), Monte-Carlo, Scenarios & sensitivity, Validation
+(process-map conformance), and Data & population (determinants + ECDS calibration).
+Plotly is vendored locally so it runs offline / on locked-down NHS networks.
+"""
+from __future__ import annotations
+
+import copy
+import glob
+import io
+import json
+import os
+from pathlib import Path
+
+from flask import Flask, jsonify, render_template, request, send_file
+
+from ..des.pathway import Pathway
+from ..coupling.cosim import run_cosim
+from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, diagnose)
+from ..analysis.montecarlo import monte_carlo
+from ..analysis.scenarios import compare_scenarios, tornado
+from ..validation.conformance import check as conformance_check
+from ..validation.process_map import variants
+from ..viz import figures as fig
+from ..viz.flow_model import flow_model_data
+from ..demand.population import apply_population
+from ..demand.ecds_seam import read_table, calibrate, generate_sample
+from ..planning.planner import make_plan
+from ..planning.operational import today_plan
+from ..planning.forecast import forecast_from_history, generate_daily_history
+
+app = Flask(__name__)
+PATHWAY_DIR = Path(__file__).resolve().parent.parent / "pathways"
+CALIBRATIONS: dict[str, dict] = {}
+
+
+def list_pathways():
+    out = {}
+    for f in sorted(glob.glob(str(PATHWAY_DIR / "*.json"))):
+        key = Path(f).stem
+        data = json.load(open(f))
+        out[key] = {"key": key, "name": data.get("name", key),
+                    "description": data.get("description", ""),
+                    "resources": data.get("resources", {}), "sd": data.get("sd", {})}
+    return out
+
+
+def _build(body):
+    key = body["pathway"]
+    raw = copy.deepcopy(CALIBRATIONS.get(key)
+                        or Pathway.load(PATHWAY_DIR / f"{key}.json").raw)
+    name = raw.get("name", key)
+    pop = body.get("population") or {}
+    demand_mult = 1.0
+    if pop:
+        raw, demand_mult, _ = apply_population(
+            raw, float(pop.get("older_fraction", 0.20)),
+            float(pop.get("imd_decile", 5.0)), float(pop.get("paediatric_fraction", 0.22)))
+    for r, v in (body.get("overrides") or {}).items():
+        if r in raw.get("resources", {}):
+            raw["resources"][r] = max(0, int(v))
+    scale = float(body.get("arrivals_scale", 1.0)) * demand_mult
+    if scale != 1.0 and "hourly_profile" in raw.get("arrivals", {}):
+        raw["arrivals"]["hourly_profile"] = [h * scale for h in raw["arrivals"]["hourly_profile"]]
+    p = Pathway.from_dict(raw); p.name = name
+    sd_over = body.get("sd_overrides") or None
+    return p, sd_over, bool(body.get("feedback", True))
+
+
+def J(figure):
+    return json.loads(figure.to_json())
+
+
+@app.route("/")
+def home():
+    # The product: a flow-first control tower for designing/running the ED.
+    return render_template("product.html")
+
+
+@app.route("/planner")
+def planner_page():
+    return render_template("planner.html")
+
+
+# ---- Model ED Optimiser product ------------------------------------------- #
+from ..department.config import Department, AREAS, CORE_NOTE
+from ..department.builder import build as build_dept
+from ..department.model_ed_gap import gap_analysis
+from ..workforce.roles import ROLES, AREA_LABEL
+from ..workforce.view import workforce_view
+from ..viz.flow_model import control_tower
+
+CURRENT = {"dept": Department.default()}
+
+
+def _dept():
+    return CURRENT["dept"]
+
+
+def _standards(dept, reps=5):
+    """Plain headline standards for a department: good / typical / tough."""
+    p = Pathway.from_dict(build_dept(dept))
+    mc = monte_carlo(p, replications=reps, base_seed=1000, feedback=True)
+    s = mc["summary"]
+
+    def band(key, hi=True):
+        v = s.get(key)
+        if not v:
+            return None
+        return {"typical": round(v["mean"]), "good": round(v["max"] if hi else v["min"]),
+                "tough": round(v["min"] if hi else v["max"])}
+    return {
+        "four_hour": band("four_hour"),
+        "initial_assessment": band("initial_assessment_15min"),
+        "twelve_hour": band("twelve_hour", hi=False),
+        "ambulance_handover": band("ambulance_handover_45"),
+        "attendances_per_day": round(dept.attendances_per_day),
+    }
+
+
+@app.route("/api/setup")
+def api_setup():
+    d = _dept()
+    return jsonify({
+        "department": d.to_dict(),
+        "areas": {k: {"label": v["label"], "why": v["why"]} for k, v in AREAS.items()},
+        "core_note": CORE_NOTE,
+        "roles": {k: {"label": v["label"], "staffs": v["staffs"], "cost": v["cost"]} for k, v in ROLES.items()},
+        "area_labels": AREA_LABEL,
+    })
+
+
+@app.route("/api/department", methods=["POST"])
+def api_set_department():
+    CURRENT["dept"] = Department.from_dict(request.get_json(force=True))
+    return jsonify({"ok": True, "department": CURRENT["dept"].to_dict()})
+
+
+@app.route("/api/control-tower", methods=["POST"])
+def api_control_tower():
+    d = _dept()
+    p = Pathway.from_dict(build_dept(d))
+    res = run_cosim(p, seed=int(request.get_json(silent=True, force=True).get("seed", 2)
+                              if request.data else 2))
+    ct = control_tower(res, p)
+    diag = diagnose(res, p)
+    ct["standards"] = _standards(d)
+    ct["recommendation"] = diag["recommendation"]
+    ct["headline_bottleneck"] = diag["headline"]
+    return jsonify(ct)
+
+
+@app.route("/api/workforce", methods=["POST"])
+def api_workforce():
+    return jsonify(workforce_view(_dept()))
+
+
+@app.route("/api/gap", methods=["POST"])
+def api_gap():
+    return jsonify(gap_analysis(_dept()))
+
+
+@app.route("/api/plan", methods=["POST"])
+def api_plan():
+    body = request.get_json(force=True)
+    try:
+        plan = make_plan(
+            attendances_now=float(body.get("attendances_now", 320)),
+            winter_uplift_pct=float(body.get("winter_uplift_pct", 12)),
+            yoy_growth_pct=float(body.get("yoy_growth_pct", 0)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(plan)
+
+
+@app.route("/api/plan-today", methods=["POST"])
+def api_plan_today():
+    body = request.get_json(force=True)
+    try:
+        plan = today_plan(
+            attendances_today=float(body.get("attendances_today", 340)),
+            hospital_fullness_pct=float(body.get("hospital_fullness_pct", 94)))
+    except Exception as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify(plan)
+
+
+@app.route("/api/forecast-data", methods=["POST"])
+def api_forecast_data():
+    """Derive the winter forecast from an uploaded daily attendance history."""
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    try:
+        df = read_table(request.files["file"].read())
+        return jsonify(forecast_from_history(df))
+    except Exception as e:
+        return jsonify({"error": f"could not read history: {e}"}), 400
+
+
+@app.route("/api/sample-history")
+def api_sample_history():
+    buf = io.StringIO(); generate_daily_history().to_csv(buf, index=False)
+    return app.response_class(buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_attendance_history.csv"})
+
+
+@app.route("/analyst")
+def analyst():
+    # The technical model view, for analysts.
+    return render_template("dashboard.html", pathways=list_pathways())
+
+
+@app.route("/api/simulate", methods=["POST"])
+def api_simulate():
+    body = request.get_json(force=True)
+    p, sd_over, fb = _build(body)
+    res = run_cosim(p, seed=int(body.get("seed", 0)), feedback=fb, sd_overrides=sd_over)
+    m = {**kpis(res, p), **uec_metrics(res, p)}
+    conf = conformance_check(res, p)
+    return jsonify({
+        "kpis": m, "scorecard": uec_scorecard(m), "diagnosis": diagnose(res, p),
+        "flow_model": flow_model_data(res, p),
+        "conformance": {k: conf[k] for k in ("conformance_rate", "n_violations", "passed", "by_type")},
+        "figures": {
+            "sd_stocks": J(fig.sd_stocks_figure(res, p)),
+            "sd_feedback": J(fig.sd_feedback_figure(res)),
+            "utilisation": J(fig.utilisation_figure(res, p)),
+            "waits": J(fig.waits_figure(res)),
+        }})
+
+
+@app.route("/api/montecarlo", methods=["POST"])
+def api_montecarlo():
+    body = request.get_json(force=True)
+    p, sd_over, fb = _build(body)
+    reps = int(body.get("replications", 24))
+    mc = monte_carlo(p, replications=reps, base_seed=1000, feedback=fb, sd_overrides=sd_over)
+    s = mc["summary"].get("four_hour", {})
+    interp = ""
+    if s:
+        spread = s["ci_high"] - s["ci_low"]
+        interp = (f"Across {reps} independent simulated weeks, 4-hour performance averaged "
+                  f"{s['mean']:.1f}% (95% of weeks {s['ci_low']:.1f}–{s['ci_high']:.1f}%). "
+                  + ("Wide spread — plan to the lower bound." if spread > 8
+                     else "Reasonably tight — behaviour is predictable at this configuration."))
+    return jsonify({"summary": mc["summary"], "interpretation": interp,
+                    "four_hour": J(fig.montecarlo_figure(mc, "four_hour", "4-hour compliance (%)")),
+                    "twelve": J(fig.montecarlo_figure(mc, "twelve_hour", "12-hour waits (%)")),
+                    "occ_band": J(fig.occupancy_band_figure(mc))})
+
+
+@app.route("/api/scenarios", methods=["POST"])
+def api_scenarios():
+    body = request.get_json(force=True)
+    p, _, fb = _build(body)
+    scenarios = body.get("scenarios", [])
+    reps = int(body.get("replications", 8))
+    cmp = compare_scenarios(p, scenarios, replications=reps, feedback=fb)
+    tor = tornado(p, scenarios, replications=max(6, reps // 2)) if scenarios else {"bars": []}
+    return jsonify({"rows": cmp["rows"],
+                    "four_hour": J(fig.scenario_figure(cmp, "four_hour", "4-hour compliance (%)")),
+                    "twelve": J(fig.scenario_figure(cmp, "twelve_hour", "12-hour waits (%)", higher_better=False)),
+                    "tornado": J(fig.tornado_figure(tor)) if tor["bars"] else None})
+
+
+@app.route("/api/validate", methods=["POST"])
+def api_validate():
+    body = request.get_json(force=True)
+    p, sd_over, fb = _build(body)
+    res = run_cosim(p, seed=int(body.get("seed", 0)), feedback=fb, sd_overrides=sd_over)
+    conf = conformance_check(res, p)
+    v = variants(res).to_dict("records")
+    return jsonify({"conformance": conf, "variants": v})
+
+
+@app.route("/api/sample-data")
+def api_sample_data():
+    buf = io.StringIO(); generate_sample().to_csv(buf, index=False)
+    return app.response_class(buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=sample_ecds_template.csv"})
+
+
+@app.route("/api/calibrate", methods=["POST"])
+def api_calibrate():
+    key = request.form.get("pathway")
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    try:
+        df = read_table(request.files["file"].read())
+        base = copy.deepcopy(Pathway.load(PATHWAY_DIR / f"{key}.json").raw)
+        calibrated, summary = calibrate(df, base)
+        CALIBRATIONS[key] = calibrated
+    except Exception as e:
+        return jsonify({"error": f"could not calibrate: {e}"}), 400
+    return jsonify({"summary": summary, "calibrated": True})
+
+
+@app.route("/api/calibrate/reset", methods=["POST"])
+def api_calibrate_reset():
+    CALIBRATIONS.pop(request.get_json(force=True).get("pathway"), None)
+    return jsonify({"summary": ["Reset to synthetic baseline."], "calibrated": False})
+
+
+def main():
+    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 5000)), debug=False)
+
+
+if __name__ == "__main__":
+    main()
