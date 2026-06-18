@@ -1,25 +1,34 @@
-# NHS UEC Winter Demand & Capacity Planner
+# Model ED Optimiser
 
-A planning tool for NHS Urgent & Emergency Care. It forecasts demand and answers, in
-plain operational language (no modelling jargon), what to do — for **any** emergency
-department. Two modes:
+A product to help any NHS trust **implement the Model Emergency Department** — design,
+staff and run a high-performing ED. It is flow-first and plain-language; the hybrid
+simulation (DES + System Dynamics + Monte-Carlo) is the hidden engine and none of its
+vocabulary appears on the product surface.
 
-- **Plan for this winter** (ICB / investment): forecast winter demand from three
-  numbers *or from your own uploaded attendance history* (it reads off the recent
-  level, year-on-year growth and how much higher winter runs), then *what winter
-  looks like*, *what's driving the pressure*, and *which investment option is worth
-  it* — ranked by impact with an indicative cost band and a recommendation.
-- **Today / this week** (operational): enter today's expected attendances and how
-  full the hospital is, and get an **OPEL-style risk read**, the do-nothing
-  projection, and the **no-cost actions** that help most right now (discharge push,
-  SDEC hours, staff flex, escalation, redirect, community) — ranked, with who owns
-  each and a clear "do this first".
+Open `/` for the product. It has:
 
-Open `/` for the planner.
+- **Control tower** — a live flow map of *your* department: patients moving through your
+  areas, queues, and the busiest pinch-point (with *when* it bites). A time-of-day slider
+  shows the department at any hour; click an area to drill in. Headline standards
+  (4-hour, 15-minute assessment, 12-hour, ambulance handover) as a typical / good / tough
+  week.
+- **Workforce** — "are you staffed for the demand curve?": staffing by role and hour
+  against demand, the under-staffed windows in red, and the weekly pay-bill. (The engine
+  models **staffing that varies by hour**, so the bottleneck is time-aware.)
+- **Model ED gaps** — which Model ED elements you have vs are missing, and what each
+  missing one would add (front-door areas judged on the 4-hour standard; same-day /
+  assessment areas on the **admissions they avoid**), with an indicative cost band — the
+  investment case.
+- **Set up my ED** — switch the areas you actually have on/off (UTC, RAT, fit-to-sit,
+  EEMAC, SDEC, PAU, CDU, frailty, MH), set its size and beds; patients re-route safely.
+- **Plan ahead** (`/planner`) — the winter & today demand/capacity planner.
+- **Analyst view** (`/analyst`) — the full technical model.
 
-Under the hood is a principled hybrid simulation engine (below); none of its
-modelling vocabulary appears in the planner. Analysts can open the full technical
-model at `/analyst`.
+```bash
+pip install -r requirements.txt
+python -m uec_hybrid.app.server     # product at http://127.0.0.1:5000
+python -m uec_hybrid.tests.run      # end-to-end checks (incl. time-varying staffing)
+```
 
 ```bash
 pip install -r requirements.txt

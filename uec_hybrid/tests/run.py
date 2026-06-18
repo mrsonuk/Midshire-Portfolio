@@ -87,6 +87,34 @@ def main():
     assert len(cmp["rows"]) == 2
     print("Scenario comparison OK.")
 
+    # --- time-varying staffing tracks the rota and respects the peak ---
+    import json as _json
+    raw = _json.loads(_json.dumps(_json.load(open(PATHWAY))))
+    roster = [4, 4, 4, 4, 4, 4, 5, 7, 10, 13, 14, 14, 14, 13, 13, 13, 14, 14, 13, 11, 9, 7, 6, 5]
+    raw["resources"]["ed_doctor"] = roster
+    pr = Pathway.from_dict(raw)
+    rr = run_cosim(pr, seed=1)
+    hh = rr["holds"]; hh = hh[hh["resource"] == "ed_doctor"]
+    starts, ends = hh["start"].to_numpy(), hh["end"].to_numpy()
+    peak = max(int(((starts <= t) & (ends > t)).sum()) for t in starts)
+    assert peak <= max(roster), f"staffing exceeded roster peak ({peak} > {max(roster)})"
+    night = [int(((starts <= h * 60 + 3 * 1440) & (ends > h * 60 + 3 * 1440)).sum()) for h in range(2, 5)]
+    assert max(night) <= 6, "overnight staffing not reduced by the rota"
+    print(f"Time-varying staffing OK: peak {peak} <= roster peak {max(roster)}, overnight reduced.")
+
+    # --- department builder: areas off still validate, route safely, conformance ---
+    from ..department.config import Department
+    from ..department.builder import build as build_dept
+    from ..workforce.rota import weekly_cost
+    lean = Department.from_dict({**Department.default().to_dict(), "enabled": ["rat", "sdec"]})
+    pd_ = Pathway.from_dict(build_dept(lean))
+    assert not validate_schema(pd_), validate_schema(pd_)
+    rd = run_cosim(pd_, seed=1)
+    assert kpis(rd, pd_)["n_patients"] > 400
+    assert check(rd, pd_)["passed"], "disabled-area pathway not conformant"
+    assert weekly_cost(Department.default().rota) > 0
+    print("Department builder OK: areas off validate, route safely, conformant; rota cost computed.")
+
     print("\nAll checks passed.")
 
 

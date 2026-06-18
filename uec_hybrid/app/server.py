@@ -76,8 +76,91 @@ def J(figure):
 
 @app.route("/")
 def home():
-    # The primary view is the plain-language planner for ICB / winter planners.
+    # The product: a flow-first control tower for designing/running the ED.
+    return render_template("product.html")
+
+
+@app.route("/planner")
+def planner_page():
     return render_template("planner.html")
+
+
+# ---- Model ED Optimiser product ------------------------------------------- #
+from ..department.config import Department, AREAS, CORE_NOTE
+from ..department.builder import build as build_dept
+from ..department.model_ed_gap import gap_analysis
+from ..workforce.roles import ROLES, AREA_LABEL
+from ..workforce.view import workforce_view
+from ..viz.flow_model import control_tower
+
+CURRENT = {"dept": Department.default()}
+
+
+def _dept():
+    return CURRENT["dept"]
+
+
+def _standards(dept, reps=5):
+    """Plain headline standards for a department: good / typical / tough."""
+    p = Pathway.from_dict(build_dept(dept))
+    mc = monte_carlo(p, replications=reps, base_seed=1000, feedback=True)
+    s = mc["summary"]
+
+    def band(key, hi=True):
+        v = s.get(key)
+        if not v:
+            return None
+        return {"typical": round(v["mean"]), "good": round(v["max"] if hi else v["min"]),
+                "tough": round(v["min"] if hi else v["max"])}
+    return {
+        "four_hour": band("four_hour"),
+        "initial_assessment": band("initial_assessment_15min"),
+        "twelve_hour": band("twelve_hour", hi=False),
+        "ambulance_handover": band("ambulance_handover_45"),
+        "attendances_per_day": round(dept.attendances_per_day),
+    }
+
+
+@app.route("/api/setup")
+def api_setup():
+    d = _dept()
+    return jsonify({
+        "department": d.to_dict(),
+        "areas": {k: {"label": v["label"], "why": v["why"]} for k, v in AREAS.items()},
+        "core_note": CORE_NOTE,
+        "roles": {k: {"label": v["label"], "staffs": v["staffs"], "cost": v["cost"]} for k, v in ROLES.items()},
+        "area_labels": AREA_LABEL,
+    })
+
+
+@app.route("/api/department", methods=["POST"])
+def api_set_department():
+    CURRENT["dept"] = Department.from_dict(request.get_json(force=True))
+    return jsonify({"ok": True, "department": CURRENT["dept"].to_dict()})
+
+
+@app.route("/api/control-tower", methods=["POST"])
+def api_control_tower():
+    d = _dept()
+    p = Pathway.from_dict(build_dept(d))
+    res = run_cosim(p, seed=int(request.get_json(silent=True, force=True).get("seed", 2)
+                              if request.data else 2))
+    ct = control_tower(res, p)
+    diag = diagnose(res, p)
+    ct["standards"] = _standards(d)
+    ct["recommendation"] = diag["recommendation"]
+    ct["headline_bottleneck"] = diag["headline"]
+    return jsonify(ct)
+
+
+@app.route("/api/workforce", methods=["POST"])
+def api_workforce():
+    return jsonify(workforce_view(_dept()))
+
+
+@app.route("/api/gap", methods=["POST"])
+def api_gap():
+    return jsonify(gap_analysis(_dept()))
 
 
 @app.route("/api/plan", methods=["POST"])
