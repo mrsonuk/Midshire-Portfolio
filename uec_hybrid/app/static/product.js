@@ -24,8 +24,14 @@ $$('#nav a[data-tab]').forEach(a=>a.onclick=()=>{
  const grid=$('#areaToggles');grid.innerHTML='';
  for(const[k,a] of Object.entries(SETUP.areas)){
   const on=d.enabled.includes(k);
+  const hrs=(d.hours&&d.hours[k])||[0,24];
   const w=el('label','areatog');
-  w.innerHTML=`<input type="checkbox" data-area="${k}" ${on?'checked':''}><div><div style="font-weight:700">${a.label}</div><div class="x">${a.why}</div></div>`;
+  w.innerHTML=`<input type="checkbox" data-area="${k}" ${on?'checked':''}>
+   <div><div style="font-weight:700">${a.label}</div><div class="x">${a.why}</div>
+    <div class="x" style="margin-top:6px">Open
+     <input type="number" data-hopen="${k}" value="${hrs[0]}" min="0" max="24" style="width:56px;padding:4px 6px;margin:0">
+     to
+     <input type="number" data-hclose="${k}" value="${hrs[1]}" min="0" max="24" style="width:56px;padding:4px 6px;margin:0"></div></div>`;
   grid.append(w);
  }
  loadTower();
@@ -122,9 +128,37 @@ function drill(n){
 }
 
 // ---- workforce ----
+let ROTA=null;
 async function loadWorkforce(){
- loaded.wf=true;$('#wfAreas').innerHTML='<div class="loading"><span class="spin"></span> Checking your rota against demand…</div>';
- try{const d=await post('/api/workforce',{});renderWorkforce(d);}catch(e){$('#wfAreas').innerHTML='Error: '+e.message;}
+ loaded.wf=true;
+ ROTA=JSON.parse(JSON.stringify(SETUP.department.rota||[]));
+ renderRota();
+ $('#wfAreas').innerHTML='<div class="loading"><span class="spin"></span> Checking your rota against demand…</div>';
+ refreshWorkforce();
+}
+async function refreshWorkforce(){
+ try{const d=await post('/api/rota-preview',{rota:ROTA,attendances_per_day:SETUP.department.attendances_per_day});renderWorkforce(d);}
+ catch(e){$('#wfAreas').innerHTML='Error: '+e.message;}
+}
+function roleOptions(sel){
+ return Object.entries(SETUP.roles).map(([id,r])=>`<option value="${id}" ${id===sel?'selected':''}>${r.label}</option>`).join('');
+}
+function renderRota(){
+ const rows=ROTA.map((sh,i)=>`<tr data-i="${i}">
+   <td><select data-f="role">${roleOptions(sh.role)}</select></td>
+   <td><input type="number" data-f="start" min="0" max="24" value="${sh.start}"></td>
+   <td><input type="number" data-f="end" min="0" max="24" value="${sh.end}"></td>
+   <td><input type="number" data-f="count" min="0" max="40" value="${sh.count}"></td>
+   <td><button class="rm" title="Remove shift">✕</button></td></tr>`).join('');
+ $('#rotaTable').innerHTML=`<table class="rota"><thead><tr>
+   <th>Role</th><th>Start</th><th>End</th><th>How many</th><th></th></tr></thead><tbody>${rows}</tbody></table>`;
+ $$('#rotaTable [data-f]').forEach(inp=>inp.onchange=onRotaEdit);
+ $$('#rotaTable .rm').forEach((b,i)=>b.onclick=()=>{ROTA.splice(i,1);renderRota();refreshWorkforce();});
+}
+function onRotaEdit(e){
+ const i=+e.target.closest('tr').dataset.i, f=e.target.dataset.f, v=e.target.value;
+ ROTA[i][f]=(f==='role')?v:Math.max(0,+v);
+ refreshWorkforce();
 }
 function renderWorkforce(d){
  $('#wfHeadline').innerHTML=d.headline;
@@ -159,11 +193,33 @@ function renderGaps(d){
    <div style="text-align:right"><span class="pill ${m.cost}">${m.cost} cost</span></div></div>`;}).join(''):'<p class="sub">You have every Model ED element in place.</p>';
 }
 
+// ---- rota editor buttons ----
+$('#addShift').onclick=()=>{
+ if(!ROTA)ROTA=[];
+ ROTA.push({role:Object.keys(SETUP.roles)[0],start:8,end:20,count:1});
+ renderRota();refreshWorkforce();
+};
+$('#applyRota').onclick=async()=>{
+ const dept={...SETUP.department,rota:ROTA};
+ $('#rotaStatus').innerHTML='<span class="spin"></span> Applying and re-running…';
+ try{await post('/api/department',dept);SETUP.department=dept;loaded={};
+  $('#rotaStatus').textContent='Applied. Updated the control tower.';
+  $$('#nav a').forEach(x=>x.classList.remove('active'));$('#nav a[data-tab=tower]').classList.add('active');
+  $$('.panel').forEach(p=>p.classList.remove('active'));$('#panel-tower').classList.add('active');
+  loadTower();
+ }catch(e){$('#rotaStatus').textContent='Error: '+e.message;}
+};
+
 // ---- setup save ----
 $('#saveDept').onclick=async()=>{
- const enabled=[...$$('#areaToggles input:checked')].map(i=>i.dataset.area);
+ const enabled=[...$$('#areaToggles input[type=checkbox]:checked')].map(i=>i.dataset.area);
+ const hours={...(SETUP.department.hours||{})};
+ $$('#areaToggles [data-hopen]').forEach(inp=>{
+  const k=inp.dataset.hopen, c=$(`#areaToggles [data-hclose="${k}"]`);
+  hours[k]=[Math.max(0,Math.min(24,+inp.value)),Math.max(0,Math.min(24,+c.value))];
+ });
  const dept={...SETUP.department,name:$('#dName').value,attendances_per_day:+$('#dAttend').value,
-   inpatient_beds:+$('#dBeds').value,community_capacity:+$('#dComm').value,enabled};
+   inpatient_beds:+$('#dBeds').value,community_capacity:+$('#dComm').value,enabled,hours};
  $('#setupStatus').innerHTML='<span class="spin"></span> Saving and re-running…';
  try{await post('/api/department',dept);SETUP.department=dept;loaded={};
   $('#setupStatus').textContent='Saved. Updated the control tower.';

@@ -39,6 +39,13 @@ def reference_map(pathway: Pathway) -> dict:
         bedded[nid] = node.get("bedded_care")
         for t in _targets(node):
             legal.add((nid, t))
+    # part-time areas: when closed, a router that targets the area's entry node
+    # diverts straight to its fallback, so that transition is legal too.
+    closed_fb = {nid: node["closed_fallback"] for nid, node in pathway.nodes.items()
+                 if node.get("open_hours") and node.get("closed_fallback")}
+    for (a, b) in list(legal):
+        if b in closed_fb:
+            legal.add((a, closed_fb[b]))
     sinks = {nid: node.get("label", nid) for nid, node in pathway.nodes.items()
              if node.get("type") == "sink"}
     return {"legal": legal, "band_index": band_index, "bedded": bedded,

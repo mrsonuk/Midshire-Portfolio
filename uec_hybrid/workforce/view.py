@@ -2,6 +2,9 @@
 The "are you staffed for the demand curve?" view: per staff area, the headcount by
 hour against the arrivals shape, the hours where staffing lags demand, plus the
 weekly pay-bill — all in plain terms for an ED ops/workforce lead.
+
+``staffing_and_cost`` is pure and simulation-free, so the rota editor can preview a
+change instantly; ``workforce_view`` wraps it for a whole department.
 """
 from __future__ import annotations
 
@@ -9,22 +12,26 @@ from .rota import staffing_by_hour, weekly_cost, cost_breakdown, understaffed_ho
 from .roles import STAFF_RESOURCES, AREA_LABEL, ROLES
 
 
-def _demand_profile(dept) -> list[float]:
+def _demand_profile(attendances_per_day: float) -> list[float]:
     from ..planning.forecast import HOURLY
     tot = sum(HOURLY) or 1
-    return [h * dept.attendances_per_day / tot for h in HOURLY]
+    return [h * attendances_per_day / tot for h in HOURLY]
 
 
-def workforce_view(dept) -> dict:
-    staffing = staffing_by_hour(dept.rota)
-    demand = _demand_profile(dept)
-    # which staff areas the department actually has (areas may be switched off)
-    from ..department.builder import build
-    present = set(build(dept).get("resources", {}))
+def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
+    """Staffing-vs-demand and cost for a rota — no simulation, instant.
+
+    ``present`` optionally restricts the staff areas shown (e.g. only those the
+    department actually has); ``None`` shows every staffed area in the rota.
+    """
+    staffing = staffing_by_hour(rota)
+    demand = _demand_profile(attendances_per_day)
 
     areas = []
     for res in STAFF_RESOURCES:
-        if res not in present:
+        if present is not None and res not in present:
+            continue
+        if res not in staffing:
             continue
         s = staffing[res]
         under = understaffed_hours(s, demand)
@@ -45,7 +52,14 @@ def workforce_view(dept) -> dict:
     return {
         "demand": [round(x, 1) for x in demand],
         "areas": areas,
-        "weekly_cost": int(weekly_cost(dept.rota)),
-        "cost_breakdown": cost_breakdown(dept.rota),
+        "weekly_cost": int(weekly_cost(rota)),
+        "cost_breakdown": cost_breakdown(rota),
         "headline": headline,
     }
+
+
+def workforce_view(dept) -> dict:
+    # which staff areas the department actually has (areas may be switched off)
+    from ..department.builder import build
+    present = set(build(dept).get("resources", {}))
+    return staffing_and_cost(dept.rota, dept.attendances_per_day, present=present)

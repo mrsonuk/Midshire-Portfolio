@@ -62,6 +62,21 @@ def build(dept: Department) -> dict:
                                             if d["target"] not in disabled_nodes]
         raw["nodes"] = [n for n in raw["nodes"] if n["id"] not in disabled_nodes]
 
+    # --- opening hours: enabled part-time areas divert to their fallback when closed ---
+    nodes_by_id = {n["id"]: n for n in raw["nodes"]}
+    for a in dept.enabled:
+        if a not in AREAS:
+            continue
+        o, c = dept.hours_for(a)
+        if [o, c] == [0, 24]:
+            continue                       # 24/7: nothing to gate
+        entry = AREAS[a]["nodes"][0]       # the area's entry node
+        fb = AREAS[a]["fallback"]
+        node = nodes_by_id.get(entry)
+        if node is not None and fb in nodes_by_id and fb != entry:
+            node["open_hours"] = [int(o), int(c)]
+            node["closed_fallback"] = fb
+
     # --- resources: drop those only used by disabled areas; scale spaces by size ---
     used = set()
     for n in raw["nodes"]:

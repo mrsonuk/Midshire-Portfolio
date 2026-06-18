@@ -14,13 +14,17 @@ Open `/` for the product. It has:
   week.
 - **Workforce** — "are you staffed for the demand curve?": staffing by role and hour
   against demand, the under-staffed windows in red, and the weekly pay-bill. (The engine
-  models **staffing that varies by hour**, so the bottleneck is time-aware.)
+  models **staffing that varies by hour**, so the bottleneck is time-aware.) A **live rota
+  editor** lets you change shifts and watch the staffing curve and weekly cost move
+  instantly, then "Apply & re-run" to see the standards and pinch-point shift.
 - **Model ED gaps** — which Model ED elements you have vs are missing, and what each
   missing one would add (front-door areas judged on the 4-hour standard; same-day /
   assessment areas on the **admissions they avoid**), with an indicative cost band — the
   investment case.
 - **Set up my ED** — switch the areas you actually have on/off (UTC, RAT, fit-to-sit,
-  EEMAC, SDEC, PAU, CDU, frailty, MH), set its size and beds; patients re-route safely.
+  EEMAC, SDEC, PAU, CDU, frailty, MH), set each area's **opening hours** (e.g. SDEC 08–20
+  rather than 24/7), set its size and beds; patients re-route safely when an area is off
+  or closed.
 - **Plan ahead** (`/planner`) — the winter & today demand/capacity planner.
 - **Analyst view** (`/analyst`) — the full technical model.
 
