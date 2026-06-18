@@ -6,7 +6,7 @@ const SVGNS="http://www.w3.org/2000/svg";
 
 function initDashboard(pathways){
   PATHWAYS=pathways; KEYS=Object.keys(pathways);
-  current=KEYS.includes("model_ed")?"model_ed":KEYS[0];
+  current=KEYS.includes("your_department")?"your_department":(KEYS.includes("model_ed")?"model_ed":KEYS[0]);
   const sel=$("#pathway"); sel.innerHTML="";
   for(const k of KEYS){const o=document.createElement("option");o.value=k;o.textContent=pathways[k].name;sel.append(o);}
   sel.value=current; sel.onchange=()=>{current=sel.value;renderPathway();runSim();};
@@ -26,7 +26,13 @@ function renderPathway(){
   const box=$("#resources"); box.innerHTML="";
   for(const[n,c] of Object.entries(p.resources)){
     const r=el("div","row"); r.append(el("span",null,n.replace(/_/g," ")));
-    const i=el("input");i.type="number";i.min=0;i.value=c;i.dataset.res=n;r.append(i);box.append(r);
+    if(Array.isArray(c)){
+      // a by-hour staffing rota (set in the product) — show its peak, keep the rota
+      r.append(el("span",null,"rota · peak "+Math.max.apply(null,c)));
+    }else{
+      const i=el("input");i.type="number";i.min=0;i.value=c;i.dataset.res=n;r.append(i);
+    }
+    box.append(r);
   }
 }
 function overrides(){const o={};document.querySelectorAll("#resources input").forEach(i=>o[i.dataset.res]=+i.value);return o;}

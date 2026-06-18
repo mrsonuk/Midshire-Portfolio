@@ -75,8 +75,8 @@ def flow_model_data(result: dict, pathway: Pathway) -> dict:
                 "id": n, "label": n,
                 "x": (col + 1) / (max_col + 2),
                 "y": 0.5 if k == 1 else 0.06 + 0.88 * (i / (k - 1)),
-                "volume": inflow[n], "mean_wait": round(w, 1),
-                "utilisation": round(u, 1), "kind": kind(n), "status": status,
+                "volume": inflow[n], "mean_wait": round(w),
+                "utilisation": round(u), "kind": kind(n), "status": status,
                 "band": node.get("band"), "is_bottleneck": n == diag.get("worst_stage")})
 
     links = [{"source": r["source"], "target": r["target"], "value": int(r["value"])}
@@ -107,11 +107,12 @@ import numpy as np
 
 def _occ_by_hour(starts, ends, warmup, duration, step=10):
     if len(starts) == 0:
-        return [0.0] * 24
+        return [0] * 24
     grid = np.arange(warmup, duration, step)
     hod = (grid / 60 % 24).astype(int)
     counts = np.array([int(((starts <= t) & (ends > t)).sum()) for t in grid])
-    return [round(float(counts[hod == h].mean()), 1) if (hod == h).any() else 0.0 for h in range(24)]
+    # whole numbers throughout — people and patients are counted, not fractional
+    return [int(round(float(counts[hod == h].mean()))) if (hod == h).any() else 0 for h in range(24)]
 
 
 def control_tower(result: dict, pathway: Pathway) -> dict:
