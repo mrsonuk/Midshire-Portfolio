@@ -50,8 +50,13 @@ def list_pathways():
 
 def _build(body):
     key = body["pathway"]
-    raw = copy.deepcopy(CALIBRATIONS.get(key)
-                        or Pathway.load(PATHWAY_DIR / f"{key}.json").raw)
+    if key == "your_department":
+        # the analyst view runs the SAME department configured in the product,
+        # so its numbers line up with the control tower.
+        raw = copy.deepcopy(build_dept(_dept()))
+    else:
+        raw = copy.deepcopy(CALIBRATIONS.get(key)
+                            or Pathway.load(PATHWAY_DIR / f"{key}.json").raw)
     name = raw.get("name", key)
     pop = body.get("population") or {}
     demand_mult = 1.0
@@ -220,10 +225,26 @@ def api_sample_history():
         headers={"Content-Disposition": "attachment; filename=sample_attendance_history.csv"})
 
 
+def _your_department_pathway_entry():
+    """The product's configured department, exposed to the analyst view so both
+    surfaces run the same ED."""
+    d = _dept()
+    raw = build_dept(d)
+    return {"your_department": {
+        "key": "your_department",
+        "name": f"{d.name} (as set up in the product)",
+        "description": ("This is the department you configured in the product "
+                        "(Set up my ED): same areas, sizes, beds and rota, so the "
+                        "analyst figures match the control tower."),
+        "resources": raw.get("resources", {}), "sd": raw.get("sd", {})}}
+
+
 @app.route("/analyst")
 def analyst():
-    # The technical model view, for analysts.
-    return render_template("dashboard.html", pathways=list_pathways())
+    # The technical model view, for analysts — defaulting to the user's own
+    # department so it is connected to the product, not a separate model.
+    pathways = {**_your_department_pathway_entry(), **list_pathways()}
+    return render_template("dashboard.html", pathways=pathways)
 
 
 @app.route("/api/simulate", methods=["POST"])
