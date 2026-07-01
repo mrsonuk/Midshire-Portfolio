@@ -12,7 +12,7 @@ falls behind demand.
 """
 from __future__ import annotations
 
-from .roles import ROLES, STAFF_RESOURCES
+from .roles import ROLES, STAFF_RESOURCES, SUPPORT_RESOURCES
 
 
 def _hours_of(shift) -> list[int]:
@@ -26,7 +26,7 @@ def _hours_of(shift) -> list[int]:
 
 def staffing_by_hour(rota: list[dict]) -> dict[str, list[int]]:
     """Per staff area, the headcount on shift each hour (sum of its roles)."""
-    cap = {r: [0] * 24 for r in STAFF_RESOURCES}
+    cap = {r: [0] * 24 for r in STAFF_RESOURCES + SUPPORT_RESOURCES}
     for sh in rota:
         role = ROLES.get(sh["role"])
         if not role:

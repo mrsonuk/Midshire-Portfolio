@@ -172,7 +172,8 @@ function renderWorkforce(d){
    return `<div style="flex:1"><div class="b ${under?'under':''}" data-ai="${ai}" data-h="${h}" style="height:${Math.round(80*s/smax)}px;cursor:pointer" title="${h}:00 — ${s} on shift${under?' (light vs demand)':''}"></div><div class="lab">${h%6===0?h:''}</div></div>`;
   }).join('');
   const win=a.understaffed_hours.length?`Light vs demand around ${String(Math.min(...a.understaffed_hours)).padStart(2,'0')}:00–${String((Math.max(...a.understaffed_hours)+1)%24).padStart(2,'0')}:00.`:'Broadly matches demand.';
-  return `<div class="wfarea"><div class="t">${a.label}</div>
+  const adv=a.advisory?` <span style="background:#E8EDEE;color:#425563;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;vertical-align:middle" title="Rostered and costed in the pay-bill; does not yet limit patient flow in the model">costed · not yet flow-limiting</span>`:'';
+  return `<div class="wfarea"><div class="t">${a.label}${adv}</div>
     <div class="m">Peak ${a.peak} · overnight ${a.overnight}. ${win}</div>
     <div class="hours">${bars}</div></div>`;
  }).join('');

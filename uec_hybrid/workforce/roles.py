@@ -15,6 +15,11 @@ STAFF_RESOURCES = [
     "specialty_doctor", "frailty_team", "mh_clinician",
 ]
 
+# rostered-and-costed workforce that does not yet limit flow in the engine
+# (nursing / minors-clinician / porter constraints arrive with pathway v2) —
+# it appears in the rota, the pay-bill and the staffing-vs-demand view.
+SUPPORT_RESOURCES = ["ed_nurse", "minors_enp", "hca_pool", "porter_pool", "reception"]
+
 ROLES = {
     "streaming_nurse": {"label": "Streaming / triage nurse", "staffs": "streaming_nurse", "cost": 34},
     "rat_consultant":  {"label": "RAT senior decision-maker", "staffs": "rat_clinician", "cost": 95},
@@ -25,6 +30,13 @@ ROLES = {
     "sdec_doctor":     {"label": "Acute / specialty doctor (SDEC)", "staffs": "specialty_doctor", "cost": 60},
     "frailty_pract":   {"label": "Frailty practitioner", "staffs": "frailty_team", "cost": 46},
     "mh_liaison":      {"label": "Mental-health liaison clinician", "staffs": "mh_clinician", "cost": 42},
+    # nursing and support team (rostered + costed; flow constraints in pathway v2)
+    "band6_nurse":     {"label": "ED nurse — Band 6", "staffs": "ed_nurse", "cost": 34},
+    "band5_nurse":     {"label": "ED nurse — Band 5", "staffs": "ed_nurse", "cost": 28},
+    "enp":             {"label": "Emergency nurse practitioner (minors)", "staffs": "minors_enp", "cost": 41},
+    "hca":             {"label": "Healthcare assistant", "staffs": "hca_pool", "cost": 20},
+    "porter":          {"label": "Porter / patient transport", "staffs": "porter_pool", "cost": 18},
+    "receptionist":    {"label": "Receptionist", "staffs": "reception", "cost": 18},
 }
 
 # nice plain labels for the staff areas, for the workforce view
@@ -36,6 +48,11 @@ AREA_LABEL = {
     "specialty_doctor": "SDEC / specialty doctors",
     "frailty_team": "Frailty team",
     "mh_clinician": "Mental-health liaison",
+    "ed_nurse": "ED nursing (majors / resus)",
+    "minors_enp": "Minor injury (ENPs)",
+    "hca_pool": "Healthcare assistants",
+    "porter_pool": "Porters / patient transport",
+    "reception": "Reception / registration",
 }
 
 

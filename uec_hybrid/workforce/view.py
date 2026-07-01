@@ -9,7 +9,7 @@ change instantly; ``workforce_view`` wraps it for a whole department.
 from __future__ import annotations
 
 from .rota import staffing_by_hour, weekly_cost, cost_breakdown, understaffed_hours
-from .roles import STAFF_RESOURCES, AREA_LABEL, ROLES
+from .roles import STAFF_RESOURCES, SUPPORT_RESOURCES, AREA_LABEL, ROLES
 
 
 def _demand_profile(attendances_per_day: float) -> list[float]:
@@ -28,8 +28,11 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
     demand = _demand_profile(attendances_per_day)
 
     areas = []
-    for res in STAFF_RESOURCES:
-        if present is not None and res not in present:
+    for res in STAFF_RESOURCES + SUPPORT_RESOURCES:
+        # engine-constraining areas follow the department's set-up; the support
+        # workforce (nursing, ENPs, HCAs, porters, reception) is always shown —
+        # it is rostered and costed even though it doesn't limit flow yet.
+        if res in STAFF_RESOURCES and present is not None and res not in present:
             continue
         if res not in staffing:
             continue
@@ -39,6 +42,7 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
             "resource": res, "label": AREA_LABEL.get(res, res),
             "staffing": s, "peak": max(s), "overnight": min(s),
             "understaffed_hours": under,
+            "advisory": res in SUPPORT_RESOURCES,
             "roles": [{"id": r, "label": ROLES[r]["label"]} for r in ROLES if ROLES[r]["staffs"] == res],
         })
     # a plain headline about the worst-staffed window

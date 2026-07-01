@@ -138,6 +138,19 @@ def main():
     assert prev["weekly_cost"] > 0 and prev["areas"] and len(prev["demand"]) == 24
     print(f"Rota preview OK: weekly cost £{prev['weekly_cost']:,}, {len(prev['areas'])} staff areas, no sim.")
 
+    # --- workforce v2: nursing/ENP/HCA/porter/reception costed, engine untouched ---
+    from ..workforce.roles import SUPPORT_RESOURCES
+    from ..workforce.rota import cost_breakdown
+    advisory = {a["resource"] for a in prev["areas"] if a.get("advisory")}
+    assert advisory == set(SUPPORT_RESOURCES), f"support areas missing from view: {advisory}"
+    by_role = cost_breakdown(Department.default().rota)["by_role"]
+    assert by_role.get("band5_nurse", 0) > 0 and by_role.get("porter", 0) > 0
+    # support pools are rostered + costed but never become engine constraints (yet)
+    assert not (set(SUPPORT_RESOURCES) & set(build_dept(Department.default()).get("resources", {})))
+    nursing = sum(v for r, v in by_role.items()
+                  if r in ("band5_nurse", "band6_nurse", "enp", "hca", "porter", "receptionist"))
+    print(f"Workforce v2 OK: full team costed (support staff £{nursing:,}/wk), engine unchanged.")
+
     # --- platform store: department persists (versioned), run cache hits by config hash ---
     import tempfile
     from ..platform import store

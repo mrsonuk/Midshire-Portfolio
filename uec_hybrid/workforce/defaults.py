@@ -27,4 +27,17 @@ DEFAULT_ROTA = [
     # mental-health liaison (24/7 cover, daytime uplift)
     {"role": "mh_liaison", "start": 0,  "end": 24, "count": 1},
     {"role": "mh_liaison", "start": 9,  "end": 21, "count": 2},
+    # ED nursing — the biggest staff group (Bands 5/6, day-heavy)
+    {"role": "band6_nurse", "start": 8,  "end": 20, "count": 4},
+    {"role": "band6_nurse", "start": 20, "end": 8,  "count": 2},
+    {"role": "band5_nurse", "start": 8,  "end": 20, "count": 8},
+    {"role": "band5_nurse", "start": 20, "end": 8,  "count": 5},
+    # nurse practitioners on minors (daytime into evening)
+    {"role": "enp", "start": 10, "end": 22, "count": 2},
+    # support team
+    {"role": "hca", "start": 8,  "end": 20, "count": 4},
+    {"role": "hca", "start": 20, "end": 8,  "count": 2},
+    {"role": "porter", "start": 0, "end": 24, "count": 2},
+    {"role": "receptionist", "start": 8,  "end": 22, "count": 3},
+    {"role": "receptionist", "start": 22, "end": 8,  "count": 1},
 ]
