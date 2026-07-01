@@ -140,7 +140,7 @@ function rag(v){return v>=78?'green':v>=72?'amber':'red';}
  const a=Math.round(d.department.attendances_per_day);
  if(a){$('#attend').value=a;if($('#tAttend'))$('#tAttend').value=Math.round(a*1.06);
   const n=$('#deptNote');n.style.display='block';
-  n.innerHTML=`Starting from <b>${d.department.name}</b> as set up in the control tower (${a} attendances a day). Change the numbers below to plan.`;}
+  n.innerHTML=`Plans model <b>${d.department.name}</b> exactly as set up in the control tower — same areas, opening hours, rota and beds (${a} attendances a day). Change the numbers below to plan.`;}
 }catch(e){}})();
 document.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{
  document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('active',x===m));
@@ -170,7 +170,8 @@ $('#run').onclick=async()=>{
  b.disabled=false;
 };
 function renderWinter(d){
- const o=d.outcome,t=d.target,cls=rag(o.typical);$('#fcSummary').textContent=d.forecast.summary;
+ const o=d.outcome,t=d.target,cls=rag(o.typical);
+ $('#fcSummary').textContent=d.forecast.summary+(d.modelled?' '+d.modelled+'.':'');
  $('#tiles').innerHTML=
   tile('blue','Expected demand',d.forecast.expected_per_day,'attendances a day this winter')+
   tile(cls,'4-hour standard (typical week)',o.typical+'%','good week '+o.good+'% · tough week '+o.tough+'%')+
@@ -195,7 +196,7 @@ $('#runToday').onclick=async()=>{
 };
 function renderToday(d){
  $('#risk').className='risk '+d.risk.colour;$('#risk').textContent=d.risk.label;
- $('#tHeadline').innerHTML=d.headline;$('#tFirst').innerHTML=d.first;
+ $('#tHeadline').innerHTML=d.headline+(d.modelled?' <span style="color:#425563">('+d.modelled+'.)</span>':'');$('#tFirst').innerHTML=d.first;
  $('#tActions').innerHTML=d.actions.map((x,i)=>optRow(x,i===0,d.actions[0].delta,'today')).join('');
 }
 // shared row

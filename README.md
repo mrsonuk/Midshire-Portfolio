@@ -25,8 +25,16 @@ Open `/` for the product. It has:
   EEMAC, SDEC, PAU, CDU, frailty, MH), set each area's **opening hours** (e.g. SDEC 08–20
   rather than 24/7), set its size and beds; patients re-route safely when an area is off
   or closed.
-- **Plan ahead** (`/planner`) — the winter & today demand/capacity planner.
-- **Analyst view** (`/analyst`) — the full technical model.
+- **Plan ahead** (`/planner`) — the winter & today demand/capacity planner. Plans
+  model *your department exactly as set up in the product* (areas, opening hours,
+  rota, beds), not a generic template.
+- **Analyst view** (`/analyst`) — the full technical model, defaulting to the same
+  configured department so its numbers line up with the control tower.
+
+Everything is connected through one saved department: the set-up, rota and any
+ECDS calibration persist across restarts (SQLite by default; `DATABASE_URL` for
+Postgres), calibrating with real data updates every surface at once, and repeat
+runs of an identical configuration are answered instantly from the run cache.
 
 ```bash
 pip install -r requirements.txt
@@ -116,6 +124,8 @@ uec_hybrid/
 │                scenarios (+ tornado sensitivity)
 ├── validation/  reference_map, conformance (process-map check), process_map (variants)
 ├── viz/         flow_model ("Figure 1" data), figures (Plotly), palette
+├── platform/    store (SQLite/Postgres persistence: saved department, ECDS
+│                calibrations, run cache keyed by configuration hash)
 ├── app/         server (Flask), templates/dashboard.html, static (dashboard.js + Plotly)
 └── tests/       run.py (engine, SD, coupling stability + mass-balance, conformance)
 ```

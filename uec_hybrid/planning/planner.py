@@ -49,6 +49,9 @@ OPTIONS = [
 
 
 def _scale_cap(v, ch):
+    if isinstance(v, list):
+        # a by-hour staffing roster: apply the change to every hour
+        return [_scale_cap(x, ch) for x in v]
     if isinstance(ch, str):
         ch = ch.strip()
         if ch[0] == "+":
@@ -60,24 +63,45 @@ def _scale_cap(v, ch):
     return int(round(float(ch)))
 
 
-def build_department(attendances_now, winter_uplift_pct=12.0, yoy_growth_pct=0.0,
-                     extra=None):
-    """Build the model for a department of a given size and winter demand, plus any
-    option changes in ``extra`` ({resources, sd, divert})."""
-    raw = copy.deepcopy(BASE_RAW)
-    fc = forecast(attendances_now, winter_uplift_pct, yoy_growth_pct)
-    scale = max(0.3, attendances_now / BASELINE_ATTEND)
-    # scale the department's areas/staff and the whole-hospital beds with its size
-    for r, c in raw["resources"].items():
-        raw["resources"][r] = max(1, int(round(c * scale)))
-    for key in ("inpatient_beds", "mh_beds", "community_capacity"):
-        if key in raw.get("sd", {}):
-            raw["sd"][key] = int(round(raw["sd"][key] * scale))
-    for key in ("background_admissions_per_hour", "ward_discharge_capacity_per_hour",
-                "community_clearance_per_hour"):
-        if key in raw.get("sd", {}):
-            raw["sd"][key] = round(raw["sd"][key] * scale, 2)
-    raw["arrivals"]["hourly_profile"] = fc["hourly_profile"]
+def build_department(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pct=0.0,
+                     extra=None, department=None, calibration=None):
+    """Build the model for the winter demand, plus any option changes in ``extra``
+    ({resources, sd, divert}).
+
+    When ``department`` (a department.config.Department) is given the plan models
+    *that* ED — its areas, opening hours, rota, beds and community capacity, plus
+    any stored ECDS ``calibration`` patch — with only demand scaled to the
+    forecast. Without one it falls back to the generic template scaled by size."""
+    if department is not None:
+        from ..department.builder import build as build_dept
+        raw = build_dept(department)
+        if calibration:
+            from ..demand.ecds_seam import apply_patch
+            raw = apply_patch(raw, calibration)
+        if attendances_now is None:
+            attendances_now = float(department.attendances_per_day)
+        fc = forecast(attendances_now, winter_uplift_pct, yoy_growth_pct)
+        # scale the department's own arrival shape to the forecast total —
+        # demand changes this winter; the department's capacity does not.
+        prof = raw["arrivals"]["hourly_profile"]
+        tot = sum(prof) or 1
+        raw["arrivals"]["hourly_profile"] = [round(h * fc["expected_per_day"] / tot, 2) for h in prof]
+    else:
+        attendances_now = BASELINE_ATTEND if attendances_now is None else attendances_now
+        raw = copy.deepcopy(BASE_RAW)
+        fc = forecast(attendances_now, winter_uplift_pct, yoy_growth_pct)
+        scale = max(0.3, attendances_now / BASELINE_ATTEND)
+        # scale the department's areas/staff and the whole-hospital beds with its size
+        for r, c in raw["resources"].items():
+            raw["resources"][r] = max(1, int(round(c * scale)))
+        for key in ("inpatient_beds", "mh_beds", "community_capacity"):
+            if key in raw.get("sd", {}):
+                raw["sd"][key] = int(round(raw["sd"][key] * scale))
+        for key in ("background_admissions_per_hour", "ward_discharge_capacity_per_hour",
+                    "community_clearance_per_hour"):
+            if key in raw.get("sd", {}):
+                raw["sd"][key] = round(raw["sd"][key] * scale, 2)
+        raw["arrivals"]["hourly_profile"] = fc["hourly_profile"]
 
     extra = extra or {}
     for r, ch in extra.get("resources", {}).items():
@@ -131,14 +155,17 @@ def _constraint(outcome, raw):
             "medical staffing at the evening peak), rather than ward beds.")
 
 
-def make_plan(attendances_now=320, winter_uplift_pct=12.0, yoy_growth_pct=0.0) -> dict:
-    base_raw, fc = build_department(attendances_now, winter_uplift_pct, yoy_growth_pct)
+def make_plan(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pct=0.0,
+              department=None, calibration=None) -> dict:
+    base_raw, fc = build_department(attendances_now, winter_uplift_pct, yoy_growth_pct,
+                                    department=department, calibration=calibration)
     base = _spread(base_raw, reps=6)
     base["constraint"] = _constraint(base, base_raw)
 
     options = []
     for opt in OPTIONS:
-        raw, _ = build_department(attendances_now, winter_uplift_pct, yoy_growth_pct, extra=opt)
+        raw, _ = build_department(attendances_now, winter_uplift_pct, yoy_growth_pct, extra=opt,
+                                  department=department, calibration=calibration)
         res = _spread(raw, reps=4, seed=700)
         options.append({
             "id": opt["id"], "label": opt["label"], "cost": opt["cost"],
@@ -164,4 +191,7 @@ def make_plan(attendances_now=320, winter_uplift_pct=12.0, yoy_growth_pct=0.0) -
         rec = ("At the expected winter demand the department broadly meets the 4-hour "
                "standard, but with little headroom on a tough week. " + rec)
     return {"forecast": fc, "outcome": base, "options": options,
-            "recommendation": rec, "target": TARGET}
+            "recommendation": rec, "target": TARGET,
+            "modelled": (f"Modelled on {department.name} as set up in the product"
+                         + (", calibrated from your uploaded data" if calibration else "")
+                         if department is not None else "Modelled on a typical department of this size")}

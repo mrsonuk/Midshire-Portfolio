@@ -49,15 +49,18 @@ def _with_fullness(raw, fullness):
     return raw
 
 
-def today_plan(attendances_today=340, hospital_fullness_pct=94.0) -> dict:
-    base_raw, fc = build_department(attendances_today, winter_uplift_pct=0)
+def today_plan(attendances_today=340, hospital_fullness_pct=94.0,
+               department=None, calibration=None) -> dict:
+    base_raw, fc = build_department(attendances_today, winter_uplift_pct=0,
+                                    department=department, calibration=calibration)
     _with_fullness(base_raw, hospital_fullness_pct)
     base = _spread(base_raw, reps=5)
     risk = _opel(base["typical"], hospital_fullness_pct)
 
     actions = []
     for a in ACTIONS:
-        raw, _ = build_department(attendances_today, winter_uplift_pct=0, extra=a)
+        raw, _ = build_department(attendances_today, winter_uplift_pct=0, extra=a,
+                                  department=department, calibration=calibration)
         _with_fullness(raw, hospital_fullness_pct)
         res = _spread(raw, reps=4, seed=800)
         actions.append({
@@ -83,4 +86,7 @@ def today_plan(attendances_today=340, hospital_fullness_pct=94.0) -> dict:
     return {"expected_today": fc["expected_per_day"], "fullness": round(hospital_fullness_pct),
             "risk": risk, "do_nothing": {"four_hour": base["typical"],
             "corridor_per_day": base["corridor_per_day"]},
-            "headline": headline, "actions": actions, "first": first, "target": TARGET}
+            "headline": headline, "actions": actions, "first": first, "target": TARGET,
+            "modelled": (f"Modelled on {department.name} as set up in the product"
+                         + (", calibrated from your uploaded data" if calibration else "")
+                         if department is not None else "Modelled on a typical department of this size")}

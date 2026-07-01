@@ -138,6 +138,45 @@ def main():
     assert prev["weekly_cost"] > 0 and prev["areas"] and len(prev["demand"]) == 24
     print(f"Rota preview OK: weekly cost £{prev['weekly_cost']:,}, {len(prev['areas'])} staff areas, no sim.")
 
+    # --- platform store: department persists (versioned), run cache hits by config hash ---
+    import tempfile
+    from ..platform import store
+    store.init_db(f"sqlite:///{tempfile.mkdtemp()}/test.sqlite3", force=True)
+    v1 = store.save_department(lean.to_dict())
+    v2 = store.save_department({**lean.to_dict(), "name": "Renamed ED"})
+    assert (v1, v2) == (1, 2) and store.load_department()["name"] == "Renamed ED"
+    payload = store.remember("simulate", {"raw": {"x": 1}}, {"kpi": 42.0})
+    assert store.cached("simulate", {"raw": {"x": 1}}) == payload
+    assert store.cached("simulate", {"raw": {"x": 2}}) is None
+    store.save_calibration("your_department", {"arrivals": {}}, ["ok"])
+    assert store.get_calibration("your_department")["summary"] == ["ok"]
+    store.clear_calibration("your_department")
+    assert store.get_calibration("your_department") is None
+    print("Store OK: department versions persist; run cache keyed by config hash.")
+
+    # --- ECDS calibration patch follows the department through set-up changes ---
+    from ..demand.ecds_seam import generate_sample, derive_patch, apply_patch
+    patch, _summary = derive_patch(generate_sample(days=6, seed=1))
+    raw_cal = apply_patch(build_dept(lean), patch)
+    assert raw_cal["arrivals"]["hourly_profile"] == patch["arrivals"]["hourly_profile"]
+    other = Department.from_dict({**lean.to_dict(), "enabled": ["rat"]})
+    assert apply_patch(build_dept(other), patch)["arrivals"]["acuity_mix"] == patch["arrivals"]["acuity_mix"]
+    print("Calibration OK: derived patch re-applies to any department build.")
+
+    # --- planner models the configured department, not a generic template ---
+    from ..planning.planner import build_department
+    raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)
+    assert "utc_room" not in raw_dept["resources"], "planner ignored disabled areas"
+    assert isinstance(raw_dept["resources"]["ed_doctor"], list), "planner lost the rota"
+    assert abs(sum(raw_dept["arrivals"]["hourly_profile"]) - fc["expected_per_day"]) < 2
+    raw_gen, _ = build_department(320, winter_uplift_pct=10)
+    assert "utc_room" in raw_gen["resources"], "generic template should keep all areas"
+    raw_opt, _ = build_department(winter_uplift_pct=10, department=lean,
+                                  extra={"resources": {"ed_doctor": "+2"}})
+    assert raw_opt["resources"]["ed_doctor"][12] == raw_dept["resources"]["ed_doctor"][12] + 2, \
+        "option change not applied per-hour to the rostered resource"
+    print("Planner OK: plans model the configured department (areas, rota, demand).")
+
     print("\nAll checks passed.")
 
 
