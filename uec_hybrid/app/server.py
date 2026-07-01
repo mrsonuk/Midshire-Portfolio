@@ -99,6 +99,60 @@ def planner_page():
     return render_template("planner.html")
 
 
+@app.route("/exec")
+def exec_page():
+    # the executive brief: one screen for the COO / ED director.
+    return render_template("exec.html")
+
+
+@app.route("/api/exec")
+def api_exec():
+    """One composed payload for the executive brief. Reuses cached results
+    where they exist so the page opens fast; the deep dives stay one click away."""
+    from ..planning.operational import _opel
+    d = _dept()
+    ct = _control_tower_payload(seed=2)
+    standards = ct.get("standards") or {}
+    four = (standards.get("four_hour") or {}).get("typical", 0)
+    occ = next((s["occupancy"] for s in ct.get("stocks", []) if "Inpatient" in s["name"]), 0)
+    risk = _opel(four, occ)
+    wf = workforce_view(d)
+    under = sum(len(a["understaffed_hours"]) for a in wf["areas"])
+    book = load_cost_book()
+    gap = store.cached("gap", {"dept": d.to_dict(), "book": book})
+    invest = (gap["missing"][0] if gap and gap.get("missing") else None)
+    return jsonify({
+        "department": {"name": d.name, "attendances_per_day": round(d.attendances_per_day),
+                       "calibrated": _calibration_patch("your_department") is not None},
+        "standards": standards,
+        "risk": risk,
+        "bed_occupancy": occ,
+        "bottleneck": ct.get("headline_bottleneck", ""),
+        "recommendation": ct.get("recommendation", ""),
+        "workforce": {"weekly_cost": wf["weekly_cost"], "understaffed_hours": under,
+                      "headline": wf["headline"]},
+        "invest": invest,
+        "gap_computed": gap is not None,
+    })
+
+
+@app.route("/api/report")
+def api_report():
+    """One-click decision report (PDF) for the configured department, including
+    the investment case when the gap analysis has been run."""
+    import tempfile
+    from ..report import build_report
+    d = _dept()
+    raw = _dept_raw()
+    book = load_cost_book()
+    gap = store.cached("gap", {"dept": d.to_dict(), "book": book})
+    reps = max(2, min(24, int(request.args.get("replications", 8))))
+    out = Path(tempfile.mkdtemp()) / "decision_report.pdf"
+    build_report(raw, out, replications=reps, seed=7, name=d.name, invest=gap)
+    safe = "".join(c if c.isalnum() or c in " -_" else "-" for c in d.name)
+    return send_file(out, as_attachment=True, download_name=f"{safe} - decision report.pdf")
+
+
 # ---- Model ED Optimiser product ------------------------------------------- #
 from ..department.config import Department, AREAS, CORE_NOTE
 from ..department.builder import build as build_dept
@@ -176,11 +230,11 @@ def api_set_department():
     return jsonify({"ok": True, "department": CURRENT["dept"].to_dict(), "version": version})
 
 
-@app.route("/api/control-tower", methods=["POST"])
-def api_control_tower():
+def _control_tower_payload(seed=2):
+    """The control-tower data for the saved department (cached by config hash);
+    shared by the product control tower and the executive brief."""
     d = _dept()
     raw = _dept_raw()
-    seed = int(request.get_json(silent=True, force=True).get("seed", 2) if request.data else 2)
 
     def compute():
         p = Pathway.from_dict(raw)
@@ -191,7 +245,13 @@ def api_control_tower():
         ct["recommendation"] = diag["recommendation"]
         ct["headline_bottleneck"] = diag["headline"]
         return ct
-    return jsonify(store.cached_or_compute("control_tower", {"raw": raw, "seed": seed}, compute))
+    return store.cached_or_compute("control_tower", {"raw": raw, "seed": seed}, compute)
+
+
+@app.route("/api/control-tower", methods=["POST"])
+def api_control_tower():
+    seed = int(request.get_json(silent=True, force=True).get("seed", 2) if request.data else 2)
+    return jsonify(_control_tower_payload(seed))
 
 
 @app.route("/api/workforce", methods=["POST"])

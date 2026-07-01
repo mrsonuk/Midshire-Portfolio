@@ -7,6 +7,12 @@ vocabulary appears on the product surface.
 
 Open `/` for the product. It has:
 
+- **Executive brief** (`/exec`) — one screen for the COO / ED director: OPEL-style
+  risk, the four headline standards as typical/good/tough weeks, the pinch point
+  and what to do about it, the weekly pay-bill, the biggest investment case, and a
+  **one-click board-ready decision report (PDF)** including the costed investment
+  case (`/api/report`).
+
 - **Control tower** — a live flow map of *your* department: patients moving through your
   areas, queues, and the busiest pinch-point (with *when* it bites). A time-of-day slider
   shows the department at any hour; click an area to drill in. Headline standards

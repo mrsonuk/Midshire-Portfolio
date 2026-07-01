@@ -195,6 +195,29 @@ def main():
                          {"corridor_per_day": 3.0}, 320, book=edited)["roi"] is None
     print("Finance OK: cost book editable; options and gaps priced with assumptions attached.")
 
+    # --- executive brief: one composed payload, all surfaces served ---
+    from ..app.server import app as flask_app
+    client = flask_app.test_client()
+    ex = client.get("/api/exec").get_json()
+    assert ex["standards"]["four_hour"]["typical"] > 0
+    assert ex["risk"]["level"] in (1, 2, 3, 4)
+    assert ex["workforce"]["weekly_cost"] > 0
+    for page in ("/exec", "/", "/planner", "/analyst"):
+        assert client.get(page).status_code == 200, f"{page} failed"
+    print(f"Exec brief OK: risk level {ex['risk']['level']}, "
+          f"4-hour typical {ex['standards']['four_hour']['typical']}%; all surfaces serve.")
+
+    # --- one-click decision report from a department build, incl. investment page ---
+    from ..report import build_report
+    fake_invest = {"baseline_four_hour": 70, "have": 4, "total": 9, "missing": [
+        {"label": "EEMAC", "benefit": "avoids admissions", "cost": "High",
+         "finance": {"summary": "~£1m/year benefit", "annual_benefit": 1_000_000,
+                     "assumptions": ["indicative cost book"]}}]}
+    out = Path(tempfile.mkdtemp()) / "report.pdf"
+    build_report(build_dept(lean), out, replications=2, name="Test ED", invest=fake_invest)
+    assert out.exists() and out.stat().st_size > 20_000
+    print(f"Report OK: {out.stat().st_size // 1024} KB decision report incl. investment page.")
+
     print("\nAll checks passed.")
 
 
