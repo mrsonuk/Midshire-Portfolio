@@ -177,6 +177,24 @@ def main():
         "option change not applied per-hour to the rostered resource"
     print("Planner OK: plans model the configured department (areas, rota, demand).")
 
+    # --- finance: cost book round-trips; business cases price simulated deltas ---
+    from ..finance import load_cost_book, save_cost_book, business_case, gap_finance
+    book = load_cost_book()
+    assert book["admission_avoided"] > 0 and "note" in book
+    edited = save_cost_book({"admission_avoided": 2000})
+    assert edited["admission_avoided"] == 2000
+    assert edited["twelve_hour_breach"] == book["twelve_hour_breach"], "unedited keys must keep defaults"
+    case = business_case({"delta": 5, "corridor_per_day": 1.0, "cost": "Low"},
+                         {"corridor_per_day": 3.0}, attendances_per_day=320, book=edited)
+    expected = round((320 * 0.05 * edited["four_hour_breach"] + 2.0 * edited["twelve_hour_breach"]) * 365)
+    assert case["annual_benefit"] == expected, (case["annual_benefit"], expected)
+    assert case["payback_years"] is not None and case["assumptions"]
+    gf = gap_finance({"value": 6.0, "unit": "fewer admits/day", "cost": "High"}, 320, book=edited)
+    assert gf["annual_benefit"] == round(6.0 * 2000 * 365) and gf["roi"] is not None
+    assert business_case({"delta": 0, "corridor_per_day": 3.0, "cost": "Low"},
+                         {"corridor_per_day": 3.0}, 320, book=edited)["roi"] is None
+    print("Finance OK: cost book editable; options and gaps priced with assumptions attached.")
+
     print("\nAll checks passed.")
 
 

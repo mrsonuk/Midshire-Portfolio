@@ -59,6 +59,14 @@ class RunRow(Base):
     created_at = Column(DateTime, nullable=False)
 
 
+class SettingRow(Base):
+    __tablename__ = "settings"
+    id = Column(Integer, primary_key=True)
+    key = Column(String(64), unique=True, index=True, nullable=False)
+    value = Column(Text, nullable=False)
+    updated_at = Column(DateTime, nullable=False)
+
+
 def _json_default(o):
     if isinstance(o, np.integer):
         return int(o)
@@ -139,6 +147,21 @@ def save_calibration(scope: str, patch: dict, summary: list):
 def clear_calibration(scope: str):
     with _session() as s:
         s.query(CalibrationRow).filter_by(scope=scope).delete()
+        s.commit()
+
+
+# --- settings (e.g. the trust-editable cost book) ---------------------------- #
+def get_setting(key: str) -> dict | None:
+    with _session() as s:
+        row = s.query(SettingRow).filter_by(key=key).first()
+        return json.loads(row.value) if row else None
+
+
+def save_setting(key: str, value):
+    with _session() as s:
+        s.query(SettingRow).filter_by(key=key).delete()
+        s.add(SettingRow(key=key, updated_at=_now(),
+                         value=json.dumps(value, default=_json_default)))
         s.commit()
 
 

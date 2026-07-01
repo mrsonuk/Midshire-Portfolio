@@ -206,7 +206,7 @@ function renderGaps(d){
    const sign=(typeof m.value==='number'&&m.unit.includes('4-hr')&&m.value>=0)?'+':'';
    return `<div class="gap miss">
    <div class="imp"><div class="d">${sign}${Math.round(m.value)}</div><div class="r">${m.unit}</div></div>
-   <div class="body"><div class="t">${m.label}</div><div class="w">${m.benefit}</div></div>
+   <div class="body"><div class="t">${m.label}</div><div class="w">${m.benefit}</div>${m.finance&&m.finance.annual_benefit>0?`<div class="w" style="color:#003087;font-weight:600;margin-top:4px">${m.finance.summary}</div>`:''}</div>
    <div style="text-align:right"><span class="pill ${m.cost}">${m.cost} cost</span></div></div>`;}).join(''):'<p class="sub">You have every Model ED element in place.</p>';
 }
 

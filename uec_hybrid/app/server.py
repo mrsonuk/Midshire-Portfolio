@@ -32,6 +32,7 @@ from ..planning.planner import make_plan
 from ..planning.operational import today_plan
 from ..planning.forecast import forecast_from_history, generate_daily_history
 from ..platform import store
+from ..finance import load_cost_book, save_cost_book, business_case, gap_finance
 
 app = Flask(__name__)
 PATHWAY_DIR = Path(__file__).resolve().parent.parent / "pathways"
@@ -211,11 +212,25 @@ def api_rota_preview():
     return jsonify(staffing_and_cost(rota, att, present=present))
 
 
+@app.route("/api/costbook", methods=["GET", "POST"])
+def api_costbook():
+    """The trust-editable cost book behind every £ figure the product shows."""
+    if request.method == "POST":
+        return jsonify(save_cost_book(request.get_json(force=True)))
+    return jsonify(load_cost_book())
+
+
 @app.route("/api/gap", methods=["POST"])
 def api_gap():
     d = _dept()
-    return jsonify(store.cached_or_compute("gap", {"dept": d.to_dict()},
-                                           lambda: gap_analysis(d)))
+    book = load_cost_book()
+
+    def compute():
+        gap = gap_analysis(d)
+        for item in gap["missing"]:
+            item["finance"] = gap_finance(item, d.attendances_per_day, book)
+        return gap
+    return jsonify(store.cached_or_compute("gap", {"dept": d.to_dict(), "book": book}, compute))
 
 
 @app.route("/api/plan", methods=["POST"])
@@ -226,10 +241,16 @@ def api_plan():
     args = {"attendances_now": float(body.get("attendances_now", d.attendances_per_day)),
             "winter_uplift_pct": float(body.get("winter_uplift_pct", 12)),
             "yoy_growth_pct": float(body.get("yoy_growth_pct", 0))}
+    book = load_cost_book()
+
+    def compute():
+        plan = make_plan(**args, department=d, calibration=patch)
+        for opt in plan["options"]:
+            opt["finance"] = business_case(opt, plan["outcome"], args["attendances_now"], book)
+        return plan
     try:
         plan = store.cached_or_compute(
-            "plan", {"dept": d.to_dict(), "patch": patch, **args},
-            lambda: make_plan(**args, department=d, calibration=patch))
+            "plan", {"dept": d.to_dict(), "patch": patch, "book": book, **args}, compute)
     except Exception as e:
         return jsonify({"error": str(e)}), 400
     return jsonify(plan)

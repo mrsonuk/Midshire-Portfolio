@@ -206,8 +206,10 @@ function optRow(x,isRec,maxd,kind){
  const meta = kind==='cost'
    ? `<span class="pill ${x.cost}">${x.cost} cost</span><div style="margin-top:6px;color:#425563">${x.kind}</div>`
    : `<div style="font-weight:700;color:#003087">${x.owner}</div><div style="margin-top:4px;color:#425563">${x.effort}</div>`;
- const m = kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' — meets the target':''}. ${x.build}.`
-   : `Gets today to about <b>${x.four_hour}%</b>${x.corridor_relief>0?`, clears ~${x.corridor_relief} long bed-waits`:''}.`;
+ const fin = kind==='cost'&&x.finance&&x.finance.annual_benefit>0
+   ? `<div style="margin-top:4px;color:#003087;font-weight:600">${x.finance.summary}</div>` : '';
+ const m = (kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' — meets the target':''}. ${x.build}.`
+   : `Gets today to about <b>${x.four_hour}%</b>${x.corridor_relief>0?`, clears ~${x.corridor_relief} long bed-waits`:''}.`)+fin;
  return `<div class="opt ${isRec&&x.delta>0?'rec':''}">
    <div class="imp"><div class="d" style="color:${x.delta>=0?'#009639':'#DA291C'}">${sign}${x.delta}</div><div class="r">points on 4-hr</div></div>
    <div class="body"><div class="t">${x.label}${isRec&&x.delta>0?'<span class="recbadge">'+(kind==='cost'?'BEST VALUE':'DO FIRST')+'</span>':''}</div>

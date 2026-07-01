@@ -19,8 +19,9 @@ Open `/` for the product. It has:
   instantly, then "Apply & re-run" to see the standards and pinch-point shift.
 - **Model ED gaps** — which Model ED elements you have vs are missing, and what each
   missing one would add (front-door areas judged on the 4-hour standard; same-day /
-  assessment areas on the **admissions they avoid**), with an indicative cost band — the
-  investment case.
+  assessment areas on the **admissions they avoid**), with an indicative cost band **and
+  a costed business case** (annual benefit, ROI, payback from the trust-editable cost
+  book at `/api/costbook` — every £ figure carries its assumptions) — the investment case.
 - **Set up my ED** — switch the areas you actually have on/off (UTC, RAT, fit-to-sit,
   EEMAC, SDEC, PAU, CDU, frailty, MH), set each area's **opening hours** (e.g. SDEC 08–20
   rather than 24/7), set its size and beds; patients re-route safely when an area is off
@@ -125,7 +126,9 @@ uec_hybrid/
 ├── validation/  reference_map, conformance (process-map check), process_map (variants)
 ├── viz/         flow_model ("Figure 1" data), figures (Plotly), palette
 ├── platform/    store (SQLite/Postgres persistence: saved department, ECDS
-│                calibrations, run cache keyed by configuration hash)
+│                calibrations, run cache keyed by configuration hash, settings)
+├── finance/     trust-editable cost book + business-case maths (annual benefit,
+│                cost band, ROI, payback — assumptions printed on every case)
 ├── app/         server (Flask), templates/dashboard.html, static (dashboard.js + Plotly)
 └── tests/       run.py (engine, SD, coupling stability + mass-balance, conformance)
 ```
