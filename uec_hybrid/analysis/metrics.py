@@ -223,7 +223,7 @@ def diagnose(result: dict, pathway: Pathway) -> dict:
         row = cand.iloc[0] if not cand.empty else util.iloc[0]
         constraint, cu = row["resource"], float(row["utilisation"])
     pretty = (constraint or "").replace("_", " ")
-    headline = (f"Biggest delay: <b>{worst['stage_label']}</b> — mean wait "
+    headline = (f"Biggest delay: <b>{worst['stage_label']}</b> - mean wait "
                 f"{worst['mean_wait']:.0f} min ({worst['lost_hours']:.0f} patient-hours lost).")
     if constraint and cu >= 80:
         rec = f"<b>{pretty}</b> is the binding constraint ({cu:.0f}% utilisation); add capacity here first."
@@ -231,7 +231,7 @@ def diagnose(result: dict, pathway: Pathway) -> dict:
         rec = f"<b>{pretty}</b> is busy ({cu:.0f}% utilisation) and likely drives this queue."
     else:
         rec = (f"No single resource is saturated (top {pretty} {cu:.0f}%); the delay is "
-               f"likely downstream exit-block — see bed occupancy on the System Dynamics tab.")
+               f"likely downstream exit-block - see bed occupancy on the System Dynamics tab.")
     return {"headline": headline, "recommendation": rec, "worst_stage": worst["stage_label"],
             "constraint": constraint, "constraint_util": cu,
             "table": waits[["stage_label", "n", "mean_wait", "lost_hours"]].head(6).to_dict("records")}

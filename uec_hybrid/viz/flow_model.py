@@ -12,8 +12,8 @@ from ..analysis.metrics import (flow_counts, stage_waits, resource_utilisation, 
 
 BAND_LABEL = {
     "front_door": "Front door (15 min)",
-    "core_0_4h": "Core ED (0–4h)",
-    "emergency_4_12h": "Emergency / specialist (4–12h)",
+    "core_0_4h": "Core ED (0-4h)",
+    "emergency_4_12h": "Emergency / specialist (4-12h)",
     "admission_12h_plus": "Admission (>12h)",
 }
 
@@ -111,7 +111,7 @@ def _occ_by_hour(starts, ends, warmup, duration, step=10):
     grid = np.arange(warmup, duration, step)
     hod = (grid / 60 % 24).astype(int)
     counts = np.array([int(((starts <= t) & (ends > t)).sum()) for t in grid])
-    # whole numbers throughout — people and patients are counted, not fractional
+    # whole numbers throughout - people and patients are counted, not fractional
     return [int(round(float(counts[hod == h].mean()))) if (hod == h).any() else 0 for h in range(24)]
 
 
@@ -138,7 +138,7 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
                                                    sub["service_end"].to_numpy(), w, dur)
 
     # Operational bottleneck: the busiest pinch-point across the WORKING DAY
-    # (08:00–22:00, when ops teams act), not an overnight low-volume artefact.
+    # (08:00-22:00, when ops teams act), not an overnight low-volume artefact.
     peak_hours, op_bottleneck = [], data.get("bottleneck")
     if not events.empty:
         ev = events.copy()

@@ -1,5 +1,5 @@
 """
-The ECDS calibration seam — the clean point where synthetic placeholders are
+The ECDS calibration seam - the clean point where synthetic placeholders are
 replaced by real Emergency Care Data Set attendance extracts.
 
 Identifiable-from-attendance-data parameters (arrival profile, acuity mix,
@@ -74,7 +74,7 @@ def derive_patch(df: pd.DataFrame) -> tuple[dict, list]:
         if changed:
             summary.append("Admission rate by acuity updated: " + ", ".join(changed) + ".")
 
-    summary.append("Per-stage service times unchanged — not identifiable from attendance "
+    summary.append("Per-stage service times unchanged - not identifiable from attendance "
                    "data; provide stage-level timestamps to calibrate these.")
     return patch, summary
 

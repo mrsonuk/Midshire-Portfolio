@@ -151,7 +151,7 @@ class Simulation:
             is_open = True
         elif o < c:
             is_open = o <= hour < c
-        else:                                 # wraps midnight (e.g. 22–06)
+        else:                                 # wraps midnight (e.g. 22-06)
             is_open = hour >= o or hour < c
         return target if is_open else node.get("closed_fallback", target)
 

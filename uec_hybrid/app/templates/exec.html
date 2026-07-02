@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Executive brief — Model ED Optimiser</title>
+<title>Executive brief - Model ED Optimiser</title>
 <style>
  :root{--dark:#003087;--blue:#005EB8;--aqua:#00A9CE;--green:#009639;--orange:#ED8B00;
   --red:#DA291C;--grey:#425563;--black:#231F20;--line:#E8EDEE;--page:#F0F4F7;}
@@ -87,28 +87,28 @@ function band(b,suf){return b?`good week ${b.good}${suf} · tough week ${b.tough
   $('#deptLine').textContent=`${d.department.name} · about ${d.department.attendances_per_day} attendances a day`
     +(d.department.calibrated?' · calibrated from your data':' · synthetic until calibrated');
   $('#risk').className='risk '+d.risk.colour;
-  $('#risk').textContent=`${d.risk.label} — hospital about ${d.bed_occupancy}% full`;
+  $('#risk').textContent=`${d.risk.label} - hospital about ${d.bed_occupancy}% full`;
   const s=d.standards;
   $('#tiles').innerHTML=
-   tile(rag4h(s.four_hour?.typical??0),'4-hour standard',(s.four_hour?.typical??'–')+'%',band(s.four_hour,'%'))+
-   tile((s.initial_assessment?.typical??0)>=80?'green':'amber','Seen within 15 min',(s.initial_assessment?.typical??'–')+'%',band(s.initial_assessment,'%'))+
-   tile((s.twelve_hour?.typical??0)<=1?'green':(s.twelve_hour?.typical??0)<=3?'amber':'red','12-hour waits',(s.twelve_hour?.typical??'–')+'%',band(s.twelve_hour,'%'))+
-   tile((s.ambulance_handover?.typical??0)>=85?'green':'amber','Handover ≤ 45 min',(s.ambulance_handover?.typical??'–')+'%',band(s.ambulance_handover,'%'));
+   tile(rag4h(s.four_hour?.typical??0),'4-hour standard',(s.four_hour?.typical??'-')+'%',band(s.four_hour,'%'))+
+   tile((s.initial_assessment?.typical??0)>=80?'green':'amber','Seen within 15 min',(s.initial_assessment?.typical??'-')+'%',band(s.initial_assessment,'%'))+
+   tile((s.twelve_hour?.typical??0)<=1?'green':(s.twelve_hour?.typical??0)<=3?'amber':'red','12-hour waits',(s.twelve_hour?.typical??'-')+'%',band(s.twelve_hour,'%'))+
+   tile((s.ambulance_handover?.typical??0)>=85?'green':'amber','Handover ≤ 45 min',(s.ambulance_handover?.typical??'-')+'%',band(s.ambulance_handover,'%'));
   $('#bottleneck').innerHTML=d.bottleneck;
   $('#recommendation').innerHTML=d.recommendation;
   $('#wfLine').innerHTML=`Weekly pay-bill about <b>£${d.workforce.weekly_cost.toLocaleString()}</b>. ${d.workforce.headline}`;
   $('#investLine').innerHTML=d.invest
-    ?`Biggest opportunity: <b>${d.invest.label}</b> — ${d.invest.benefit} ${d.invest.finance&&d.invest.finance.annual_benefit>0?'<b>'+d.invest.finance.summary+'</b>':''}`
+    ?`Biggest opportunity: <b>${d.invest.label}</b> - ${d.invest.benefit} ${d.invest.finance&&d.invest.finance.annual_benefit>0?'<b>'+d.invest.finance.summary+'</b>':''}`
     :(d.gap_computed?'You have every Model ED element in place.'
-      :'Open <a href="/#gaps">Model ED gaps</a> once to compute the investment case — it will then appear here and in the PDF.');
+      :'Open <a href="/#gaps">Model ED gaps</a> once to compute the investment case - it will then appear here and in the PDF.');
   $('#loading').style.display='none';$('#content').style.display='block';
  }catch(e){$('#loading').innerHTML='Could not load the brief: '+e.message;}
 })();
 $('#report').onclick=()=>{
- $('#report').disabled=true;$('#reportNote').textContent='Building your report — this takes about a minute…';
+ $('#report').disabled=true;$('#reportNote').textContent='Building your report - this takes about a minute…';
  fetch('/api/report').then(r=>r.blob()).then(b=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='decision_report.pdf';a.click();
-  $('#reportNote').textContent='Done — check your downloads.';$('#report').disabled=false;
+  $('#reportNote').textContent='Done - check your downloads.';$('#report').disabled=false;
  }).catch(e=>{$('#reportNote').textContent='Could not build the report: '+e.message;$('#report').disabled=false;});
 };
 </script>

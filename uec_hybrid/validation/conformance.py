@@ -1,5 +1,5 @@
 """
-Conformance checking — does the simulated patient flow faithfully reproduce the
+Conformance checking - does the simulated patient flow faithfully reproduce the
 intended Model ED pathway?
 
 For every patient we reconstruct the observed stage sequence from the event log and

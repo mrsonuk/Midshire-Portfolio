@@ -67,7 +67,7 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
             arrivals["hourly_profile"] = [max(0.0, h * (1 - diverted)) for h in arrivals["hourly_profile"]]
 
     new = Pathway.from_dict(raw)
-    new.name = f"{pathway.name} — {scenario.get('name', 'scenario')}"
+    new.name = f"{pathway.name} - {scenario.get('name', 'scenario')}"
     return new, scenario.get("sd")
 
 

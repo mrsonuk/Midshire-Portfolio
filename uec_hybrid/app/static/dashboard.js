@@ -27,7 +27,7 @@ function renderPathway(){
   for(const[n,c] of Object.entries(p.resources)){
     const r=el("div","row"); r.append(el("span",null,n.replace(/_/g," ")));
     if(Array.isArray(c)){
-      // a by-hour staffing rota (set in the product) — show its peak, keep the rota
+      // a by-hour staffing rota (set in the product) - show its peak, keep the rota
       r.append(el("span",null,"rota · peak "+Math.max.apply(null,c)));
     }else{
       const i=el("input");i.type="number";i.min=0;i.value=c;i.dataset.res=n;r.append(i);
@@ -135,7 +135,7 @@ function addScenarioRow(pre){
   const nm=el("input");nm.type="text";nm.value=pre.name;nm.dataset.k="name";nm.style.marginBottom="6px";d.append(nm);
   const res=PATHWAYS[current].resources;
   const r1=el("div","row");const sel=el("select");sel.dataset.k="res";
-  sel.append(new Option("— ED resource —",""));for(const r in res)sel.append(new Option(r.replace(/_/g," "),r));
+  sel.append(new Option("- ED resource -",""));for(const r in res)sel.append(new Option(r.replace(/_/g," "),r));
   const dl=el("input");dl.type="number";dl.value=pre.resources?(""+Object.values(pre.resources)[0]).replace("+",""):0;dl.dataset.k="delta";dl.style.width="62px";
   sel.value=pre.resources?Object.keys(pre.resources)[0]:"";r1.append(el("span",null,"Δ capacity"),sel,dl);d.append(r1);
   const r2=el("div","row");const beds=el("input");beds.type="number";beds.dataset.k="beds";beds.placeholder="beds";beds.style.width="62px";
@@ -186,8 +186,8 @@ function renderScnTable(rows){
 function renderValSummary(conf,variants){
   const col=conf.passed?"var(--green)":"var(--red)";
   let h='<div class="dh">Process-map conformance</div><p style="color:'+col+';font-weight:700">'+
-    (conf.passed?"PASS — simulated pathway faithfully reproduces the Model ED design":
-     "ISSUES — "+conf.n_violations+" violations")+'</p><p>Conformance rate: '+conf.conformance_rate.toFixed(1)+"% of patients.</p>";
+    (conf.passed?"PASS - simulated pathway faithfully reproduces the Model ED design":
+     "ISSUES - "+conf.n_violations+" violations")+'</p><p>Conformance rate: '+conf.conformance_rate.toFixed(1)+"% of patients.</p>";
   if(conf.by_type&&Object.keys(conf.by_type).length)h+="<p>By type: "+JSON.stringify(conf.by_type)+"</p>";
   $("#valSummary").innerHTML=h;
   if(variants){let t="<table><tr><th>Count</th><th>Variant</th></tr>";

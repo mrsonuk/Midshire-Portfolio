@@ -1,6 +1,6 @@
-# ED Optimisation Platform — Rebuild Plan & Target Architecture
+# ED Optimisation Platform - Rebuild Plan & Target Architecture
 
-**Status:** Proposed design, v1.0 — for review before build starts.
+**Status:** Proposed design, v1.0 - for review before build starts.
 **Baseline:** the existing `uec_hybrid` hybrid DES + System-Dynamics engine and Flask app.
 **Goal:** rebuild the current research-grade tool into a commercial, multi-trust
 **ED Optimisation Platform** covering the 20-module product specification:
@@ -24,9 +24,9 @@ are already asking, priced against the money and harm at stake:
 Two properties of the existing engine are the credibility spine of the pitch and
 must be preserved through the rebuild:
 
-1. **Exit-block is emergent** — admissions slow because a modelled hospital bed
+1. **Exit-block is emergent** - admissions slow because a modelled hospital bed
    stock fills, not because of a fudge factor (verified by the test suite).
-2. **The model proves its own faithfulness** — process-map conformance checking
+2. **The model proves its own faithfulness** - process-map conformance checking
    validates every simulated patient journey against the intended pathway.
 
 ---
@@ -42,8 +42,8 @@ end-to-end assertion suite.
 
 - The simulation kernel is retained and *extended* (see §7) as a pure-Python
   compute library with no web/product dependencies.
-- Everything around it — API, persistence, auth, jobs, financials, forecasting,
-  optimisation, front-end, reporting — is rebuilt as a proper product platform.
+- Everything around it - API, persistence, auth, jobs, financials, forecasting,
+  optimisation, front-end, reporting - is rebuilt as a proper product platform.
 - The existing Flask app keeps working during the migration; surfaces are moved
   to the new platform one at a time, then the Flask app is retired.
 - The legacy `nhs_des/` bytecode directory and committed `.pyc` files are removed
@@ -75,7 +75,7 @@ end-to-end assertion suite.
 │  RUN ORCHESTRATOR  (job queue + worker pool)                           │
 │  Monte-Carlo fan-out · result cache keyed by config hash · progress    │
 ├────────────────────────────────────────────────────────────────────────┤
-│  SIMULATION KERNEL  (evolved uec_hybrid — pure Python, no web deps)    │
+│  SIMULATION KERNEL  (evolved uec_hybrid - pure Python, no web deps)    │
 │  DES engine (SimPy) ⇄ SD hospital model via CoSimulator                │
 │  Pathway schema v2 · conformance validation · department builder       │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -86,7 +86,7 @@ end-to-end assertion suite.
 ```
 
 Deployment: Docker Compose, self-hostable on-prem or UK-region cloud. No CDN
-dependencies (all JS vendored) — the platform must run inside locked-down NHS
+dependencies (all JS vendored) - the platform must run inside locked-down NHS
 networks, as the current app already does.
 
 ### Repository layout (monorepo)
@@ -125,18 +125,18 @@ edplatform/
 
 ## 5. Core data model
 
-Versioned, auditable entities — every number shown to a board must be traceable
+Versioned, auditable entities - every number shown to a board must be traceable
 to the run and configuration that produced it.
 
 - **Trust** → has many **Users** (role-scoped) and **Departments**
 - **Department** (versioned config: areas on/off, sizes, opening hours, rota,
-  beds, community capacity) — today's in-memory `CURRENT` dict becomes rows
+  beds, community capacity) - today's in-memory `CURRENT` dict becomes rows
 - **CostBook** (versioned: substantive/agency rates by role & band, tariff and
-  breach-cost assumptions — all trust-editable, shipped with flagged defaults)
+  breach-cost assumptions - all trust-editable, shipped with flagged defaults)
 - **Calibration** (uploaded ECDS extract summary + derived parameters + data-quality report)
 - **Scenario** (declarative change-set vs a department baseline)
 - **Run** (config hash, seeds, engine version, status, KPI results, event-log
-  artefacts) — the result cache: identical config hash ⇒ no recompute
+  artefacts) - the result cache: identical config hash ⇒ no recompute
 - **Forecast** (per-stream models, covariates, backtest metrics)
 - **Recommendation** (optimiser output: change, expected deltas + CIs, rationale)
 - **Report** (generated artefact + the run/scenario ids it cites)
@@ -155,7 +155,7 @@ to the run and configuration that produced it.
 | 5. Capacity planning | Capacity sweep tool ("cubicles needed for X% performance" = automated scenario sweep + frontier chart) | Scenario capacity modifiers (`analysis/scenarios.py`) |
 | 6. Process optimisation | Per-step queue/wait/service/variation analytics surfaced as a step table + control charts | `metrics.stage_waits`, `resource_utilisation`, event log |
 | 7. What-if scenario builder | UI scenario composer over the declarative scenario engine; side-by-side current vs future with CIs | `apply_scenario`/`compare_scenarios`/`tornado` (strong base) |
-| 8. Financial module | **New `finance/` engine**: cost book × scenario deltas → agency/overtime savings, breach costs avoided, income effects, ROI, payback, cost per attendance. All assumptions visible and editable | Pay-bill maths + option cost bands only — biggest functional gap |
+| 8. Financial module | **New `finance/` engine**: cost book × scenario deltas → agency/overtime savings, breach costs avoided, income effects, ROI, payback, cost per attendance. All assumptions visible and editable | Pay-bill maths + option cost bands only - biggest functional gap |
 | 9. Bottleneck analysis | Causal-chain narrative (lab → cubicles → queue → handover → 4hr) generated from stage/resource dependencies; current + future (per scenario) bottleneck | `diagnose` + time-aware control-tower bottleneck (strong base) |
 | 10. Patient flow analytics | Sankey, hour×area occupancy heatmap, path analytics (common/longest paths) from the event log | `flow_counts`, `process_map.variants`, flow-map data (data exists; viz to build) |
 | 11. Real-time prediction | Intraday re-forecast: this morning's actual arrivals → conditional forecast for tonight (4hr risk, breaches, crowding, escalation trigger). Batch CSV first; EPR feed in Phase 3 | `today_plan` OPEL read (coarse base) |
@@ -164,23 +164,23 @@ to the run and configuration that produced it.
 | 14. Admission flow | Decision-to-admit → bed request → allocation (SD-coupled) → porter transport → ward; boarding census and DTOC surfaced | Emergent exit-block via bed stock (strongest asset); granularity to add |
 | 15. KPI module | Add LWBS (queue reneging), time-to-treatment, mortality-proxy (long-wait harm index); everything else exists | `kpis` + `uec_metrics` + RAG scorecard (strong base) |
 | 16. Recommendation engine | `optimise/`: constrained local search / Bayesian optimisation over rota & capacity space, Monte-Carlo scored with common random numbers; output = "move X to Y ⇒ +Z% 4hr, −£W agency (95% CI)" with tornado-style explanation | Planner's simulated option ranking (rule-based precursor) |
-| 17. Benchmarking | Ingest published NHSE monthly A&E statistics for peer/median/quartile comparison; opt-in cross-client consortium benchmarking later | None — new |
-| 18. Business-case generator | One-click board paper: baseline vs scenario, benefits, financials (from `finance/`), CIs, recommendation — templated per audience (Board / ICB / NHSE) | `report.py` 2-page PDF + gap-analysis investment case |
+| 17. Benchmarking | Ingest published NHSE monthly A&E statistics for peer/median/quartile comparison; opt-in cross-client consortium benchmarking later | None - new |
+| 18. Business-case generator | One-click board paper: baseline vs scenario, benefits, financials (from `finance/`), CIs, recommendation - templated per audience (Board / ICB / NHSE) | `report.py` 2-page PDF + gap-analysis investment case |
 | 19. Interactive simulation | Keep instant no-sim previews (rota editor pattern), background MC jobs with live progress via SSE; result cache makes repeat questions instant | Rota preview + apply-and-re-run (good base) |
-| 20. Reporting suite | `reports/`: board paper, scenario pack, workforce report, capacity report, daily SITREP — scheduled or on-demand, all citing run ids | `report.py` (CLI PDF) |
+| 20. Reporting suite | `reports/`: board paper, scenario pack, workforce report, capacity report, daily SITREP - scheduled or on-demand, all citing run ids | `report.py` (CLI PDF) |
 
 ---
 
 ## 7. Kernel extensions required (the only "physics" work)
 
-1. **Arrival streams** — ambulance / walk-in / GP referral / 111 / paeds as
+1. **Arrival streams** - ambulance / walk-in / GP referral / 111 / paeds as
    first-class streams with independent profiles (feeds modules 3, 13).
-2. **Queue reneging** — patience thresholds so LWBS emerges (module 15).
-3. **Ambulance offload sub-model** — vehicle queue + handover resource (13).
-4. **Admission chain** — bed request → allocation → transport steps with porter
+2. **Queue reneging** - patience thresholds so LWBS emerges (module 15).
+3. **Ambulance offload sub-model** - vehicle queue + handover resource (13).
+4. **Admission chain** - bed request → allocation → transport steps with porter
    resource (14).
-5. **New pathway nodes** — registration, lab/pathology, specialty review (2, 6).
-6. **Schema v2 + migrator** — versioned pathway schema, automatic upgrade of
+5. **New pathway nodes** - registration, lab/pathology, specialty review (2, 6).
+6. **Schema v2 + migrator** - versioned pathway schema, automatic upgrade of
    existing pathway JSONs; conformance validation extended to new nodes.
 
 Everything else in the programme is product engineering around an unchanged
@@ -193,24 +193,24 @@ physics tests (e.g. "LWBS rises when streaming is understaffed").
 
 Durations are indicative for a small focused team; each phase ends demoable.
 
-### Phase 0 — Platform foundation (~2–3 weeks)
+### Phase 0 - Platform foundation (~2-3 weeks)
 Monorepo restructure; delete `nhs_des` bytecode; FastAPI + Postgres + Alembic +
 job queue + OIDC scaffold; port kernel unchanged with tests green in CI; result
 cache; existing Flask surfaces still functional (strangler starts).
 
-### Phase 1 — Pilot-sellable MVP (~6–8 weeks) → covers spec 1, 2, 4, 5, 6, 7, 8, 9, 15, 18, 19, 20
+### Phase 1 - Pilot-sellable MVP (~6-8 weeks) → covers spec 1, 2, 4, 5, 6, 7, 8, 9, 15, 18, 19, 20
 Exec dashboard; Twin Studio (department config v2); workforce studio with full
 role model; scenario builder UI; **financial engine + cost book**; business-case
 generator v1; reporting suite v1; LWBS + KPI completions.
 **Exit criterion: a trust pilot can run discovery → calibration → validated
 baseline → costed board paper entirely in-product.**
 
-### Phase 2 — Differentiation (~6–8 weeks) → covers spec 3, 10, 12, 13, 14, 16
+### Phase 2 - Differentiation (~6-8 weeks) → covers spec 3, 10, 12, 13, 14, 16
 Forecasting engine with covariates + backtesting; ambulance offload module;
 admission-chain granularity; winter surge templates + inverse solver;
 recommendation engine v1; Sankey/heatmap flow analytics.
 
-### Phase 3 — Platform & scale (ongoing) → covers spec 11, 17 + advanced capabilities
+### Phase 3 - Platform & scale (ongoing) → covers spec 11, 17 + advanced capabilities
 Intraday prediction from live feeds (EPR/FHIR ingestion); benchmarking vs
 published NHSE statistics, then consortium benchmarking; optimisation under
 budget/workforce constraints v2; whole-system extension (per-ward stocks,
@@ -233,14 +233,14 @@ teams demo the methodology from the product itself:
 | Roadmap & business case | Business-case generator |
 | Continuous improvement | Exec dashboard + daily prediction + SITREP (recurring licence) |
 
-Pricing shape (to refine commercially): fixed-fee pilot (8–12 weeks) → annual
+Pricing shape (to refine commercially): fixed-fee pilot (8-12 weeks) → annual
 platform licence per site → consultancy days for scenario/optimisation cycles.
 All financial figures shown by the product come from the trust-editable cost
-book — we never present invented benchmarks as fact.
+book - we never present invented benchmarks as fact.
 
 ## 10. Governance, security & clinical-safety workstream (sales-critical)
 
-Runs alongside Phase 1 — trusts cannot buy without it:
+Runs alongside Phase 1 - trusts cannot buy without it:
 
 - **No patient-identifiable data**: ECDS extracts pseudonymised/aggregated at
   ingestion; enforced by schema validation on upload.

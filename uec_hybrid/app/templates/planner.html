@@ -59,7 +59,7 @@
 </head>
 <body>
 <header><div class="logo">NHS</div><div>
- <h1>Urgent &amp; Emergency Care — Demand &amp; Capacity Planner</h1>
+ <h1>Urgent &amp; Emergency Care - Demand &amp; Capacity Planner</h1>
  <p>For ICB and operational planning · works for any emergency department</p>
 </div></header>
 <nav style="background:#fff;border-bottom:1px solid var(--line);padding:0 26px;display:flex;gap:4px">
@@ -72,15 +72,15 @@
  <p class="sub" id="deptNote" style="margin:10px 0 0;display:none"></p>
 
  <div class="modes">
-  <div class="mode active" data-mode="winter"><div class="t">Plan for this winter</div><div class="d">ICB winter &amp; investment planning — where to invest</div></div>
-  <div class="mode" data-mode="today"><div class="t">Today / this week</div><div class="d">Operational — which lever to flex now</div></div>
+  <div class="mode active" data-mode="winter"><div class="t">Plan for this winter</div><div class="d">ICB winter &amp; investment planning - where to invest</div></div>
+  <div class="mode" data-mode="today"><div class="t">Today / this week</div><div class="d">Operational - which lever to flex now</div></div>
  </div>
 
  <!-- WINTER -->
  <div id="winter">
   <div class="card">
    <h2>1. Tell us about your emergency department</h2>
-   <p class="sub">Three numbers to start — or upload your own attendance history and we’ll work out the demand for you.</p>
+   <p class="sub">Three numbers to start - or upload your own attendance history and we’ll work out the demand for you.</p>
    <label>How many people attend A&amp;E on a typical day now?</label>
    <div class="field"><input type="number" id="attend" value="320" min="60" max="1200" step="10"><span class="hint">attendances per day</span></div>
    <label>Expected winter rise in attendances: <span class="rngval" id="upV">12%</span></label>
@@ -101,11 +101,11 @@
    <div class="card"><h2>2. What winter looks like at your current set-up</h2>
     <p class="sub" id="fcSummary"></p><div class="tiles" id="tiles"></div><div class="verdict" id="verdict"></div></div>
    <div class="card"><h2>3. What’s driving the pressure</h2><div class="drives" id="drives"></div></div>
-   <div class="card"><h2>4. Your options — what would it take?</h2>
+   <div class="card"><h2>4. Your options - what would it take?</h2>
     <p class="sub">Each option run at the expected winter demand, ranked by how much it improves the 4-hour standard. Cost is an indicative band.</p>
     <div id="options"></div></div>
    <div class="card"><h2>5. Bottom line</h2><div class="bottom" id="bottom"></div>
-    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative — validate locally. &nbsp;·&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
+    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. &nbsp;·&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
   </div>
  </div>
 
@@ -141,7 +141,7 @@ function rag(v){return v>=78?'green':v>=72?'amber':'red';}
  const a=Math.round(d.department.attendances_per_day);
  if(a){$('#attend').value=a;if($('#tAttend'))$('#tAttend').value=Math.round(a*1.06);
   const n=$('#deptNote');n.style.display='block';
-  n.innerHTML=`Plans model <b>${d.department.name}</b> exactly as set up in the control tower — same areas, opening hours, rota and beds (${a} attendances a day). Change the numbers below to plan.`;}
+  n.innerHTML=`Plans model <b>${d.department.name}</b> exactly as set up in the control tower - same areas, opening hours, rota and beds (${a} attendances a day). Change the numbers below to plan.`;}
 }catch(e){}})();
 document.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{
  document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('active',x===m));
@@ -179,7 +179,7 @@ function renderWinter(d){
   tile(o.corridor_per_day>=4?'red':o.corridor_per_day>=1?'amber':'green','Long waits for a bed',o.corridor_per_day,'patients a day waiting over 12 hours for admission')+
   tile(o.bed_occupancy>=92?'red':o.bed_occupancy>=85?'amber':'green','How full the hospital is',o.bed_occupancy+'%','average inpatient bed occupancy');
  const v=$('#verdict');v.className='verdict '+cls;
- v.textContent=o.meets?`You would broadly meet the ${t}% four-hour standard — but you’d still slip below it about ${o.miss_weeks} weeks in 10.`
+ v.textContent=o.meets?`You would broadly meet the ${t}% four-hour standard - but you’d still slip below it about ${o.miss_weeks} weeks in 10.`
    :`At the expected demand you would miss the ${t}% four-hour standard about ${o.miss_weeks} weeks in 10. Something needs to change.`;
  $('#drives').innerHTML=o.constraint;
  $('#options').innerHTML=d.options.map((x,i)=>optRow(x,i===0,d.options[0].delta,'cost')).join('');
@@ -209,7 +209,7 @@ function optRow(x,isRec,maxd,kind){
    : `<div style="font-weight:700;color:#003087">${x.owner}</div><div style="margin-top:4px;color:#425563">${x.effort}</div>`;
  const fin = kind==='cost'&&x.finance&&x.finance.annual_benefit>0
    ? `<div style="margin-top:4px;color:#003087;font-weight:600">${x.finance.summary}</div>` : '';
- const m = (kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' — meets the target':''}. ${x.build}.`
+ const m = (kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' - meets the target':''}. ${x.build}.`
    : `Gets today to about <b>${x.four_hour}%</b>${x.corridor_relief>0?`, clears ~${x.corridor_relief} long bed-waits`:''}.`)+fin;
  return `<div class="opt ${isRec&&x.delta>0?'rec':''}">
    <div class="imp"><div class="d" style="color:${x.delta>=0?'#009639':'#DA291C'}">${sign}${x.delta}</div><div class="r">points on 4-hr</div></div>

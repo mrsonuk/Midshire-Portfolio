@@ -1,5 +1,5 @@
 """
-Demand forecast for UEC / ED planning — in planners' terms, not modelling terms.
+Demand forecast for UEC / ED planning - in planners' terms, not modelling terms.
 
 A planner describes their department today (attendances a day, current 4-hour
 performance, size) and the expected winter pressure (a percent uplift and any
@@ -41,7 +41,7 @@ def forecast(attendances_per_day: float, winter_uplift_pct: float = 12.0,
         "summary": (f"About {round(winter)} attendances a day this winter, "
                     f"up from {round(attendances_per_day)} now "
                     f"(a {winter_uplift_pct:.0f}% winter rise). "
-                    f"Busiest on {busiest_day}s and around {peak_hour}:00–"
+                    f"Busiest on {busiest_day}s and around {peak_hour}:00-"
                     f"{(peak_hour+3) % 24}:00."),
     }
 

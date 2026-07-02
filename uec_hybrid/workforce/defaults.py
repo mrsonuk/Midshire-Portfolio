@@ -1,5 +1,5 @@
 """A sensible default rota for the ~320/day template ED, with a daytime peak and
-overnight dip — the starting point a department then edits."""
+overnight dip - the starting point a department then edits."""
 
 DEFAULT_ROTA = [
     # majors / cubicles / resus doctors (consultant + registrar + SHO)
@@ -27,7 +27,7 @@ DEFAULT_ROTA = [
     # mental-health liaison (24/7 cover, daytime uplift)
     {"role": "mh_liaison", "start": 0,  "end": 24, "count": 1},
     {"role": "mh_liaison", "start": 9,  "end": 21, "count": 2},
-    # ED nursing — the biggest staff group (Bands 5/6, day-heavy)
+    # ED nursing - the biggest staff group (Bands 5/6, day-heavy)
     {"role": "band6_nurse", "start": 8,  "end": 20, "count": 4},
     {"role": "band6_nurse", "start": 20, "end": 8,  "count": 2},
     {"role": "band5_nurse", "start": 8,  "end": 20, "count": 8},

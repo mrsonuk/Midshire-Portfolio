@@ -2,7 +2,7 @@
 Operational "today / this week" view.
 
 A different audience and decision from winter planning: a site / flow manager
-asking "today is shaping up badly — what do I flex now?" The levers here cost no
+asking "today is shaping up badly - what do I flex now?" The levers here cost no
 capital (discharge push, SDEC hours, staff flex, escalation space, redirect to
 UTC, community calls), framed by effort and who owns them, with an OPEL-style risk
 read that operational teams recognise. Same hidden engine; same plain language.
@@ -13,7 +13,7 @@ from .planner import build_department, _spread, TARGET
 
 # No-capital actions a manager can take today, each as an engine change.
 ACTIONS = [
-    {"id": "discharge", "label": "Push discharges — get more inpatients out by midday",
+    {"id": "discharge", "label": "Push discharges - get more inpatients out by midday",
      "sd": {"ward_discharge_capacity_per_hour": "*1.3"},
      "effort": "Board round + criteria-to-reside review", "owner": "Ward / discharge teams"},
     {"id": "sdec", "label": "Open SDEC longer today / pull the SDEC consultant forward",
@@ -36,12 +36,12 @@ ACTIONS = [
 
 def _opel(four_hour, fullness):
     if four_hour >= 85 and fullness < 92:
-        return {"level": 1, "label": "OPEL 1 — manageable", "colour": "green"}
+        return {"level": 1, "label": "OPEL 1 - manageable", "colour": "green"}
     if four_hour >= TARGET and fullness < 95:
-        return {"level": 2, "label": "OPEL 2 — under pressure", "colour": "amber"}
+        return {"level": 2, "label": "OPEL 2 - under pressure", "colour": "amber"}
     if four_hour >= 68:
-        return {"level": 3, "label": "OPEL 3 — serious pressure", "colour": "orange"}
-    return {"level": 4, "label": "OPEL 4 — critical (corridor care / divert risk)", "colour": "red"}
+        return {"level": 3, "label": "OPEL 3 - serious pressure", "colour": "orange"}
+    return {"level": 4, "label": "OPEL 4 - critical (corridor care / divert risk)", "colour": "red"}
 
 
 def _with_fullness(raw, fullness):
@@ -75,7 +75,7 @@ def today_plan(attendances_today=340, hospital_fullness_pct=94.0,
         disc = next((x for x in actions if x["id"] == "discharge"), None)
         if disc and disc["delta"] >= top["delta"] - 1:
             top = disc
-    first = (f"Do this first: <b>{top['label'].lower()}</b> — it buys you about "
+    first = (f"Do this first: <b>{top['label'].lower()}</b> - it buys you about "
              f"{max(0, top['delta'])} points on the 4-hour standard today "
              f"({top['owner']})." if top else "")
     headline = (f"Today is shaping up as a {'tough' if risk['level'] >= 3 else 'busy'} day: "

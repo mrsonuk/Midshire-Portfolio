@@ -21,7 +21,7 @@ def sd_stocks_figure(result, pathway) -> go.Figure:
                                  name="ED crowding index %", line=dict(color=P.NHS_ORANGE, width=2, dash="dot")))
         fig.add_hline(y=92, line=dict(color=P.NHS_RED, width=1, dash="dash"),
                       annotation_text="92% exit-block threshold")
-    fig.update_layout(P.LAYOUT, height=360, title="System Dynamics — stocks over time",
+    fig.update_layout(P.LAYOUT, height=360, title="System Dynamics - stocks over time",
                       xaxis_title="hours", yaxis_title="%",
                       legend=dict(orientation="h", y=-0.2))
     return fig
@@ -49,7 +49,7 @@ def utilisation_figure(result, pathway) -> go.Figure:
     fig = go.Figure(go.Bar(x=u["utilisation"], y=[r.replace("_", " ") for r in u["resource"]],
                            orientation="h", marker_color=colours,
                            text=[f"{v:.0f}%" for v in u["utilisation"]], textposition="outside"))
-    fig.update_layout(P.LAYOUT, height=380, title="Resource utilisation — bottlenecks in red",
+    fig.update_layout(P.LAYOUT, height=380, title="Resource utilisation - bottlenecks in red",
                       xaxis_title="% of capacity in use", xaxis_range=[0, 105])
     return fig
 
@@ -59,7 +59,7 @@ def waits_figure(result) -> go.Figure:
     fig = go.Figure(go.Bar(x=w["mean_wait"], y=w["stage_label"], orientation="h",
                            marker_color=P.NHS_BRIGHT,
                            text=[f"{v:.0f}" for v in w["mean_wait"]], textposition="outside"))
-    fig.update_layout(P.LAYOUT, height=380, title="Where patients wait — mean queue (min)",
+    fig.update_layout(P.LAYOUT, height=380, title="Where patients wait - mean queue (min)",
                       xaxis_title="minutes")
     return fig
 
@@ -75,7 +75,7 @@ def montecarlo_figure(mc, metric="four_hour", label="4-hour compliance (%)") -> 
                       annotation_text=f"mean {s['mean']:.1f}")
         fig.add_vrect(x0=s["ci_low"], x1=s["ci_high"], fillcolor=P.NHS_BLUE, opacity=0.12,
                       line_width=0, annotation_text="95% CI", annotation_position="top left")
-    fig.update_layout(P.LAYOUT, height=340, title=f"Monte-Carlo — {label}",
+    fig.update_layout(P.LAYOUT, height=340, title=f"Monte-Carlo - {label}",
                       xaxis_title=label, yaxis_title="replications")
     return fig
 
@@ -117,7 +117,7 @@ def scenario_figure(cmp, metric="four_hour", label="4-hour compliance (%)",
     fig = go.Figure(go.Bar(x=names, y=vals, marker_color=colours, error_y=err,
                            text=[f"{v:.0f}" for v in vals], textposition="outside"))
     fig.add_hline(y=base, line=dict(color=P.NHS_GREY, width=1, dash="dash"), opacity=0.6)
-    fig.update_layout(P.LAYOUT, height=380, title=f"Scenario comparison — {label}",
+    fig.update_layout(P.LAYOUT, height=380, title=f"Scenario comparison - {label}",
                       yaxis_title=label)
     return fig
 
@@ -129,6 +129,6 @@ def tornado_figure(tor) -> go.Figure:
                            orientation="h", marker_color=colours,
                            text=[f"{b['delta']:+.1f}" for b in bars], textposition="outside"))
     fig.update_layout(P.LAYOUT, height=360,
-                      title=f"Sensitivity — change in {tor['metric'].replace('_',' ')} vs baseline",
+                      title=f"Sensitivity - change in {tor['metric'].replace('_',' ')} vs baseline",
                       xaxis_title="percentage-point change")
     return fig

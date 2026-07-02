@@ -1,7 +1,7 @@
 """
 The "are you staffed for the demand curve?" view: per staff area, the headcount by
 hour against the arrivals shape, the hours where staffing lags demand, plus the
-weekly pay-bill — all in plain terms for an ED ops/workforce lead.
+weekly pay-bill - all in plain terms for an ED ops/workforce lead.
 
 ``staffing_and_cost`` is pure and simulation-free, so the rota editor can preview a
 change instantly; ``workforce_view`` wraps it for a whole department.
@@ -19,7 +19,7 @@ def _demand_profile(attendances_per_day: float) -> list[float]:
 
 
 def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
-    """Staffing-vs-demand and cost for a rota — no simulation, instant.
+    """Staffing-vs-demand and cost for a rota - no simulation, instant.
 
     ``present`` optionally restricts the staff areas shown (e.g. only those the
     department actually has); ``None`` shows every staffed area in the rota.
@@ -30,7 +30,7 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
     areas = []
     for res in STAFF_RESOURCES + SUPPORT_RESOURCES:
         # engine-constraining areas follow the department's set-up; the support
-        # workforce (nursing, ENPs, HCAs, porters, reception) is always shown —
+        # workforce (nursing, ENPs, HCAs, porters, reception) is always shown -
         # it is rostered and costed even though it doesn't limit flow yet.
         if res in STAFF_RESOURCES and present is not None and res not in present:
             continue
@@ -50,8 +50,8 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
     headline = "Your staffing broadly matches demand through the day."
     if worst and worst["understaffed_hours"]:
         hrs = worst["understaffed_hours"]
-        span = f"{min(hrs):02d}:00–{(max(hrs)+1) % 24:02d}:00"
-        headline = (f"{worst['label']} look light against demand around {span} — "
+        span = f"{min(hrs):02d}:00-{(max(hrs)+1) % 24:02d}:00"
+        headline = (f"{worst['label']} look light against demand around {span} - "
                     f"the most likely time you’ll fall behind.")
     return {
         "demand": [round(x, 1) for x in demand],

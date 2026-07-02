@@ -130,7 +130,7 @@ def main():
     assert sd_ev.empty or (entry_hours.between(8, 19).all()), \
         f"SDEC took patients outside opening hours: {sorted(set(entry_hours))}"
     assert check(rh, pdh)["passed"], "opening-hours pathway not conformant"
-    print(f"Opening hours OK: SDEC entries confined to 08:00–20:00; routes safely; conformant.")
+    print(f"Opening hours OK: SDEC entries confined to 08:00-20:00; routes safely; conformant.")
 
     # --- rota preview: instant staffing + cost with no simulation ---
     from ..workforce.view import staffing_and_cost

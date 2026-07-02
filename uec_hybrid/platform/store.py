@@ -1,5 +1,5 @@
 """
-Persistence for the platform — the saved department (versioned), ECDS
+Persistence for the platform - the saved department (versioned), ECDS
 calibrations, and a run cache keyed by configuration hash.
 
 Everything a surface shows is traceable: a cached result is only reused when

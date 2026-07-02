@@ -33,7 +33,7 @@ AREAS = {
               "why": "Dedicated children’s space and paediatric-competent decision-makers."},
     # Same-day / ambulatory / assessment areas AVOID admission. Without them those
     # patients are admitted (occupying scarce beds → exit-block), so the fallback
-    # is the inpatient-bed wait — which is why having them improves flow.
+    # is the inpatient-bed wait - which is why having them improves flow.
     "eemac": {"label": "EEMAC (extended emergency ambulatory care)", "nodes": ["eemac", "eemac_outcome"],
               "resources": ["eemac_space"], "fallback": "await_inpatient_bed", "mode": "reroute",
               "hours": [8, 22],
@@ -78,7 +78,7 @@ class Department:
     def default(cls):
         # A realistic mid-maturity Type 1 ED: has rapid assessment, SDEC,
         # children's area and MH liaison, but is MISSING several Model ED
-        # elements (co-located UTC, fit-to-sit, EEMAC, CDU, frailty unit) — so the
+        # elements (co-located UTC, fit-to-sit, EEMAC, CDU, frailty unit) - so the
         # gap view has something to show.
         from ..workforce.defaults import DEFAULT_ROTA
         return cls(enabled=["rat", "sdec", "paeds", "mh"], rota=list(DEFAULT_ROTA))

@@ -4,7 +4,7 @@ Business-case maths: turn a simulated improvement into pounds.
 Benefits are computed ONLY from what the simulation actually showed (breaches
 avoided, admissions avoided) priced by the trust-editable cost book; costs come
 from the option's cost band priced by the same book. The assumptions used are
-returned with every case so they can be printed alongside the numbers — a case
+returned with every case so they can be printed alongside the numbers - a case
 is never shown without the figures it rests on.
 """
 from __future__ import annotations
@@ -30,9 +30,9 @@ def _case(annual_benefit, cost_band, book, drivers, assumptions):
         out["roi"] = round(annual_benefit / mid, 2)
         out["payback_years"] = round(mid / annual_benefit, 1)
         out["summary"] = (f"~£{annual_benefit:,}/year benefit against an indicative "
-                          f"£{lo:,}–£{hi:,}/year cost"
-                          + (f" — pays back in about {out['payback_years']:g} years."
-                             if out["payback_years"] >= 1.05 else " — pays back within the year."))
+                          f"£{lo:,}-£{hi:,}/year cost"
+                          + (f" - pays back in about {out['payback_years']:g} years."
+                             if out["payback_years"] >= 1.05 else " - pays back within the year."))
     else:
         out["roi"] = None
         out["payback_years"] = None
@@ -70,7 +70,7 @@ def gap_finance(item: dict, attendances_per_day: float, book: dict | None = None
     """Finance for a missing Model ED element from the gap analysis.
 
     Front-door areas are valued on the 4-hour breaches they avoid; same-day /
-    assessment areas on the admissions they avoid — the same measure the gap
+    assessment areas on the admissions they avoid - the same measure the gap
     analysis itself uses.
     """
     book = book or load_cost_book()

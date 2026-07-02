@@ -1,10 +1,10 @@
 """
-Staff roles for the ED — the workforce a department rosters.
+Staff roles for the ED - the workforce a department rosters.
 
 Each role has an indicative cost per hour and the ED area (engine resource) it
 staffs. Several roles can staff the same area (e.g. consultant + registrar + SHO
 all fill the 'ed_doctor' pool); the rota sums them by hour. Costs are indicative
-planning figures (mid-points incl. on-costs) so a department can weigh options —
+planning figures (mid-points incl. on-costs) so a department can weigh options -
 they are editable.
 """
 from __future__ import annotations
@@ -16,7 +16,7 @@ STAFF_RESOURCES = [
 ]
 
 # rostered-and-costed workforce that does not yet limit flow in the engine
-# (nursing / minors-clinician / porter constraints arrive with pathway v2) —
+# (nursing / minors-clinician / porter constraints arrive with pathway v2) -
 # it appears in the rota, the pay-bill and the staffing-vs-demand view.
 SUPPORT_RESOURCES = ["ed_nurse", "minors_enp", "hca_pool", "porter_pool", "reception"]
 
@@ -31,8 +31,8 @@ ROLES = {
     "frailty_pract":   {"label": "Frailty practitioner", "staffs": "frailty_team", "cost": 46},
     "mh_liaison":      {"label": "Mental-health liaison clinician", "staffs": "mh_clinician", "cost": 42},
     # nursing and support team (rostered + costed; flow constraints in pathway v2)
-    "band6_nurse":     {"label": "ED nurse — Band 6", "staffs": "ed_nurse", "cost": 34},
-    "band5_nurse":     {"label": "ED nurse — Band 5", "staffs": "ed_nurse", "cost": 28},
+    "band6_nurse":     {"label": "ED nurse - Band 6", "staffs": "ed_nurse", "cost": 34},
+    "band5_nurse":     {"label": "ED nurse - Band 5", "staffs": "ed_nurse", "cost": 28},
     "enp":             {"label": "Emergency nurse practitioner (minors)", "staffs": "minors_enp", "cost": 41},
     "hca":             {"label": "Healthcare assistant", "staffs": "hca_pool", "cost": 20},
     "porter":          {"label": "Porter / patient transport", "staffs": "porter_pool", "cost": 18},

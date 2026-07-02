@@ -1,5 +1,5 @@
 """
-Demand & capacity planner — translates the simulation into the answers an ICB
+Demand & capacity planner - translates the simulation into the answers an ICB
 winter / investment planner actually wants, in plain language:
 
   * what winter looks like at the current set-up (good week / typical / tough week);
@@ -69,8 +69,8 @@ def build_department(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pc
     ({resources, sd, divert}).
 
     When ``department`` (a department.config.Department) is given the plan models
-    *that* ED — its areas, opening hours, rota, beds and community capacity, plus
-    any stored ECDS ``calibration`` patch — with only demand scaled to the
+    *that* ED - its areas, opening hours, rota, beds and community capacity, plus
+    any stored ECDS ``calibration`` patch - with only demand scaled to the
     forecast. Without one it falls back to the generic template scaled by size."""
     if department is not None:
         from ..department.builder import build as build_dept
@@ -81,7 +81,7 @@ def build_department(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pc
         if attendances_now is None:
             attendances_now = float(department.attendances_per_day)
         fc = forecast(attendances_now, winter_uplift_pct, yoy_growth_pct)
-        # scale the department's own arrival shape to the forecast total —
+        # scale the department's own arrival shape to the forecast total -
         # demand changes this winter; the department's capacity does not.
         prof = raw["arrivals"]["hourly_profile"]
         tot = sum(prof) or 1
@@ -146,7 +146,7 @@ def _spread(raw, reps=6, seed=500):
 def _constraint(outcome, raw):
     """Plain-English statement of what is driving the pressure."""
     if outcome["bed_occupancy"] >= 90:
-        return ("Not enough ward beds to admit into — admitted patients back up in "
+        return ("Not enough ward beds to admit into - admitted patients back up in "
                 "the ED waiting for a bed. This is the main cause of long waits and "
                 "corridor care.")
     if outcome["typical"] >= TARGET:
@@ -180,7 +180,7 @@ def make_plan(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pct=0.0,
     if meeters:
         pick = sorted(meeters, key=lambda o: (rank.get(o["cost"], 3), -o["delta"]))[0]
         rec = (f"The most cost-effective way to protect the 4-hour standard this winter "
-               f"is to <b>{pick['label'].lower()}</b> — it gets you to about "
+               f"is to <b>{pick['label'].lower()}</b> - it gets you to about "
                f"{pick['four_hour']}% ({pick['cost'].lower()} cost). ")
     else:
         pick = options[0] if options else None

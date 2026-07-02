@@ -116,7 +116,7 @@ def spa(path):
     """The React front-end. Surfaces migrate here one at a time; until then the
     template pages stay canonical."""
     if not WEB_DIST.exists():
-        return ("The new interface is not built — run `npm install && npm run build` "
+        return ("The new interface is not built - run `npm install && npm run build` "
                 "in web/ (or use the existing pages at /).", 503)
     if path and (WEB_DIST / path).is_file():
         return send_from_directory(WEB_DIST, path)
@@ -183,7 +183,7 @@ CURRENT = {"dept": None}
 
 
 def _dept() -> Department:
-    """The saved department — one department shared by every surface, persisted
+    """The saved department - one department shared by every surface, persisted
     across restarts (control tower, workforce, gaps, planner and analyst all
     model the same ED)."""
     if CURRENT["dept"] is None:
@@ -203,7 +203,7 @@ def _dept_raw():
 
 def _standards(dept, reps=5):
     """Plain headline standards for a department: good / typical / tough.
-    Cached by configuration hash — the same set-up never simulates twice."""
+    Cached by configuration hash - the same set-up never simulates twice."""
     raw = _dept_raw()
     key = {"raw": raw, "reps": reps}
     hit = store.cached("standards", key)
@@ -387,7 +387,7 @@ def _your_department_pathway_entry():
 
 @app.route("/analyst")
 def analyst():
-    # The technical model view, for analysts — defaulting to the user's own
+    # The technical model view, for analysts - defaulting to the user's own
     # department so it is connected to the product, not a separate model.
     pathways = {**_your_department_pathway_entry(), **list_pathways()}
     return render_template("dashboard.html", pathways=pathways)
@@ -430,9 +430,9 @@ def api_montecarlo():
         if s:
             spread = s["ci_high"] - s["ci_low"]
             interp = (f"Across {reps} independent simulated weeks, 4-hour performance averaged "
-                      f"{s['mean']:.1f}% (95% of weeks {s['ci_low']:.1f}–{s['ci_high']:.1f}%). "
-                      + ("Wide spread — plan to the lower bound." if spread > 8
-                         else "Reasonably tight — behaviour is predictable at this configuration."))
+                      f"{s['mean']:.1f}% (95% of weeks {s['ci_low']:.1f}-{s['ci_high']:.1f}%). "
+                      + ("Wide spread - plan to the lower bound." if spread > 8
+                         else "Reasonably tight - behaviour is predictable at this configuration."))
         return {"summary": mc["summary"], "interpretation": interp,
                 "four_hour": J(fig.montecarlo_figure(mc, "four_hour", "4-hour compliance (%)")),
                 "twelve": J(fig.montecarlo_figure(mc, "twelve_hour", "12-hour waits (%)")),
@@ -492,7 +492,7 @@ def api_calibrate():
             d.attendances_per_day = round(sum(patch["arrivals"]["hourly_profile"]), 1)
             store.save_department(d.to_dict())
             summary.append(f"Department demand set to the observed "
-                           f"{round(d.attendances_per_day)} attendances/day — the control "
+                           f"{round(d.attendances_per_day)} attendances/day - the control "
                            f"tower, workforce view and planner now all use your data.")
     except Exception as e:
         return jsonify({"error": f"could not calibrate: {e}"}), 400

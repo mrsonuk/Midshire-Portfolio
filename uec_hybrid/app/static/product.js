@@ -52,7 +52,7 @@ function renderTower(d){
   std('Ambulance handover',s.ambulance_handover,true,95,85,'%','handed over within 45 min'),
  ].join('');
  const ph=d.bottleneck_peak_hours||[];
- const when=ph.length?`worst around ${String(Math.min(...ph)).padStart(2,'0')}:00–${String((Math.max(...ph)+1)%24).padStart(2,'0')}:00`:'';
+ const when=ph.length?`worst around ${String(Math.min(...ph)).padStart(2,'0')}:00-${String((Math.max(...ph)+1)%24).padStart(2,'0')}:00`:'';
  $('#towerBody').innerHTML=`
   <div class="card"><h2>How your department is running</h2>
    <p class="sub">${Math.round(s.attendances_per_day)} attendances a day. Figures shown as a typical week, with the good and tough weeks in brackets.</p>
@@ -120,9 +120,9 @@ function drill(n){
  const by=(TOWER.area_by_hour||{})[n.label]||[];
  const peak=by.length?by.indexOf(Math.max(...by)):0;
  let bars='';
- if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>`<div style="flex:1"><div class="b" style="height:${Math.round(80*v/mx)}px" title="${h}:00 — ${Math.round(v)} in area"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
+ if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>`<div style="flex:1"><div class="b" style="height:${Math.round(80*v/mx)}px" title="${h}:00 - ${Math.round(v)} in area"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
  $('#drill').style.display='block';
- $('#drill').innerHTML=`<b>${n.label}</b> — ${Math.round(n.volume).toLocaleString()} patients over the week`+
+ $('#drill').innerHTML=`<b>${n.label}</b> - ${Math.round(n.volume).toLocaleString()} patients over the week`+
    (n.kind==='process'?`, average wait ${Math.round(n.mean_wait)} min, ${Math.round(n.utilisation)}% busy. Busiest around ${peak}:00.`:'.')+
    (by.length?'<div class="sub" style="margin-top:8px">Patients in this area through the day:</div>'+bars:'');
 }
@@ -169,9 +169,9 @@ function renderWorkforce(d){
   const smax=Math.max(...a.staffing,1);
   const bars=a.staffing.map((s,h)=>{
    const under=a.understaffed_hours.includes(h);
-   return `<div style="flex:1"><div class="b ${under?'under':''}" data-ai="${ai}" data-h="${h}" style="height:${Math.round(80*s/smax)}px;cursor:pointer" title="${h}:00 — ${s} on shift${under?' (light vs demand)':''}"></div><div class="lab">${h%6===0?h:''}</div></div>`;
+   return `<div style="flex:1"><div class="b ${under?'under':''}" data-ai="${ai}" data-h="${h}" style="height:${Math.round(80*s/smax)}px;cursor:pointer" title="${h}:00 - ${s} on shift${under?' (light vs demand)':''}"></div><div class="lab">${h%6===0?h:''}</div></div>`;
   }).join('');
-  const win=a.understaffed_hours.length?`Light vs demand around ${String(Math.min(...a.understaffed_hours)).padStart(2,'0')}:00–${String((Math.max(...a.understaffed_hours)+1)%24).padStart(2,'0')}:00.`:'Broadly matches demand.';
+  const win=a.understaffed_hours.length?`Light vs demand around ${String(Math.min(...a.understaffed_hours)).padStart(2,'0')}:00-${String((Math.max(...a.understaffed_hours)+1)%24).padStart(2,'0')}:00.`:'Broadly matches demand.';
   const adv=a.advisory?` <span style="background:#E8EDEE;color:#425563;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px;vertical-align:middle" title="Rostered and costed in the pay-bill; does not yet limit patient flow in the model">costed · not yet flow-limiting</span>`:'';
   return `<div class="wfarea"><div class="t">${a.label}${adv}</div>
     <div class="m">Peak ${a.peak} · overnight ${a.overnight}. ${win}</div>
@@ -184,13 +184,13 @@ function wfDrill(ai,h){
  const a=WF.areas[ai], on=a.staffing[h], dem=Math.round(WF.demand[h]);
  const dmax=Math.max(...WF.demand,1), share=Math.round(100*WF.demand[h]/dmax);
  const under=a.understaffed_hours.includes(h);
- const roles=a.roles&&a.roles.length?a.roles.map(r=>r.label).join(', '):'—';
+ const roles=a.roles&&a.roles.length?a.roles.map(r=>r.label).join(', '):'-';
  const hh=String(h).padStart(2,'0'), nh=String((h+1)%24).padStart(2,'0');
  $('#wfDrill').style.display='block';
- $('#wfDrill').innerHTML=`<b>${a.label} — ${hh}:00–${nh}:00</b><br>
+ $('#wfDrill').innerHTML=`<b>${a.label} - ${hh}:00-${nh}:00</b><br>
    <b>${on}</b> on shift this hour. Roles that staff this area: ${roles}.<br>
    Demand at this hour is about <b>${dem}</b> arrivals (${share}% of the daily peak). `+
-   (under?`<span style="color:var(--red);font-weight:700">This is one of the hours staffing looks light against demand — the most likely time to fall behind.</span>`
+   (under?`<span style="color:var(--red);font-weight:700">This is one of the hours staffing looks light against demand - the most likely time to fall behind.</span>`
         :`Staffing broadly matches demand this hour.`)+
    `<div class="hint" style="margin-top:6px">Adjust this in the rota below, then “Apply &amp; re-run”.</div>`;
 }
