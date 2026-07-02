@@ -36,6 +36,15 @@ def kpis(result: dict, pathway: Pathway) -> dict:
         "lwbs": float(patients["disposition"].str.contains(
             "without being seen", case=False, na=False).mean() * 100),
     }
+    # per-stream view (ambulance / walk-in / GP / 111) when the pathway streams
+    if "stream" in patients.columns and patients["stream"].notna().any():
+        k["by_stream"] = {
+            str(name): {
+                "per_day": float(len(sub) / sim_days),
+                "share_pct": float(len(sub) / len(patients) * 100),
+                "four_hour": float((sub["los"] <= pathway.target_minutes).mean() * 100),
+            } for name, sub in patients.groupby("stream")}
+
     # initial assessment within 15 minutes (Model ED front-door standard)
     node = pathway.uec.get("initial_assessment_node")
     if node and not events.empty:

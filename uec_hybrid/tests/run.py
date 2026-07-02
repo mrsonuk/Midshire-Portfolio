@@ -181,6 +181,60 @@ def main():
     print(f"Phase 2a OK: handover measured ({um['ambulance_handover_mean']:.0f} min mean), "
           f"LWBS {ks['lwbs']:.1f}% under starvation, nurses cap cubicles at 1:4.")
 
+    # --- arrival streams: partition of demand, pinned attributes, case-mix intact ---
+    kb = kpis(res, p)
+    bs = kb.get("by_stream") or {}
+    assert set(bs) == {"ambulance", "walk_in", "gp_referral", "nhs_111"}, bs.keys()
+    assert 24 <= bs["ambulance"]["share_pct"] <= 38, bs["ambulance"]
+    # the ambulance ATTRIBUTE is pinned by the stream (handover routing depends on it)
+    pat = res["patients"]
+    amb_stream = pat["stream"] == "ambulance"
+    assert (pat.loc[amb_stream, "attr_ambulance"]).all(), "ambulance stream lost its attribute"
+    assert not pat.loc[~amb_stream, "attr_ambulance"].any(), "non-ambulance stream marked ambulance"
+    # streams follow a calibration's case-mix skew
+    from ..demand.ecds_seam import apply_patch as _ap
+    skewed = _ap(p.raw, {"arrivals": {"acuity_mix": {k: v * (2 if k == "Acuity 1" else 1)
+                                                     for k, v in p.raw["arrivals"]["acuity_mix"].items()}}})
+    s_amb = next(s for s in skewed["arrivals"]["streams"] if s["name"] == "ambulance")
+    b_amb = next(s for s in p.raw["arrivals"]["streams"] if s["name"] == "ambulance")
+    assert s_amb["acuity_mix"]["Acuity 1"] > b_amb["acuity_mix"]["Acuity 1"] * 1.5
+    print(f"Streams OK: ambulance {bs['ambulance']['share_pct']:.0f}%, walk-in "
+          f"{bs['walk_in']['share_pct']:.0f}%, GP {bs['gp_referral']['share_pct']:.0f}%, "
+          f"111 {bs['nhs_111']['share_pct']:.0f}%; attributes pinned; mixes follow calibration.")
+
+    # --- forecast v2: covariate regression recovers the synthetic ground truth ---
+    from ..planning.forecast import forecast_from_history, generate_daily_history
+    fc = forecast_from_history(generate_daily_history())
+    assert 2.0 <= fc["components"]["trend_pct_per_year"] <= 4.5, fc["components"]
+    assert 10 <= fc["components"]["bank_holiday_pct"] <= 20, fc["components"]
+    assert fc["accuracy"] and fc["accuracy"]["mape_pct"] < 10
+    print(f"Forecast v2 OK: trend {fc['components']['trend_pct_per_year']}%/yr, "
+          f"bank holidays {fc['components']['bank_holiday_pct']:+.0f}%, "
+          f"backtest MAPE {fc['accuracy']['mape_pct']}%.")
+
+    # --- surge templates apply as declared ---
+    from ..planning.surge import TEMPLATES, apply_template, _move_cost_per_week, SOLVER_MOVES
+    lean_raw = build_dept(lean)
+    struck = apply_template(lean_raw, TEMPLATES["strike"])
+    assert struck["resources"]["ed_doctor"][12] < lean_raw["resources"]["ed_doctor"][12], \
+        "strike did not cut doctors"
+    flu = apply_template(lean_raw, TEMPLATES["flu"])
+    assert sum(flu["arrivals"]["hourly_profile"]) > sum(lean_raw["arrivals"]["hourly_profile"]) * 1.05
+    assert flu["sd"]["baseline_bed_occupancy"] > lean_raw["sd"].get("baseline_bed_occupancy", 0.92)
+    assert all(_move_cost_per_week(m) > 0 for m in SOLVER_MOVES)
+    print("Surge OK: strike cuts doctors, flu lifts demand and fills the hospital; moves costed.")
+
+    # --- recommendation engine: paired seeds, CI gate, costed output ---
+    from ..optimise import recommend
+    rec = recommend(Department.default(), reps=2, limit=2)
+    assert rec["n_candidates"] == 2
+    assert len(rec["recommendations"]) + len(rec["rejected"]) == 2
+    for r in rec["recommendations"] + rec["rejected"]:
+        assert {"delta_four_hour", "delta_low", "summary", "annual_benefit"} <= set(r)
+    assert all(r["delta_low"] > 0 for r in rec["recommendations"]), "CI gate leaked noise"
+    print(f"Recommend OK: {rec['n_candidates']} candidates evaluated, "
+          f"{len(rec['recommendations'])} confident, {len(rec['rejected'])} within noise.")
+
     # --- platform store: department persists (versioned), run cache hits by config hash ---
     import tempfile
     from ..platform import store

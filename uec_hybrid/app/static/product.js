@@ -60,7 +60,9 @@ function renderTower(d){
    <p class="sub">${Math.round(s.attendances_per_day)} attendances a day. Each dot shows a typical week on the good-to-tough range.</p>
    <div class="tiles">${tiles}</div></div>
   <div class="pinch"><div class="h">Your busiest pinch-point: ${strip(d.bottleneck)} ${when?'('+when+')':''}</div>
-   <p>${d.headline_bottleneck||''}</p><p>${d.recommendation||''}</p></div>
+   <p>${d.headline_bottleneck||''}</p><p>${d.recommendation||''}</p>
+   <button id="recBtn" class="sec" style="margin-top:10px">What should we change? Search staffing, capacity and hours</button>
+   <div class="status" id="recStatus"></div><div id="recOut"></div></div>
   <div class="card"><h2>Live flow through your department</h2>
    <p class="sub">Each box is an area; the number is how many patients are in it right now. Click any area
     for its full picture: waits, staffing, and where its patients come from and go to.
@@ -70,6 +72,28 @@ function renderTower(d){
    <div id="flow"></div><div class="drill" id="drill"></div></div>`;
  $('#hour').oninput=e=>{curHour=+e.target.value;updateHour();};
  renderFlow(d);curHour=12;updateHour();
+ $('#recBtn').onclick=loadRecommendations;
+}
+async function loadRecommendations(){
+ $('#recBtn').disabled=true;
+ $('#recStatus').innerHTML='<span class="spin"></span> Simulating every candidate change against the same random weeks (a few minutes the first time)...';
+ try{
+  const d=await post('/api/recommend',{});
+  $('#recStatus').textContent='';
+  const rows=d.recommendations.map((r,i)=>`
+   <div class="gap ${i===0?'have':'miss'}" style="border-left-color:${i===0?'var(--green)':'var(--aqua)'}">
+    <div class="imp"><div class="d" style="color:var(--green)">+${r.delta_four_hour}</div><div class="r">pts on 4-hr</div></div>
+    <div class="body"><div class="t">${r.title}</div>
+     <div class="w">${r.summary}${r.delta_lwbs<-0.05?` Cuts walk-outs by ${Math.abs(r.delta_lwbs).toFixed(1)} points.`:''}</div>
+     <div class="w" style="color:#003087;font-weight:600;margin-top:3px">
+      ${r.weekly_cost?`About £${r.weekly_cost.toLocaleString()}/week to staff; `:''}~£${r.annual_benefit.toLocaleString()}/year benefit${r.net_annual!=null?` (net ~£${r.net_annual.toLocaleString()}/year)`:''}.</div></div>
+    <div style="text-align:right">${r.cost_band?`<span class="pill ${r.cost_band}">${r.cost_band} cost</span>`:''}</div>
+   </div>`).join('');
+  $('#recOut').innerHTML=(rows||'<p class="sub" style="margin-top:10px">No change cleared the confidence bar at this demand: the simulation would rather say nothing than recommend noise.</p>')
+   +(d.rejected.length?`<p class="hint">${d.rejected.length} other candidate${d.rejected.length===1?' was':'s were'} tried and rejected as within the noise.</p>`:'')
+   +`<p class="hint">${d.note}</p>`;
+ }catch(e){$('#recStatus').innerHTML='<span style="color:#DA291C">Could not search: '+e.message+'</span>';}
+ $('#recBtn').disabled=false;
 }
 function std(k,b,hi,a,c,unit,sub){
  if(!b)return '';const cls=rag(b.typical,hi,a,c);

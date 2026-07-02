@@ -81,10 +81,14 @@ def derive_patch(df: pd.DataFrame) -> tuple[dict, list]:
 
 def apply_patch(raw: dict, patch: dict) -> dict:
     """Apply a derived calibration patch to any pathway raw (deep-copied)."""
+    from .streams import skew_stream_mixes
     raw = copy.deepcopy(raw)
     arrivals = raw.setdefault("arrivals", {})
     for k, v in (patch.get("arrivals") or {}).items():
-        arrivals[k] = copy.deepcopy(v)
+        if k == "acuity_mix":
+            skew_stream_mixes(arrivals, copy.deepcopy(v))  # streams follow the data
+        else:
+            arrivals[k] = copy.deepcopy(v)
     attrs = arrivals.setdefault("attributes", {})
     for k, v in (patch.get("attributes") or {}).items():
         attrs[k] = v

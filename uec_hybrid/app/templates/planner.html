@@ -105,7 +105,23 @@
     <p class="sub">Each option run at the expected winter demand, ranked by how much it improves the 4-hour standard. Cost is an indicative band.</p>
     <div id="options"></div></div>
    <div class="card"><h2>5. Bottom line</h2><div class="bottom" id="bottom"></div>
-    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. &nbsp;,&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
+    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. <a href="/analyst">Analyst / technical view</a></p></div>
+  </div>
+  <div class="card">
+   <h2>Stress test: would you cope?</h2>
+   <p class="sub">Run a named pressure against your department exactly as set up, and ask what staffing
+    would hold the 4-hour position through it.</p>
+   <div class="field">
+    <select id="surgeSel" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px"></select>
+    <button class="sec" id="runSurge" style="margin-top:0">Run stress test</button>
+    <button class="sec" id="solveSurge" style="margin-top:0">What staffing would hold it?</button>
+   </div>
+   <div class="status" id="sStatus"></div>
+   <div id="surgeOut" style="display:none">
+    <p class="sub" id="surgeStory" style="margin-top:12px"></p>
+    <div class="tiles" id="surgeTiles"></div>
+    <div class="drives" id="surgeSolve" style="display:none;margin-top:10px"></div>
+   </div>
   </div>
  </div>
 
@@ -185,6 +201,35 @@ function renderWinter(d){
  $('#options').innerHTML=d.options.map((x,i)=>optRow(x,i===0,d.options[0].delta,'cost')).join('');
  $('#bottom').innerHTML=d.recommendation;
 }
+// ---- stress tests ----
+(async function(){try{const d=await fetch('/api/surge').then(r=>r.json());
+ $('#surgeSel').innerHTML=d.templates.map(t=>`<option value="${t.key}">${t.label}</option>`).join('');
+}catch(e){}})();
+async function runSurge(solve){
+ const b1=$('#runSurge'),b2=$('#solveSurge');b1.disabled=b2.disabled=true;
+ $('#sStatus').innerHTML='<span class="spin"></span> '+(solve?'Solving the staffing that holds the line (a few minutes the first time)...':'Running the stress test...');
+ try{
+  const r=await fetch('/api/surge',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({template:$('#surgeSel').value,solve})});
+  const d=await r.json();if(d.error)throw new Error(d.error);
+  $('#surgeOut').style.display='block';$('#surgeStory').textContent=d.story;
+  const cls=v=>rag(v);
+  $('#surgeTiles').innerHTML=
+   tile(cls(d.baseline.typical),'Normal week',d.baseline.typical+'%','4-hour standard today')+
+   tile(cls(d.surge.typical),d.label,d.surge.typical+'%',(d.delta_four_hour>=0?'+':'')+d.delta_four_hour+' points vs normal')+
+   tile(d.delta_corridor>1?'red':d.delta_corridor>0?'amber':'green','Long bed-waits',d.surge.corridor_per_day,(d.delta_corridor>=0?'+':'')+d.delta_corridor+'/day vs normal');
+  const s=d.solver;
+  if(s){$('#surgeSolve').style.display='block';
+   $('#surgeSolve').innerHTML='<b>'+s.headline+'</b>'+(s.additions.length?
+    '<ul style="margin:8px 0 0 18px">'+s.additions.map(a=>`<li>${a.step}: gets you to ${a.four_hour}% (about £${a.weekly_cost.toLocaleString()}/week)</li>`).join('')+'</ul>':'');}
+  else $('#surgeSolve').style.display='none';
+  $('#sStatus').textContent='';
+ }catch(e){$('#sStatus').innerHTML='<span style="color:#DA291C">Could not run: '+e.message+'</span>';}
+ b1.disabled=b2.disabled=false;
+}
+$('#runSurge').onclick=()=>runSurge(false);
+$('#solveSurge').onclick=()=>runSurge(true);
+
 // ---- today ----
 $('#runToday').onclick=async()=>{
  const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help...';

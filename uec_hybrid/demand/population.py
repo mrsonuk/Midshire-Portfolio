@@ -12,6 +12,8 @@ from __future__ import annotations
 
 import copy
 
+from .streams import skew_stream_mixes, scale_stream_share
+
 ACUITIES = ["Acuity 1", "Acuity 2", "Acuity 3", "Acuity 4", "Acuity 5"]
 
 
@@ -36,7 +38,7 @@ def apply_population(raw: dict, older_fraction: float = 0.20, imd_decile: float 
         mix["Acuity 5"] = max(0.0, mix.get("Acuity 5", 0) - moved * 0.3)
         mix["Acuity 2"] = mix.get("Acuity 2", 0) + moved * 0.4
         mix["Acuity 3"] = mix.get("Acuity 3", 0) + moved * 0.6
-        arrivals["acuity_mix"] = mix
+        skew_stream_mixes(arrivals, mix)     # streams follow the global case-mix
         if abs(skew) > 0.01:
             summary.append(f"Older population ({older_fraction*100:.0f}% 65+) -> higher-acuity case-mix.")
 
@@ -56,7 +58,9 @@ def apply_population(raw: dict, older_fraction: float = 0.20, imd_decile: float 
     summary.append(f"Paediatric share ~{paediatric_fraction*100:.0f}% (skewed to lower acuity).")
 
     # deprivation -> more arrive by ambulance / self-present
+    amb_factor = 1 + 0.04 * (5.5 - imd_decile)
     amb = arrivals["attributes"].get("ambulance", 0.316)
-    arrivals["attributes"]["ambulance"] = round(min(0.6, amb * (1 + 0.04 * (5.5 - imd_decile))), 3)
+    arrivals["attributes"]["ambulance"] = round(min(0.6, amb * amb_factor), 3)
+    scale_stream_share(arrivals, "ambulance", amb_factor)   # conveyance follows
 
     return raw, demand_mult, summary

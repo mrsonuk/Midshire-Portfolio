@@ -351,6 +351,44 @@ def api_plan_today():
     return jsonify(plan)
 
 
+@app.route("/api/recommend", methods=["POST"])
+def api_recommend():
+    """The recommendation engine: CI-gated, costed changes for the configured
+    department. Heavy on first run; cached by configuration hash after."""
+    from ..optimise import recommend
+    d = _dept()
+    patch = _calibration_patch("your_department")
+    book = load_cost_book()
+    return jsonify(store.cached_or_compute(
+        "recommend", {"dept": d.to_dict(), "patch": patch, "book": book},
+        lambda: recommend(d, calibration=patch, book=book)))
+
+
+@app.route("/api/surge", methods=["GET", "POST"])
+def api_surge():
+    """Stress tests: run a surge template against the configured department,
+    optionally solving for the staffing that would hold the 4-hour target."""
+    from ..planning.surge import TEMPLATES, stress_test, staff_to_hold
+    if request.method == "GET":
+        return jsonify({"templates": [{"key": k, "label": t["label"], "story": t["story"]}
+                                      for k, t in TEMPLATES.items()]})
+    body = request.get_json(force=True)
+    key = body.get("template", "winter_norm")
+    if key not in TEMPLATES:
+        return jsonify({"error": f"unknown template {key}"}), 400
+    d = _dept()
+    patch = _calibration_patch("your_department")
+    solve = bool(body.get("solve"))
+
+    def compute():
+        out = stress_test(d, key, calibration=patch)
+        if solve:
+            out["solver"] = staff_to_hold(d, key, calibration=patch, max_moves=4)
+        return out
+    cache_key = {"dept": d.to_dict(), "patch": patch, "template": key, "solve": solve}
+    return jsonify(store.cached_or_compute("surge", cache_key, compute))
+
+
 @app.route("/api/forecast-data", methods=["POST"])
 def api_forecast_data():
     """Derive the winter forecast from an uploaded daily attendance history."""
