@@ -37,6 +37,16 @@ export interface GapItem {
   finance?: Finance
 }
 
+export interface BenchmarkPosition {
+  n_peers: number
+  n_band: number
+  synthetic: boolean
+  four_hour_percentile: number
+  twelve_hour_percentile: number
+  quartile: number
+  summary: string
+}
+
 export interface ExecPayload {
   department: { name: string; attendances_per_day: number; calibrated: boolean }
   standards: Standards
@@ -47,6 +57,7 @@ export interface ExecPayload {
   workforce: { weekly_cost: number; understaffed_hours: number; headline: string }
   invest: GapItem | null
   gap_computed: boolean
+  benchmark?: BenchmarkPosition | null
 }
 
 export async function getExec(): Promise<ExecPayload> {

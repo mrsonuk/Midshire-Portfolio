@@ -49,6 +49,36 @@ def _with_fullness(raw, fullness):
     return raw
 
 
+def project_today(arrivals_so_far: list, department=None, calibration=None) -> dict:
+    """Intraday projection: compare this morning's ACTUAL arrivals-by-hour with
+    the department's expected shape, and project the whole day from the ratio.
+    The observed hours are taken as hours 00:00 onward."""
+    hours_seen = len([a for a in arrivals_so_far if a is not None])
+    observed = float(sum(float(a or 0) for a in arrivals_so_far[:hours_seen]))
+    if department is not None:
+        raw, _ = build_department(department=department, calibration=calibration,
+                                  winter_uplift_pct=0)
+        profile = raw["arrivals"]["hourly_profile"]
+    else:
+        from .forecast import HOURLY
+        profile = list(HOURLY)
+    expected_so_far = float(sum(profile[:hours_seen])) or 1.0
+    ratio = observed / expected_so_far if hours_seen >= 3 else 1.0
+    projected = observed + ratio * float(sum(profile[hours_seen:]))
+    return {
+        "hours_seen": hours_seen,
+        "observed_so_far": round(observed),
+        "expected_so_far": round(expected_so_far),
+        "ratio": round(ratio, 2),
+        "projected_today": round(projected),
+        "note": (f"By {hours_seen:02d}:00 you have seen {round(observed)} arrivals against "
+                 f"an expected {round(expected_so_far)} - running at x{ratio:.2f}. On that "
+                 f"trajectory today lands at about {round(projected)} attendances."
+                 + (" That is materially above plan - consider early escalation."
+                    if ratio >= 1.15 else "")),
+    }
+
+
 def today_plan(attendances_today=340, hospital_fullness_pct=94.0,
                department=None, calibration=None) -> dict:
     base_raw, fc = build_department(attendances_today, winter_uplift_pct=0,

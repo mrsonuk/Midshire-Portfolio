@@ -151,6 +151,7 @@ def api_exec():
                       "headline": wf["headline"]},
         "invest": invest,
         "gap_computed": gap is not None,
+        "benchmark": _benchmark_position(standards),
     })
 
 
@@ -340,6 +341,14 @@ def api_plan_today():
     body = request.get_json(force=True)
     d = _dept()
     patch = _calibration_patch("your_department")
+    # intraday: actual arrivals-by-hour so far replace the attendance guess
+    projection = None
+    so_far = body.get("arrivals_so_far")
+    if so_far:
+        from ..planning.operational import project_today
+        projection = project_today([float(x) for x in so_far], department=d,
+                                   calibration=patch)
+        body["attendances_today"] = projection["projected_today"]
     args = {"attendances_today": float(body.get("attendances_today", d.attendances_per_day * 1.06)),
             "hospital_fullness_pct": float(body.get("hospital_fullness_pct", 94))}
     try:
@@ -348,7 +357,41 @@ def api_plan_today():
             lambda: today_plan(**args, department=d, calibration=patch))
     except Exception as e:
         return jsonify({"error": str(e)}), 400
+    if projection:
+        plan = {**plan, "projection": projection}
     return jsonify(plan)
+
+
+@app.route("/api/benchmarks", methods=["GET", "POST"])
+def api_benchmarks():
+    """Peer benchmark set: upload a CSV (organisation, attendances_per_day,
+    four_hour_pct, twelve_hour_pct) or download the flagged synthetic sample."""
+    from ..analysis.benchmark import read_benchmarks, generate_sample_benchmarks
+    if request.method == "POST":
+        if "file" not in request.files:
+            return jsonify({"error": "no file uploaded"}), 400
+        try:
+            rows = read_benchmarks(request.files["file"].read())
+        except Exception as e:
+            return jsonify({"error": str(e)}), 400
+        store.save_setting("benchmarks", {"rows": rows, "synthetic": False})
+        return jsonify({"saved": len(rows), "synthetic": False})
+    buf = io.StringIO(); generate_sample_benchmarks().to_csv(buf, index=False)
+    return app.response_class(buf.getvalue(), mimetype="text/csv",
+        headers={"Content-Disposition": "attachment; filename=benchmark_template.csv"})
+
+
+def _benchmark_position(standards):
+    """Position vs peers using the saved (or synthetic) benchmark set."""
+    from ..analysis.benchmark import position, generate_sample_benchmarks
+    saved = store.get_setting("benchmarks")
+    rows = saved["rows"] if saved else generate_sample_benchmarks().to_dict("records")
+    four = (standards.get("four_hour") or {}).get("typical")
+    twelve = (standards.get("twelve_hour") or {}).get("typical", 0)
+    if four is None:
+        return None
+    return position(rows, four, twelve, _dept().attendances_per_day,
+                    synthetic=not bool(saved))
 
 
 @app.route("/api/recommend", methods=["POST"])

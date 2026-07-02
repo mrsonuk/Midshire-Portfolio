@@ -85,6 +85,13 @@ export default function ExecBrief() {
         </div>
       </div>
 
+      {data.benchmark && (
+        <div className="card">
+          <h2>Where you sit against peers</h2>
+          <p className="sub">{data.benchmark.summary}</p>
+        </div>
+      )}
+
       <div className="card invest">
         <h2>The investment case</h2>
         <p className="sub">

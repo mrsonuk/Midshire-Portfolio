@@ -261,6 +261,29 @@ def main():
     print("Review fixes OK: diverts and calibration reach streams; mid-winter forecast sane; "
           "nursing visible.")
 
+    # --- benchmarking: percentile position vs a peer set ---
+    from ..analysis.benchmark import generate_sample_benchmarks, position, read_benchmarks
+    peers = generate_sample_benchmarks().to_dict("records")
+    pos = position(peers, four_hour=78, twelve_hour=1.0, attendances_per_day=320, synthetic=True)
+    assert 0 <= pos["four_hour_percentile"] <= 100 and pos["n_band"] >= 8
+    pos2 = position(peers, four_hour=60, twelve_hour=6.0, attendances_per_day=320, synthetic=True)
+    assert pos2["four_hour_percentile"] < pos["four_hour_percentile"]
+    assert "SYNTHETIC" in pos["summary"]
+    import io as _io
+    buf = _io.StringIO(); generate_sample_benchmarks(20).to_csv(buf, index=False)
+    assert len(read_benchmarks(buf.getvalue().encode())) == 20
+    print(f"Benchmark OK: 78% sits at the {pos['four_hour_percentile']}th percentile, "
+          f"60% at the {pos2['four_hour_percentile']}th; upload round-trips.")
+
+    # --- intraday projection: a hot morning projects a heavier day ---
+    from ..planning.operational import project_today
+    quiet = project_today([4, 3, 2, 2, 3, 3, 4, 5], department=Department.default())
+    hot = project_today([8, 6, 5, 5, 6, 7, 9, 12], department=Department.default())
+    assert hot["projected_today"] > quiet["projected_today"] > 100
+    assert hot["ratio"] > 1.1
+    print(f"Intraday OK: quiet morning projects {quiet['projected_today']}/day, "
+          f"hot morning {hot['projected_today']}/day (x{hot['ratio']}).")
+
     # --- platform store: department persists (versioned), run cache hits by config hash ---
     import tempfile
     from ..platform import store

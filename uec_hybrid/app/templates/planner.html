@@ -134,6 +134,9 @@
    <div class="field"><input type="number" id="tAttend" value="360" min="60" max="1400" step="10"><span class="hint">a busy day is higher than your average</span></div>
    <label>How full is the hospital right now? <span class="rngval" id="fullV">94%</span></label>
    <div class="field"><input type="range" id="fullness" min="80" max="99" value="94"><span class="hint">inpatient bed occupancy</span></div>
+   <label>Live: arrivals so far today, by hour (optional)</label>
+   <div class="field"><input type="text" id="soFar" placeholder="e.g. 6,4,3,3,4,5,8,14,22" style="width:340px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px">
+    <span class="hint">comma-separated from midnight; overrides the guess above and projects the rest of today</span></div>
    <button id="runToday">Check today</button>
    <div class="status" id="tStatus"></div>
   </div>
@@ -233,8 +236,10 @@ $('#solveSurge').onclick=()=>runSurge(true);
 // ---- today ----
 $('#runToday').onclick=async()=>{
  const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help...';
+ const soFar=$('#soFar').value.trim()?$('#soFar').value.split(',').map(x=>+x.trim()).filter(x=>!isNaN(x)):null;
  try{const r=await fetch('/api/plan-today',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({attendances_today:+$('#tAttend').value,hospital_fullness_pct:+$('#fullness').value})});
+   body:JSON.stringify({attendances_today:+$('#tAttend').value,hospital_fullness_pct:+$('#fullness').value,
+     ...(soFar&&soFar.length>=3?{arrivals_so_far:soFar}:{})})});
   const d=await r.json();if(d.error)throw new Error(d.error);
   renderToday(d);$('#tStatus').textContent='';$('#todayResults').style.display='block';$('#todayResults').scrollIntoView({behavior:'smooth'});
  }catch(e){$('#tStatus').innerHTML='<span style="color:#DA291C">Something went wrong: '+e.message+'</span>';}
@@ -242,7 +247,8 @@ $('#runToday').onclick=async()=>{
 };
 function renderToday(d){
  $('#risk').className='risk '+d.risk.colour;$('#risk').textContent=d.risk.label;
- $('#tHeadline').innerHTML=d.headline+(d.modelled?' <span style="color:#425563">('+d.modelled+'.)</span>':'');$('#tFirst').innerHTML=d.first;
+ $('#tHeadline').innerHTML=(d.projection?'<b>'+d.projection.note+'</b><br>':'')
+   +d.headline+(d.modelled?' <span style="color:#425563">('+d.modelled+'.)</span>':'');$('#tFirst').innerHTML=d.first;
  $('#tActions').innerHTML=d.actions.map((x,i)=>optRow(x,i===0,d.actions[0].delta,'today')).join('');
 }
 // shared row
