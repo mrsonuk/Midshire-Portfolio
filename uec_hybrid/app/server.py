@@ -451,6 +451,8 @@ def api_simulate():
                 "sd_feedback": J(fig.sd_feedback_figure(res)),
                 "utilisation": J(fig.utilisation_figure(res, p)),
                 "waits": J(fig.waits_figure(res)),
+                "sankey": J(fig.sankey_figure(res, p)),
+                "heatmap": J(fig.occupancy_heatmap_figure(res, p)),
             }}
     key = {"raw": raw, "seed": seed, "feedback": fb, "sd": sd_over}
     return jsonify(store.cached_or_compute("simulate", key, compute))

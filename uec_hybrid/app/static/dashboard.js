@@ -65,6 +65,8 @@ async function runSim(){
     renderScorecard(d.scorecard);showDiag(d.diagnosis);renderFlowMap(d.flow_model);
     await plot("utilisation",d.figures.utilisation);await plot("waits",d.figures.waits);
     await plot("sd_stocks",d.figures.sd_stocks);await plot("sd_feedback",d.figures.sd_feedback);
+    if(d.figures.sankey)await plot("sankey",d.figures.sankey);
+    if(d.figures.heatmap)await plot("heatmap",d.figures.heatmap);
     renderValSummary(d.conformance,null);
     setBusy(false,"Simulation complete ("+(d.conformance.passed?"pathway validated":"validation: "+d.conformance.n_violations+" violations")+")","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}

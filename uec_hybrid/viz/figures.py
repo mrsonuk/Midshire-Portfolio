@@ -132,3 +132,51 @@ def tornado_figure(tor) -> go.Figure:
                       title=f"Sensitivity - change in {tor['metric'].replace('_',' ')} vs baseline",
                       xaxis_title="percentage-point change")
     return fig
+
+
+def sankey_figure(result, pathway) -> go.Figure:
+    """Patient flow as a Sankey: every stage-to-stage volume in one picture."""
+    from ..analysis.metrics import flow_counts
+    edges = flow_counts(result, pathway)
+    fig = go.Figure()
+    if not edges.empty:
+        labels = sorted(set(edges["source"]) | set(edges["target"]))
+        idx = {l: i for i, l in enumerate(labels)}
+        fig.add_trace(go.Sankey(
+            arrangement="snap",
+            node=dict(label=labels, pad=12, thickness=13,
+                      color=[P.NHS_RED if "Admitted" in l else P.NHS_GREEN if "Discharged" in l
+                             else P.NHS_ORANGE if "without being seen" in l else P.NHS_BLUE
+                             for l in labels]),
+            link=dict(source=[idx[s] for s in edges["source"]],
+                      target=[idx[t] for t in edges["target"]],
+                      value=list(edges["value"]),
+                      color="rgba(0,94,184,.18)")))
+    fig.update_layout(P.LAYOUT, height=460, title="Patient flow (weekly volumes)")
+    return fig
+
+
+def occupancy_heatmap_figure(result, pathway) -> go.Figure:
+    """Hour-of-day x area heatmap of average concurrent occupancy: where the
+    department runs hot, and when."""
+    from .flow_model import _occ_by_hour
+    events = result["events"]
+    w, dur = pathway.warmup, pathway.sim_duration
+    rows, names = [], []
+    for nid, node in pathway.nodes.items():
+        if node.get("type") != "process":
+            continue
+        sub = events[events["stage"] == nid]
+        if len(sub) < 10:
+            continue
+        rows.append(_occ_by_hour(sub["service_start"].to_numpy(),
+                                 sub["service_end"].to_numpy(), w, dur))
+        names.append(node.get("label", nid))
+    fig = go.Figure(go.Heatmap(
+        z=rows, x=[f"{h:02d}:00" for h in range(24)], y=names,
+        colorscale=[[0, "#F0F4F7"], [0.5, "#41B6E6"], [1, P.NHS_DARK]],
+        colorbar=dict(title="patients")))
+    fig.update_layout(P.LAYOUT, height=max(340, 26 * len(names) + 100),
+                      title="Who is where, by hour of day (average patients in area)",
+                      margin=dict(l=180))
+    return fig
