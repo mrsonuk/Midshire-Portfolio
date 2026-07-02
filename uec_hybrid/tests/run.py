@@ -215,8 +215,8 @@ def main():
     assert ex["standards"]["four_hour"]["typical"] > 0
     assert ex["risk"]["level"] in (1, 2, 3, 4)
     assert ex["workforce"]["weekly_cost"] > 0
-    for page in ("/exec", "/", "/planner", "/analyst"):
-        assert client.get(page).status_code == 200, f"{page} failed"
+    for page in ("/exec", "/", "/planner", "/analyst", "/app"):
+        assert client.get(page, follow_redirects=True).status_code == 200, f"{page} failed"
     print(f"Exec brief OK: risk level {ex['risk']['level']}, "
           f"4-hour typical {ex['standards']['four_hour']['typical']}%; all surfaces serve.")
 

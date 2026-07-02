@@ -5,4 +5,5 @@ __pycache__/
 *.sqlite3
 .venv/
 node_modules/
-dist/
+# web/dist is committed (vendored like plotly.min.js) so the Flask app works
+# on locked-down networks without a node toolchain

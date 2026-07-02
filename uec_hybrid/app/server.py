@@ -15,7 +15,7 @@ import json
 import os
 from pathlib import Path
 
-from flask import Flask, jsonify, render_template, request, send_file
+from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
 
 from ..des.pathway import Pathway
 from ..coupling.cosim import run_cosim
@@ -103,6 +103,24 @@ def planner_page():
 def exec_page():
     # the executive brief: one screen for the COO / ED director.
     return render_template("exec.html")
+
+
+# --- the React shell (web/dist, committed like the vendored Plotly) --------- #
+WEB_DIST = Path(__file__).resolve().parent.parent.parent / "web" / "dist"
+
+
+@app.route("/app", defaults={"path": ""})
+@app.route("/app/", defaults={"path": ""})
+@app.route("/app/<path:path>")
+def spa(path):
+    """The React front-end. Surfaces migrate here one at a time; until then the
+    template pages stay canonical."""
+    if not WEB_DIST.exists():
+        return ("The new interface is not built — run `npm install && npm run build` "
+                "in web/ (or use the existing pages at /).", 503)
+    if path and (WEB_DIST / path).is_file():
+        return send_from_directory(WEB_DIST, path)
+    return send_from_directory(WEB_DIST, "index.html")
 
 
 @app.route("/api/exec")

@@ -133,6 +133,9 @@ uec_hybrid/
 ├── viz/         flow_model ("Figure 1" data), figures (Plotly), palette
 ├── platform/    store (SQLite/Postgres persistence: saved department, ECDS
 │                calibrations, run cache keyed by configuration hash, settings)
+├── ../web/      React + TypeScript front-end (Vite) served at /app; surfaces
+│                migrate there one at a time — dist/ is committed (vendored,
+│                like Plotly) so the app runs without a node toolchain
 ├── finance/     trust-editable cost book + business-case maths (annual benefit,
 │                cost band, ROI, payback — assumptions printed on every case)
 ├── app/         server (Flask), templates/dashboard.html, static (dashboard.js + Plotly)
