@@ -79,6 +79,7 @@ def _build(body):
     scale = float(body.get("arrivals_scale", 1.0)) * demand_mult
     if scale != 1.0 and "hourly_profile" in raw.get("arrivals", {}):
         raw["arrivals"]["hourly_profile"] = [h * scale for h in raw["arrivals"]["hourly_profile"]]
+    raw = model_params.apply_params(raw, model_params.load_params())   # service-time overrides
     p = Pathway.from_dict(raw); p.name = name
     sd_over = body.get("sd_overrides") or None
     return p, sd_over, bool(body.get("feedback", True)), raw
@@ -180,6 +181,7 @@ from ..workforce.roles import ROLES, AREA_LABEL
 from ..workforce.view import workforce_view
 from ..ingest import trust_profile as trusts
 from ..ingest import workbook as trust_workbook
+from .. import model_params
 from ..viz.flow_model import control_tower
 
 CURRENT = {"dept": None}
@@ -198,10 +200,13 @@ def _dept() -> Department:
 
 
 def _dept_raw():
-    """The department's runnable pathway, with any stored calibration applied."""
+    """The department's runnable pathway, with any stored calibration and
+    service-time (pathway-parameter) overrides applied."""
     raw = build_dept(_dept())
     patch = _calibration_patch("your_department")
-    return apply_patch(raw, patch) if patch else raw
+    if patch:
+        raw = apply_patch(raw, patch)
+    return model_params.apply_params(raw, model_params.load_params())
 
 
 def _standards(dept, reps=5):
@@ -307,6 +312,8 @@ def api_trust_import():
     if result.get("role_rates"):
         from ..workforce.roles import save_role_rates
         save_role_rates(result["role_rates"])         # staff hourly rates from the workbook
+    if result.get("service_params"):
+        model_params.save_params(result["service_params"])   # service-time assumptions
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "summary": result["summary"], "provenance": result["provenance"]})
 
@@ -339,6 +346,19 @@ def api_scorecard_targets():
         store.save_setting("scorecard_targets", clean)
         return jsonify({"ok": True, "overrides": clean})
     return jsonify({"defaults": scorecard_defaults(), "overrides": _scorecard_overrides()})
+
+
+@app.route("/api/pathway-params", methods=["GET", "POST"])
+def api_pathway_params():
+    """View or edit the model's service-time assumptions (global scale + per-stage
+    means). Data-driven so the core physics can be tuned/calibrated without code;
+    applied to every simulated surface (control tower, standards, analyst)."""
+    from ..department.builder import BASE_RAW
+    if request.method == "POST":
+        saved = model_params.save_params(request.get_json(force=True) or {})
+        return jsonify({"ok": True, "params": saved})
+    return jsonify({"stages": model_params.service_params(BASE_RAW),
+                    "params": model_params.load_params()})
 
 
 def _control_tower_payload(seed=2):

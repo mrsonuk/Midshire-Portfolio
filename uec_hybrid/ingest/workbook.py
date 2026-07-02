@@ -24,9 +24,11 @@ import io
 from openpyxl import Workbook, load_workbook
 
 from ..department.config import AREAS, DEFAULT_HOURS, Department
+from ..department.builder import BASE_RAW
 from ..workforce.defaults import DEFAULT_ROTA
 from ..workforce.roles import ROLES, default_rates
 from ..finance.costbook import DEFAULT_COST_BOOK
+from ..model_params import service_params
 
 # cost-book figures a trust can set from the workbook (scalars only)
 COST_BOOK_KEYS = ["admission_avoided", "four_hour_breach", "twelve_hour_breach",
@@ -193,6 +195,30 @@ def _read_costs(rows):
     return (cost_book or None), (rates or None)
 
 
+def _read_service(rows):
+    """Optional ServiceTimes sheet (stage/current/your_mean): per-stage mean
+    overrides + an optional global scale. Returns a params dict or None."""
+    body = [r for r in rows[1:] if r and r[0] not in (None, "")]
+    mean, scale = {}, None
+    for r in body:
+        key = _norm(r[0])
+        if key.startswith("#"):
+            continue
+        your = _num(r[2]) if len(r) > 2 else None
+        if your is None:
+            continue
+        if key == "service_scale":
+            scale = your
+        else:
+            mean[key] = your
+    params = {}
+    if scale is not None:
+        params["service_scale"] = scale
+    if mean:
+        params["service_mean"] = mean
+    return params or None
+
+
 def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     """Parse an uploaded workbook (.xlsx) or a single Overview CSV into a
     Department (+ optional calibration patch, summary, provenance)."""
@@ -200,7 +226,7 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     is_csv = (filename or "").lower().endswith(".csv")
     summary: list[str] = []
     over, areas_enabled, areas_hours, rota, arrivals, acuity = {}, None, None, None, None, None
-    cost_book, rates = None, None
+    cost_book, rates, svc_params = None, None, None
 
     if is_csv:
         text = data.decode("utf-8-sig", errors="replace")
@@ -221,6 +247,8 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
             acuity = _read_acuity(_sheet_rows(sheets["acuitymix"]))
         if "costs" in sheets:
             cost_book, rates = _read_costs(_sheet_rows(sheets["costs"]))
+        if "servicetimes" in sheets:
+            svc_params = _read_service(_sheet_rows(sheets["servicetimes"]))
 
     # --- build the department (default for anything the workbook didn't set) ---
     base = Department.default().to_dict()
@@ -261,9 +289,17 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
         summary.append(f"Cost book: {', '.join(sorted(cost_book))} set from workbook.")
     if rates:
         summary.append(f"Role rates: {len(rates)} set from workbook.")
+    if svc_params:
+        bits = []
+        if "service_scale" in svc_params:
+            bits.append(f"all x{svc_params['service_scale']}")
+        if svc_params.get("service_mean"):
+            bits.append(f"{len(svc_params['service_mean'])} stage(s)")
+        summary.append("Service times set from workbook (" + ", ".join(bits) + ").")
 
     return {"department": dept, "patch": (patch or None), "summary": summary,
-            "provenance": prov, "cost_book": cost_book, "role_rates": rates}
+            "provenance": prov, "cost_book": cost_book, "role_rates": rates,
+            "service_params": svc_params}
 
 
 # --------------------------------------------------------------------------- #
@@ -330,6 +366,12 @@ def build_template() -> Workbook:
     rates = default_rates()
     for role, meta in ROLES.items():
         co.append([role, rates[role], meta["label"]])
+
+    st = wb.create_sheet("ServiceTimes")
+    st.append(["stage", "current_mean_min", "your_mean_min", "stage name"])
+    st.append(["service_scale", 1.0, "", "OPTIONAL: multiply ALL service times (e.g. 1.1)"])
+    for row in service_params(BASE_RAW):
+        st.append([row["node"], row["mean"], "", row["label"]])
 
     return wb
 

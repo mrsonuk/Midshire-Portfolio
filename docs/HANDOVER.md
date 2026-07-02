@@ -203,6 +203,7 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 | `/api/benchmarks` | GET/POST | Template download / peer upload |
 | `/api/costbook` | GET/POST | Trust-editable finance assumptions |
 | `/api/scorecard-targets` | GET/POST | Editable RAG standard targets (data-driven, admin-level) |
+| `/api/pathway-params` | GET/POST | Editable service-time assumptions (global scale + per-stage means) |
 | `/api/simulate` `/api/montecarlo` `/api/scenarios` `/api/validate` | POST | Analyst engine (cached) |
 | `/api/calibrate` `/api/calibrate/reset` | POST | ECDS calibration (scope: pathway key or `your_department`) |
 | `/api/sample-data` | GET | ECDS-shaped template CSV |

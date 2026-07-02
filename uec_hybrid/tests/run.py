@@ -390,6 +390,36 @@ def main():
     print("Editable costs & standards OK: role rates move the pay-bill; "
           "scorecard targets are data-driven and flip the RAG verdict.")
 
+    # --- editable service times (the model's physics) tune the outcome ---
+    from .. import model_params as mp
+    from ..department.builder import BASE_RAW as _BASE
+    srows = mp.service_params(_BASE)
+    assert len(srows) > 10 and all("mean" in r for r in srows)
+    _b = copy.deepcopy(_BASE)
+    _mean = lambda raw, nid: next(x for x in raw["nodes"] if x["id"] == nid)["service"]["mean"]
+    assert _mean(mp.apply_params(_b, {"service_scale": 2.0}), "streaming") == _mean(_b, "streaming") * 2
+    assert _mean(_b, "streaming") == 7, "apply_params must not mutate the base raw"
+    assert _mean(mp.apply_params(_b, {"service_mean": {"streaming": 99}}), "streaming") == 99
+    # slower service -> worse 4-hour: the physics genuinely moves the model
+    p_base = Pathway.from_dict(build_dept(Department.default()))
+    p_slow = Pathway.from_dict(mp.apply_params(build_dept(Department.default()), {"service_scale": 1.5}))
+    fh_base = kpis(run_cosim(p_base, seed=2), p_base)["four_hour"]
+    fh_slow = kpis(run_cosim(p_slow, seed=2), p_slow)["four_hour"]
+    assert fh_slow < fh_base, (fh_slow, fh_base)
+    # persistence validates/drops junk
+    saved = mp.save_params({"service_scale": 1.2, "service_mean": {"streaming": 30, "nope": -1}})
+    assert saved["service_scale"] == 1.2 and saved["service_mean"] == {"streaming": 30.0}
+    _store.save_setting("pathway_params", {})            # reset
+    # workbook ServiceTimes tab also carries service params
+    from openpyxl import load_workbook as _lw
+    _wbx = _lw(_io.BytesIO(wbk.template_bytes()))
+    _sx = _wbx["ServiceTimes"]; _sx.cell(row=2, column=3, value=1.1); _sx.cell(row=3, column=3, value=88)
+    _bx = _io.BytesIO(); _wbx.save(_bx)
+    _sp = wbk.read_workbook(_bx.getvalue(), filename="e.xlsx")["service_params"]
+    assert _sp["service_scale"] == 1.1 and _sp["service_mean"]
+    print(f"Service-time tuning OK: {len(srows)} stages editable; x1.5 slower cuts 4-hour "
+          f"{fh_base:.0f}%->{fh_slow:.0f}%; workbook ServiceTimes tab parses.")
+
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
     raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)
@@ -462,6 +492,15 @@ def main():
     client.post("/api/scorecard-targets", json={})            # reset
     assert client.get("/api/scorecard-targets").get_json()["overrides"] == {}
     print("Scorecard targets OK: standards editable via API and reset cleanly.")
+
+    # --- pathway params endpoint: view stages, edit service times, reset ---
+    pp = client.get("/api/pathway-params").get_json()
+    assert len(pp["stages"]) > 10 and "params" in pp
+    client.post("/api/pathway-params", json={"service_scale": 1.1})
+    assert client.get("/api/pathway-params").get_json()["params"]["service_scale"] == 1.1
+    client.post("/api/pathway-params", json={})               # reset
+    assert client.get("/api/pathway-params").get_json()["params"] == {}
+    print("Pathway params OK: service-time assumptions editable via API and reset.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report
