@@ -17,14 +17,14 @@ $$('#nav a[data-tab]').forEach(a=>a.onclick=()=>{
 });
 
 // ---- init ----
-(async function init(){
- SETUP=await fetch('/api/setup').then(r=>r.json());
- const d=SETUP.department;
+// fill the Set-up fields + area toggles from a department object (reused when a
+// trust is picked or a workbook is imported, so the form always reflects the data)
+function applyDeptToUI(d){
  $('#dName').value=d.name;$('#dAttend').value=Math.round(d.attendances_per_day);
  $('#dBeds').value=d.inpatient_beds;$('#dComm').value=d.community_capacity;$('#coreNote').textContent=SETUP.core_note;
  const grid=$('#areaToggles');grid.innerHTML='';
  for(const[k,a] of Object.entries(SETUP.areas)){
-  const on=d.enabled.includes(k);
+  const on=(d.enabled||[]).includes(k);
   const hrs=(d.hours&&d.hours[k])||[0,24];
   const w=el('label','areatog');
   w.innerHTML=`<input type="checkbox" data-area="${k}" ${on?'checked':''}>
@@ -35,8 +35,64 @@ $$('#nav a[data-tab]').forEach(a=>a.onclick=()=>{
      <input type="number" data-hclose="${k}" value="${hrs[1]}" min="0" max="24" style="width:56px;padding:4px 6px;margin:0"></div></div>`;
   grid.append(w);
  }
+}
+async function loadTrustPicker(){
+ try{
+  const {trusts}=await fetch('/api/trusts').then(r=>r.json());
+  const sel=$('#trustPick');
+  (trusts||[]).forEach(t=>{
+   const bits=[];
+   if(t.attendances_per_day)bits.push(Math.round(t.attendances_per_day)+'/day');
+   if(t.observed_four_hour_pct)bits.push(t.observed_four_hour_pct+'% 4-hr');
+   const o=el('option');o.value=t.ods_code;
+   o.textContent=t.name+(bits.length?'  ('+bits.join(', ')+')':'');
+   sel.append(o);
+  });
+ }catch(e){/* picker is optional; ignore */}
+}
+(async function init(){
+ SETUP=await fetch('/api/setup').then(r=>r.json());
+ applyDeptToUI(SETUP.department);
+ loadTrustPicker();
  loadTower();
 })();
+
+// re-run everything after the department changes underneath us (trust / import)
+function afterDeptChanged(dept){
+ SETUP.department=dept;loaded={};applyDeptToUI(dept);
+ $$('#nav a').forEach(x=>x.classList.remove('active'));$('#nav a[data-tab=tower]').classList.add('active');
+ $$('.panel').forEach(p=>p.classList.remove('active'));$('#panel-tower').classList.add('active');
+ loadTower();
+}
+// ---- pick your trust ----
+$('#useTrust').onclick=async()=>{
+ const ods=$('#trustPick').value;
+ if(!ods){$('#trustStatus').textContent='Choose a trust first.';return;}
+ $('#trustStatus').innerHTML='<span class="spin"></span> Loading your trust and re-running...';
+ $('#trustProv').textContent='';
+ try{
+  const r=await post('/api/trust/select',{ods});
+  const filled=(r.provenance||[]).filter(p=>p.filled&&p.kind==='input').map(p=>p.field.replace(/_/g,' '));
+  $('#trustStatus').textContent='Loaded '+r.department.name+'. Updated the control tower.';
+  $('#trustProv').textContent=(filled.length?'From published data: '+filled.join(', ')+'. ':'')
+   +(r.notes&&r.notes.length?r.notes[0]:'');
+  afterDeptChanged(r.department);
+ }catch(e){$('#trustStatus').textContent='Error: '+e.message;}
+};
+// ---- import a workbook ----
+$('#importTrust').onclick=async()=>{
+ const f=$('#trustFile').files[0];
+ if(!f){$('#importStatus').textContent='Choose a file first.';return;}
+ $('#importStatus').innerHTML='<span class="spin"></span> Importing and re-running...';
+ try{
+  const fd=new FormData();fd.append('file',f);
+  const r=await fetch('/api/trust/import',{method:'POST',body:fd});
+  const d=await r.json();
+  if(!r.ok)throw new Error(d.error||('server '+r.status));
+  $('#importStatus').textContent='Imported '+d.department.name+'. '+((d.summary||[]).slice(0,2).join(' '));
+  afterDeptChanged(d.department);
+ }catch(e){$('#importStatus').textContent='Error: '+e.message;}
+};
 
 // ---- control tower ----
 async function loadTower(){

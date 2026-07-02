@@ -187,6 +187,10 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 |---|---|---|
 | `/api/setup` | GET | Department, areas catalogue, roles |
 | `/api/department` | POST | Save department (new version) |
+| `/api/trusts` | GET | Trusts pre-fillable from the open-data snapshot |
+| `/api/trust/select` | POST | Load a trust (`{ods}`) as the department |
+| `/api/trust/template` | GET | Blank Excel set-up workbook (xlsx) |
+| `/api/trust/import` | POST | Set up department from an uploaded workbook |
 | `/api/control-tower` | POST | Flow map + standards + pinch (cached) |
 | `/api/recommend` | POST | CI-gated recommendations (cached, minutes first run) |
 | `/api/workforce` `/api/rota-preview` | POST | Staffing vs demand; instant no-sim preview |

@@ -178,6 +178,8 @@ from ..department.builder import build as build_dept
 from ..department.model_ed_gap import gap_analysis
 from ..workforce.roles import ROLES, AREA_LABEL
 from ..workforce.view import workforce_view
+from ..ingest import trust_profile as trusts
+from ..ingest import workbook as trust_workbook
 from ..viz.flow_model import control_tower
 
 CURRENT = {"dept": None}
@@ -248,6 +250,60 @@ def api_set_department():
     CURRENT["dept"] = Department.from_dict(request.get_json(force=True))
     version = store.save_department(CURRENT["dept"].to_dict())
     return jsonify({"ok": True, "department": CURRENT["dept"].to_dict(), "version": version})
+
+
+# --- data-driven set-up: pick your trust, or import an Excel/CSV workbook ------ #
+@app.route("/api/trusts")
+def api_trusts():
+    """Trusts the product can pre-fill from the bundled NHS open-data snapshot."""
+    return jsonify({"trusts": trusts.list_profiles()})
+
+
+@app.route("/api/trust/select", methods=["POST"])
+def api_trust_select():
+    """Load a chosen trust's published figures as the saved department."""
+    ods = (request.get_json(force=True) or {}).get("ods")
+    try:
+        profile = trusts.get_profile(ods)
+    except KeyError as e:
+        return jsonify({"error": str(e)}), 404
+    dept = trusts.to_department(profile)
+    CURRENT["dept"] = dept
+    version = store.save_department(dept.to_dict())
+    store.clear_calibration("your_department")        # a fresh trust starts clean
+    return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
+                    "provenance": trusts.provenance(profile), "notes": trusts.notes(profile),
+                    "source": profile.source, "as_of": profile.as_of})
+
+
+@app.route("/api/trust/template")
+def api_trust_template():
+    """Download the blank Excel set-up workbook (pre-filled with defaults)."""
+    return send_file(io.BytesIO(trust_workbook.template_bytes()), as_attachment=True,
+                     download_name="model_ed_department_template.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/api/trust/import", methods=["POST"])
+def api_trust_import():
+    """Set up the department from an uploaded Excel/CSV workbook (+ any arrivals
+    it carries become a calibration)."""
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    f = request.files["file"]
+    try:
+        result = trust_workbook.read_workbook(f.read(), filename=f.filename)
+    except Exception as e:
+        return jsonify({"error": f"could not read workbook: {e}"}), 400
+    dept = result["department"]
+    CURRENT["dept"] = dept
+    version = store.save_department(dept.to_dict())
+    if result.get("patch"):
+        store.save_calibration("your_department", result["patch"], result["summary"])
+    else:
+        store.clear_calibration("your_department")
+    return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
+                    "summary": result["summary"], "provenance": result["provenance"]})
 
 
 def _control_tower_payload(seed=2):

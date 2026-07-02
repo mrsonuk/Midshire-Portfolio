@@ -309,10 +309,12 @@ def main():
     assert apply_patch(build_dept(other), patch)["arrivals"]["acuity_mix"] == patch["arrivals"]["acuity_mix"]
     print("Calibration OK: derived patch re-applies to any department build.")
 
-    # --- trust profile ingest: a real trust's published figures -> department ---
-    from ..ingest import (get_profile, to_department, provenance,
-                          validate_against_observed)
-    prof = get_profile("rff")                       # case-insensitive lookup
+    # --- trust profile ingest: registry loaded from the CSV snapshot ---
+    from ..ingest import (get_profile, list_profiles, to_department, provenance,
+                          notes, validate_against_observed)
+    codes = {t["ods_code"] for t in list_profiles()}
+    assert {"RFF", "RHU", "RHW"} <= codes, codes         # registry is data, not code
+    prof = get_profile("rff")                            # case-insensitive lookup
     tdept = to_department(prof)
     # published INPUTS flow into the department...
     assert tdept.attendances_per_day == 290, tdept.attendances_per_day
@@ -326,15 +328,43 @@ def main():
     assert abs(sum(traw["arrivals"]["hourly_profile"]) - 290) < 2
     # things open data can't supply keep the template default (flagged, not invented)
     assert tdept.inpatient_beds == Department.default().inpatient_beds
-    assert any("bed count" in n.lower() for n in prof.notes)
+    assert any("bed count" in n.lower() for n in notes(prof))
     assert any(r["kind"] == "validation-target" for r in provenance(prof))
+    # a trust with no published attendances degrades gracefully to the default
+    rhw = to_department(get_profile("RHW"))
+    assert rhw.attendances_per_day == Department.default().attendances_per_day
+    assert rhw.inpatient_beds == 627                     # beds ARE published for RHW
     # the model's OUTPUT 4-hour is validated against the trust's REAL figure
     tp = Pathway.from_dict(traw)
     modelled = kpis(run_cosim(tp, seed=2), tp).get("four_hour", 0.0)
     v = validate_against_observed(prof, modelled)
     assert v["observed"] == 67.5 and v["modelled"] >= 0
-    print(f"Trust ingest OK: Barnsley (RFF) 290/day @ 91.8% occ; modelled 4-hour "
-          f"{v['modelled']}% vs observed {v['observed']}% (delta {v['delta_pct_points']} pts).")
+    print(f"Trust ingest OK: {len(codes)} trusts from CSV; Barnsley (RFF) 290/day @ 91.8% occ; "
+          f"modelled 4-hour {v['modelled']}% vs observed {v['observed']}% (delta {v['delta_pct_points']} pts).")
+
+    # --- workbook ingest: template round-trips to a Department (+ calibration) ---
+    from ..ingest import workbook as wbk
+    wb_bytes = wbk.template_bytes()
+    parsed = wbk.read_workbook(wb_bytes, filename="template.xlsx")
+    wdept = parsed["department"]
+    assert wdept.attendances_per_day == round(Department.default().attendances_per_day)
+    assert set(wdept.enabled) == set(Department.default().enabled), wdept.enabled
+    assert len(wdept.rota) == len(Department.default().rota), len(wdept.rota)
+    assert build_dept(wdept)["resources"], "workbook department must build"
+    assert not any("unknown roles" in s for s in parsed["summary"]), parsed["summary"]
+    # an edited workbook (arrivals sheet) produces a calibration patch
+    from openpyxl import load_workbook
+    import io as _io
+    wb2 = load_workbook(_io.BytesIO(wb_bytes))
+    arr = wb2["Arrivals"]
+    for h in range(24):
+        arr.cell(row=h + 2, column=2, value=(20 if 9 <= h < 18 else 5))
+    buf = _io.BytesIO(); wb2.save(buf)
+    parsed2 = wbk.read_workbook(buf.getvalue(), filename="edited.xlsx")
+    assert parsed2["patch"] and "hourly_profile" in parsed2["patch"]["arrivals"]
+    assert abs(parsed2["department"].attendances_per_day - (9 * 20 + 15 * 5)) < 1
+    print(f"Workbook OK: template -> department ({len(wdept.rota)} shifts, "
+          f"{len(wdept.enabled)} areas); edited arrivals -> calibration patch.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
@@ -379,6 +409,24 @@ def main():
         assert client.get(page, follow_redirects=True).status_code == 200, f"{page} failed"
     print(f"Exec brief OK: risk level {ex['risk']['level']}, "
           f"4-hour typical {ex['standards']['four_hour']['typical']}%; all surfaces serve.")
+
+    # --- data-driven set-up endpoints: pick a trust, download + import a workbook ---
+    tl = client.get("/api/trusts").get_json()["trusts"]
+    assert any(t["ods_code"] == "RFF" for t in tl), "trust list should include Barnsley"
+    sel = client.post("/api/trust/select", json={"ods": "RFF"}).get_json()
+    assert sel["ok"] and sel["department"]["attendances_per_day"] == 290
+    assert store.load_department()["baseline_bed_occupancy"] == 0.918, "trust must persist"
+    assert client.post("/api/trust/select", json={"ods": "ZZZ"}).status_code == 404
+    tmpl = client.get("/api/trust/template")
+    assert tmpl.status_code == 200 and len(tmpl.data) > 3000 and tmpl.data[:2] == b"PK"
+    from io import BytesIO as _BIO
+    up = client.post("/api/trust/import", content_type="multipart/form-data",
+                     data={"file": (_BIO(tmpl.data), "template.xlsx")}).get_json()
+    assert up["ok"] and up["department"]["enabled"], up
+    assert client.post("/api/trust/import", content_type="multipart/form-data",
+                       data={}).status_code == 400
+    print(f"Trust endpoints OK: {len(tl)} trusts listed; select persists (290/day); "
+          f"template downloads ({len(tmpl.data)//1024} KB) and imports.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report
