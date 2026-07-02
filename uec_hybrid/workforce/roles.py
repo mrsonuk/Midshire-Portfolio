@@ -18,6 +18,11 @@ STAFF_RESOURCES = [
     "ed_nurse", "minors_enp", "porter_pool",
 ]
 
+# staff areas that limit flow through a builder RATIO rather than as engine
+# resources - always shown in the workforce view even though they never appear
+# in a built pathway's resource list
+RATIO_RESOURCES = {"ed_nurse"}
+
 # rostered-and-costed workforce that does not yet limit flow in the engine -
 # it appears in the rota, the pay-bill and the staffing-vs-demand view.
 SUPPORT_RESOURCES = ["hca_pool", "reception"]

@@ -44,6 +44,7 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
 
     div = scenario.get("divert")
     if div and float(div.get("fraction", 0)) > 0:
+        from ..demand.streams import skew_stream_mixes, scale_stream_share, daily_stream_split
         f = float(div["fraction"])
         mix = arrivals.get("acuity_mix", {})
         diverted = 0.0
@@ -51,13 +52,19 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
             classes = [c for c in div["classes"] if c in mix]
             tot = sum(mix.values()) or 1
             diverted = sum(mix[c] for c in classes) / tot * f
+            new_mix = dict(mix)
             for c in classes:
-                mix[c] *= (1 - f)
+                new_mix[c] = mix[c] * (1 - f)
+            # streams draw their own acuity mixes, so the skew must reach them
+            skew_stream_mixes(arrivals, new_mix)
         elif div.get("attribute"):
             attrs = arrivals.get("attributes", {})
             cur = attrs.get(div["attribute"])
             prev = (sum(mix.get(c, 0) / (sum(mix.values()) or 1) * cur.get(c, 0) for c in mix)
                     if isinstance(cur, dict) else float(cur or 0))
+            if arrivals.get("streams") and div["attribute"] == "ambulance":
+                prev = daily_stream_split(arrivals).get("ambulance", prev)
+                scale_stream_share(arrivals, "ambulance", 1 - f)
             diverted = prev * f
             if isinstance(cur, dict):
                 attrs[div["attribute"]] = {k: v * (1 - f) for k, v in cur.items()}

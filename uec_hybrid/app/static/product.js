@@ -168,12 +168,13 @@ function servedBy(label){
  return res.map(r=>{
   const m=(TOWER.resource_meta||{})[r]||{};
   const cap=m.capacity;
-  const onNow=Array.isArray(cap)?cap[curHour]:cap;
+  const capNow=Array.isArray(cap)?cap[curHour]:cap;
   if(m.staff){
    const roles=(m.roles||[]).join(', ');
-   return `<span class="chip staff"><b>${m.label||r}</b>: ${onNow!=null?onNow+' on at '+HH(curHour):''}${roles?' ('+roles+')':''}</span>`;
+   return `<span class="chip staff"><b>${m.label||r}</b>: ${capNow!=null?capNow+' on at '+HH(curHour):''}${roles?' ('+roles+')':''}</span>`;
   }
-  return `<span class="chip"><b>${m.label||r}</b>${cap!=null?': '+cap+' spaces':''}</span>`;
+  // physical spaces can carry a 24-hour roster too (e.g. nurse-capped cubicles)
+  return `<span class="chip"><b>${m.label||r}</b>${capNow!=null?': '+capNow+' space'+(capNow===1?'':'s')+(Array.isArray(cap)?' open at '+HH(curHour):''):''}</span>`;
  }).join('');
 }
 function flowsFor(id,dir){
@@ -306,7 +307,8 @@ function whoIsOn(a,h){
  for(const sh of ROTA){
   const role=SETUP.roles[sh.role];
   if(!role||role.staffs!==a.resource||!hourIn(sh,h))continue;
-  counts[role.label]=(counts[role.label]||0)+(+sh.count||1);
+  const n=(sh.count==null||sh.count==='')?1:Math.max(0,+sh.count);
+  if(n>0)counts[role.label]=(counts[role.label]||0)+n;
  }
  return Object.entries(counts).map(([l,c])=>`<span class="chip staff"><b>${c}</b> ${l}${c>1?'s':''}</span>`).join('')
   ||'<span class="chip">nobody rostered</span>';

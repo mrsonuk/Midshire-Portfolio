@@ -245,22 +245,37 @@ class Simulation:
                 [node["resource"]] if node.get("resource") else [])
             needed = [r for r in needed if r in self.resources and r not in held]
             reqs = [self.resources[r].request(priority=prio) for r in needed]
+            grant = {}                      # resource -> time it was observed granted
             renege = node.get("renege")
             if renege and reqs:
                 # patients give up if the wait exceeds their patience (LWBS)
                 patience = max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
-                yield self.env.all_of(reqs) | self.env.timeout(patience)
-                if not all(req.triggered for req in reqs):
+                deadline = self.env.now + patience
+                gave_up = False
+                for r, req in zip(needed, reqs):
+                    remaining = deadline - self.env.now
+                    if remaining <= 0 and not req.triggered:
+                        gave_up = True
+                        break
+                    if not req.triggered:
+                        yield req | self.env.timeout(remaining)
+                    if not req.triggered:
+                        gave_up = True
+                        break
+                    grant[r] = self.env.now
+                if gave_up:
                     for r, req in zip(needed, reqs):
                         if req.triggered:
                             self.resources[r].release(req)
+                            self._hold(pid, r, grant.get(r, self.env.now), self.env.now)
                         else:
                             req.cancel()
                     node_id = renege.get("to")
                     continue
             else:
-                for req in reqs:
+                for r, req in zip(needed, reqs):
                     yield req
+                    grant[r] = self.env.now
             wait = self.env.now - node_entry
 
             service = dist.sample(self.rng, self._service_spec(node, acuity))
@@ -275,7 +290,9 @@ class Simulation:
 
             for r, req in zip(needed, reqs):
                 self.resources[r].release(req)
-                self._hold(pid, r, service_start, self.env.now)
+                # held from the moment it was granted (includes any time spent
+                # blocked on the node's OTHER resources), not just the service
+                self._hold(pid, r, grant.get(r, service_start), self.env.now)
             self._record(pid, acuity, node, node_entry, service_start,
                          self.env.now, wait, service, needed)
 

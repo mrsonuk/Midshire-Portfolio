@@ -92,6 +92,14 @@ def apply_patch(raw: dict, patch: dict) -> dict:
     attrs = arrivals.setdefault("attributes", {})
     for k, v in (patch.get("attributes") or {}).items():
         attrs[k] = v
+    # streams pin the ambulance attribute, so a calibrated conveyance rate must
+    # move the ambulance stream's SHARE, not just the (inert) global attribute
+    if "ambulance" in (patch.get("attributes") or {}) and arrivals.get("streams"):
+        from .streams import daily_stream_split, scale_stream_share
+        current = daily_stream_split(arrivals).get("ambulance", 0.0)
+        target = float(patch["attributes"]["ambulance"])
+        if current > 0:
+            scale_stream_share(arrivals, "ambulance", target / current)
     rates = patch.get("admission_rates") or {}
     if rates:
         node = next((n for n in raw.get("nodes", []) if n.get("id") == "disposition_general"), None)

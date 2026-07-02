@@ -235,6 +235,32 @@ def main():
     print(f"Recommend OK: {rec['n_candidates']} candidates evaluated, "
           f"{len(rec['recommendations'])} confident, {len(rec['rejected'])} within noise.")
 
+    # --- review fixes: seams that must reach the streams, and the nursing view ---
+    from ..analysis.scenarios import apply_scenario
+    from ..demand.streams import daily_stream_split
+    pdiv, _ = apply_scenario(p, {"name": "utc", "divert": {"classes": ["Acuity 4", "Acuity 5"],
+                                                           "fraction": 0.5}})
+    for s in pdiv.raw["arrivals"]["streams"]:
+        base_s = next(x for x in p.raw["arrivals"]["streams"] if x["name"] == s["name"])
+        if base_s["acuity_mix"].get("Acuity 4", 0) > 0:
+            assert s["acuity_mix"]["Acuity 4"] < base_s["acuity_mix"]["Acuity 4"] * 0.6, \
+                f"class divert did not reach stream {s['name']}"
+    cal_amb = _ap(p.raw, {"attributes": {"ambulance": 0.45}})
+    got = daily_stream_split(cal_amb["arrivals"]).get("ambulance", 0)
+    assert 0.40 <= got <= 0.50, f"calibrated ambulance share did not reach streams ({got:.2f})"
+    # forecast: a history ending mid-winter forecasts THIS winter, not next year's
+    import pandas as _pd
+    hist2 = generate_daily_history()
+    hist2 = hist2[_pd.to_datetime(hist2["date"]) <= "2025-12-15"]
+    fw = forecast_from_history(hist2)
+    assert abs(fw["winter_uplift_pct"]) < 15, \
+        f"Dec-ending history should already sit near winter level ({fw['winter_uplift_pct']}%)"
+    # nursing is ratio-constrained but must still appear in the workforce view
+    assert any(a["resource"] == "ed_nurse" for a in prev["areas"]), \
+        "ED nursing dropped from the workforce view"
+    print("Review fixes OK: diverts and calibration reach streams; mid-winter forecast sane; "
+          "nursing visible.")
+
     # --- platform store: department persists (versioned), run cache hits by config hash ---
     import tempfile
     from ..platform import store

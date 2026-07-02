@@ -9,7 +9,7 @@ change instantly; ``workforce_view`` wraps it for a whole department.
 from __future__ import annotations
 
 from .rota import staffing_by_hour, weekly_cost, cost_breakdown, understaffed_hours
-from .roles import STAFF_RESOURCES, SUPPORT_RESOURCES, AREA_LABEL, ROLES
+from .roles import STAFF_RESOURCES, SUPPORT_RESOURCES, RATIO_RESOURCES, AREA_LABEL, ROLES
 
 
 def _demand_profile(attendances_per_day: float) -> list[float]:
@@ -29,10 +29,11 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
 
     areas = []
     for res in STAFF_RESOURCES + SUPPORT_RESOURCES:
-        # engine-constraining areas follow the department's set-up; the support
-        # workforce (nursing, ENPs, HCAs, porters, reception) is always shown -
-        # it is rostered and costed even though it doesn't limit flow yet.
-        if res in STAFF_RESOURCES and present is not None and res not in present:
+        # engine-constraining areas follow the department's set-up; ratio-
+        # constrained nursing and the cost-only support workforce are always
+        # shown (they never appear in a built pathway's resource list).
+        if (res in STAFF_RESOURCES and res not in RATIO_RESOURCES
+                and present is not None and res not in present):
             continue
         if res not in staffing:
             continue

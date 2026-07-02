@@ -113,11 +113,13 @@ def build_department(attendances_now=None, winter_uplift_pct=12.0, yoy_growth_pc
                             if isinstance(raw["sd"][k], float) else _scale_cap(raw["sd"][k], ch))
     div = extra.get("divert")
     if div and div.get("fraction", 0) > 0:
-        mix = raw["arrivals"]["acuity_mix"]; f = float(div["fraction"])
+        from ..demand.streams import skew_stream_mixes
+        mix = dict(raw["arrivals"]["acuity_mix"]); f = float(div["fraction"])
         classes = [c for c in div.get("classes", []) if c in mix]
         diverted = sum(mix[c] for c in classes) / (sum(mix.values()) or 1) * f
         for c in classes:
             mix[c] *= (1 - f)
+        skew_stream_mixes(raw["arrivals"], mix)   # streams carry the case-mix now
         raw["arrivals"]["hourly_profile"] = [h * (1 - diverted) for h in raw["arrivals"]["hourly_profile"]]
     return raw, fc
 

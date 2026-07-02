@@ -127,9 +127,12 @@ def forecast_from_history(df: pd.DataFrame) -> dict:
     # recent level: the model's view of a typical day right now
     recent_level = float(np.mean(predict(pd.date_range(dates[-1] - pd.Timedelta(days=27),
                                                        dates[-1]))))
-    # winter: a typical day across the NEXT Dec-Feb window
-    winter_start = pd.Timestamp(year=dates[-1].year if dates[-1].month < 12 else dates[-1].year + 1,
-                                month=12, day=1)
+    # winter: a typical day across the ongoing-or-upcoming Dec-Feb window
+    # (history ending in Dec belongs to THIS winter; Jan/Feb to the one that
+    # started the previous December)
+    last = dates[-1]
+    winter_year = last.year - 1 if last.month <= 2 else last.year
+    winter_start = pd.Timestamp(year=winter_year, month=12, day=1)
     winter_days = pd.date_range(winter_start, winter_start + pd.Timedelta(days=89))
     expected = float(np.mean(predict(winter_days)))
     winter_uplift_pct = (expected / max(1.0, recent_level) - 1) * 100

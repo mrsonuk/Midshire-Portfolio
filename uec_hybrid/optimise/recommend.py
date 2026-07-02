@@ -30,8 +30,12 @@ AREA_ROLE = {"streaming_nurse": "streaming_nurse", "rat_clinician": "rat_consult
              "minors_enp": "enp", "porter_pool": "porter"}
 
 PHYSICAL_MOVES = [
+    # extra cubicles come WITH the nursing to cover them, otherwise the
+    # 1:N nurse-to-cubicle ratio the kernel enforces would just close them
     {"kind": "capacity", "resource": "cubicle", "add": 2,
-     "title": "Open 2 more majors cubicles", "cost_band": "Moderate"},
+     "with_shift": {"role": "band5_nurse", "start": 8, "end": 20, "count": 1},
+     "title": "Open 2 more majors cubicles, staffed (+1 Band 5 nurse 08:00-20:00)",
+     "cost_band": "Moderate"},
     {"kind": "capacity", "resource": "minor_injury_space", "add": 2,
      "title": "Add 2 minor-injury spaces", "cost_band": "Low"},
     {"kind": "capacity", "resource": "handover_bay", "add": 1,
@@ -78,6 +82,8 @@ def _apply(dept, move):
                                   "end": move["end"], "count": move["count"]}]
     elif move["kind"] == "hours":
         d.hours = {**(d.hours or {}), move["area"]: [move["open"], move["close"]]}
+    if move.get("with_shift"):
+        d.rota = list(d.rota) + [dict(move["with_shift"])]
     return d
 
 
@@ -123,7 +129,9 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
         cand = _table(_raw_for(dept, move, calibration), reps, base_seed)
         d4 = cand["four_hour"].to_numpy() - base["four_hour"].to_numpy()
         mean, se = float(d4.mean()), float(d4.std(ddof=1) / np.sqrt(len(d4))) if len(d4) > 1 else 0.0
-        lo = mean - 1.64 * se                       # one-sided 95% lower bound
+        from scipy import stats as _st
+        tcrit = float(_st.t.ppf(0.95, df=max(1, len(d4) - 1)))
+        lo = mean - tcrit * se                      # one-sided 95% lower bound (Student t)
         lwbs_d = (float(cand["lwbs"].mean() - base["lwbs"].mean())
                   if "lwbs" in cand and "lwbs" in base else 0.0)
         fin = business_case(
@@ -132,6 +140,10 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
             {"corridor_per_day": corridor_per_day(base)},
             attendances_per_day=dept.attendances_per_day, book=book)
         weekly = move.get("weekly_cost")
+        ws = move.get("with_shift")
+        if ws:
+            weekly = (weekly or 0) + _shift_cost_per_week(
+                ws["role"], ws["start"], ws["end"], ws.get("count", 1))
         net = (fin["annual_benefit"] - weekly * 52) if weekly else None
         results.append({
             "title": move["title"], "kind": move["kind"],
