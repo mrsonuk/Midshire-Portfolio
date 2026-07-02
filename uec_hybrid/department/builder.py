@@ -111,6 +111,10 @@ def build(dept: Department) -> dict:
     sd = raw.setdefault("sd", {})
     sd["inpatient_beds"] = int(dept.inpatient_beds)
     sd["community_capacity"] = int(dept.community_capacity)
+    if getattr(dept, "baseline_bed_occupancy", None) is not None:
+        # a real observed occupancy (e.g. from a trust's bed-availability return)
+        # sets where the exit-block feedback sits for THIS hospital
+        sd["baseline_bed_occupancy"] = round(float(dept.baseline_bed_occupancy), 4)
     for k in ("background_admissions_per_hour", "ward_discharge_capacity_per_hour",
               "community_clearance_per_hour", "mh_beds"):
         if k in sd:

@@ -309,6 +309,33 @@ def main():
     assert apply_patch(build_dept(other), patch)["arrivals"]["acuity_mix"] == patch["arrivals"]["acuity_mix"]
     print("Calibration OK: derived patch re-applies to any department build.")
 
+    # --- trust profile ingest: a real trust's published figures -> department ---
+    from ..ingest import (get_profile, to_department, provenance,
+                          validate_against_observed)
+    prof = get_profile("rff")                       # case-insensitive lookup
+    tdept = to_department(prof)
+    # published INPUTS flow into the department...
+    assert tdept.attendances_per_day == 290, tdept.attendances_per_day
+    assert tdept.baseline_bed_occupancy == 0.918
+    assert "Barnsley" in tdept.name and "RFF" in tdept.name
+    # ...and survive a JSON round-trip through the store schema
+    assert Department.from_dict(tdept.to_dict()).baseline_bed_occupancy == 0.918
+    # occupancy reaches the SD layer the control tower runs (not just stored)
+    traw = build_dept(tdept)
+    assert traw["sd"]["baseline_bed_occupancy"] == 0.918
+    assert abs(sum(traw["arrivals"]["hourly_profile"]) - 290) < 2
+    # things open data can't supply keep the template default (flagged, not invented)
+    assert tdept.inpatient_beds == Department.default().inpatient_beds
+    assert any("bed count" in n.lower() for n in prof.notes)
+    assert any(r["kind"] == "validation-target" for r in provenance(prof))
+    # the model's OUTPUT 4-hour is validated against the trust's REAL figure
+    tp = Pathway.from_dict(traw)
+    modelled = kpis(run_cosim(tp, seed=2), tp).get("four_hour", 0.0)
+    v = validate_against_observed(prof, modelled)
+    assert v["observed"] == 67.5 and v["modelled"] >= 0
+    print(f"Trust ingest OK: Barnsley (RFF) 290/day @ 91.8% occ; modelled 4-hour "
+          f"{v['modelled']}% vs observed {v['observed']}% (delta {v['delta_pct_points']} pts).")
+
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
     raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)

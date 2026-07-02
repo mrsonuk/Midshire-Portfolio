@@ -73,6 +73,10 @@ class Department:
     community_capacity: int = 60
     # opening hours [open, close] per area; defaults to DEFAULT_HOURS, [0,24] == 24/7
     hours: dict = field(default_factory=lambda: {k: list(v) for k, v in DEFAULT_HOURS.items()})
+    # observed whole-hospital bed occupancy (0-1). None = use the pathway's SD
+    # default; set it (e.g. from a trust's bed-availability return) so exit-block
+    # feedback reflects how full THIS hospital actually runs.
+    baseline_bed_occupancy: float | None = None
 
     @classmethod
     def default(cls):
@@ -91,7 +95,8 @@ class Department:
         return {"name": self.name, "attendances_per_day": self.attendances_per_day,
                 "enabled": self.enabled, "rota": self.rota,
                 "inpatient_beds": self.inpatient_beds, "community_capacity": self.community_capacity,
-                "hours": {k: list(v) for k, v in (self.hours or {}).items()}}
+                "hours": {k: list(v) for k, v in (self.hours or {}).items()},
+                "baseline_bed_occupancy": self.baseline_bed_occupancy}
 
     @classmethod
     def from_dict(cls, d):
@@ -100,10 +105,12 @@ class Department:
         for k, v in (d.get("hours") or {}).items():
             if k in hours and isinstance(v, (list, tuple)) and len(v) == 2:
                 hours[k] = [int(v[0]), int(v[1])]
+        occ = d.get("baseline_bed_occupancy", base.baseline_bed_occupancy)
         return cls(name=d.get("name", base.name),
                    attendances_per_day=float(d.get("attendances_per_day", base.attendances_per_day)),
                    enabled=d.get("enabled", base.enabled),
                    rota=d.get("rota", base.rota),
                    inpatient_beds=int(d.get("inpatient_beds", base.inpatient_beds)),
                    community_capacity=int(d.get("community_capacity", base.community_capacity)),
-                   hours=hours)
+                   hours=hours,
+                   baseline_bed_occupancy=(float(occ) if occ is not None else None))
