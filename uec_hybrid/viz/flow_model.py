@@ -155,8 +155,28 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
             lh = bs.groupby("hod")["wait"].sum()
             peak_hours = sorted(int(h) for h in lh[lh >= lh.max() * 0.6].index)
 
+    # what serves each area (spaces + staff) so the drill-down can explain WHO
+    # and WHAT a patient is waiting for there, and who is on at a given hour
+    from ..workforce.roles import STAFF_RESOURCES, ROLES, AREA_LABEL, roles_for
+    area_resources, resource_meta = {}, {}
+    for nid, node in pathway.nodes.items():
+        res = list(node.get("resources") or ([node["resource"]] if node.get("resource") else []))
+        res += list(node.get("acquire") or [])
+        if res:
+            area_resources[node.get("label", nid)] = res
+        for r in res:
+            if r not in resource_meta:
+                resource_meta[r] = {
+                    "staff": r in STAFF_RESOURCES,
+                    "label": AREA_LABEL.get(r, r.replace("_", " ")),
+                    "roles": [ROLES[k]["label"] for k in roles_for(r)],
+                    "capacity": pathway.resources.get(r),   # int, or 24-hour roster list
+                }
+
     data["bottleneck"] = op_bottleneck
     data["census_by_hour"] = census
     data["area_by_hour"] = by_hour
     data["bottleneck_peak_hours"] = peak_hours
+    data["area_resources"] = area_resources
+    data["resource_meta"] = resource_meta
     return data

@@ -41,12 +41,12 @@
  <p id="deptLine">Your emergency department at a glance</p>
 </div></header>
 <nav>
- <a class="first" href="/">← Control tower</a>
+ <a class="first" href="/">Control tower</a>
  <a href="/planner">Plan ahead</a>
  <a href="/analyst">Analyst view</a>
 </nav>
 <div class="wrap">
- <div id="loading" class="loading"><span class="spin"></span> Preparing your brief…</div>
+ <div id="loading" class="loading"><span class="spin"></span> Preparing your brief...</div>
  <div id="content" style="display:none">
   <div class="risk" id="risk"></div>
 
@@ -65,7 +65,7 @@
   <div class="card">
    <h2>Workforce</h2>
    <p class="sub" id="wfLine"></p>
-   <div class="foot"><a href="/#workforce">Open the rota editor →</a></div>
+   <div class="foot"><a href="/#workforce">Open the rota editor</a></div>
   </div>
 
   <div class="card invest">
@@ -80,12 +80,12 @@
 const $=s=>document.querySelector(s);
 function rag4h(v){return v>=78?'green':v>=72?'amber':'red';}
 function tile(cls,k,v,s){return `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${v}</div><div class="s">${s}</div></div>`;}
-function band(b,suf){return b?`good week ${b.good}${suf} · tough week ${b.tough}${suf}`:'';}
+function band(b,suf){return b?`good week ${b.good}${suf}, tough week ${b.tough}${suf}`:'';}
 (async function(){
  try{
   const d=await fetch('/api/exec').then(r=>r.json());
-  $('#deptLine').textContent=`${d.department.name} · about ${d.department.attendances_per_day} attendances a day`
-    +(d.department.calibrated?' · calibrated from your data':' · synthetic until calibrated');
+  $('#deptLine').textContent=`${d.department.name}, about ${d.department.attendances_per_day} attendances a day`
+    +(d.department.calibrated?', calibrated from your data':', synthetic until calibrated');
   $('#risk').className='risk '+d.risk.colour;
   $('#risk').textContent=`${d.risk.label} - hospital about ${d.bed_occupancy}% full`;
   const s=d.standards;
@@ -105,7 +105,7 @@ function band(b,suf){return b?`good week ${b.good}${suf} · tough week ${b.tough
  }catch(e){$('#loading').innerHTML='Could not load the brief: '+e.message;}
 })();
 $('#report').onclick=()=>{
- $('#report').disabled=true;$('#reportNote').textContent='Building your report - this takes about a minute…';
+ $('#report').disabled=true;$('#reportNote').textContent='Building your report - this takes about a minute...';
  fetch('/api/report').then(r=>r.blob()).then(b=>{
   const a=document.createElement('a');a.href=URL.createObjectURL(b);a.download='decision_report.pdf';a.click();
   $('#reportNote').textContent='Done - check your downloads.';$('#report').disabled=false;

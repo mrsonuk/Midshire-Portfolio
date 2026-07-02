@@ -6,7 +6,7 @@ function rag4h(v: number) {
 }
 
 function Tile(props: { cls: string; k: string; v: string; band?: Band | null; suffix: string }) {
-  const spread = props.band ? `good week ${props.band.good}${props.suffix} · tough week ${props.band.tough}${props.suffix}` : ''
+  const spread = props.band ? `good week ${props.band.good}${props.suffix}, tough week ${props.band.tough}${props.suffix}` : ''
   return (
     <div className={`tile ${props.cls}`}>
       <div className="k">{props.k}</div>
@@ -30,14 +30,14 @@ export default function ExecBrief() {
   if (!data)
     return (
       <div className="loading">
-        <span className="spin" /> Preparing your brief…
+        <span className="spin" /> Preparing your brief...
       </div>
     )
 
   const s = data.standards
   const onReport = async () => {
     setBuilding(true)
-    setReportNote('Building your report - this takes about a minute…')
+    setReportNote('Building your report - this takes about a minute...')
     try {
       await downloadReport()
       setReportNote('Done - check your downloads.')
@@ -50,7 +50,7 @@ export default function ExecBrief() {
   return (
     <>
       <p className="sub">
-        {data.department.name} · about {data.department.attendances_per_day} attendances a day ·{' '}
+        {data.department.name}, about {data.department.attendances_per_day} attendances a day ,{' '}
         {data.department.calibrated ? 'calibrated from your data' : 'synthetic until calibrated'}
       </p>
       <div className={`risk ${data.risk.colour}`}>
@@ -80,7 +80,7 @@ export default function ExecBrief() {
           Weekly pay-bill about <b>£{data.workforce.weekly_cost.toLocaleString()}</b>. {data.workforce.headline}
         </p>
         <div className="foot">
-          <a href="/#workforce">Open the rota editor →</a>
+          <a href="/#workforce">Open the rota editor</a>
         </div>
       </div>
 

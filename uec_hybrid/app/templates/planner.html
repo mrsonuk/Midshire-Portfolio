@@ -60,10 +60,10 @@
 <body>
 <header><div class="logo">NHS</div><div>
  <h1>Urgent &amp; Emergency Care - Demand &amp; Capacity Planner</h1>
- <p>For ICB and operational planning · works for any emergency department</p>
+ <p>For ICB and operational planning, works for any emergency department</p>
 </div></header>
 <nav style="background:#fff;border-bottom:1px solid var(--line);padding:0 26px;display:flex;gap:4px">
- <a href="/" style="padding:12px 16px;font-weight:700;font-size:14px;color:var(--blue);text-decoration:none">← Back to Model ED Optimiser</a>
+ <a href="/" style="padding:12px 16px;font-weight:700;font-size:14px;color:var(--blue);text-decoration:none">Back to Model ED Optimiser</a>
  <a href="/" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none">Control tower</a>
  <a href="/exec" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none;margin-left:auto">Executive brief</a>
  <a href="/analyst" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none">Analyst view</a>
@@ -105,7 +105,7 @@
     <p class="sub">Each option run at the expected winter demand, ranked by how much it improves the 4-hour standard. Cost is an indicative band.</p>
     <div id="options"></div></div>
    <div class="card"><h2>5. Bottom line</h2><div class="bottom" id="bottom"></div>
-    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. &nbsp;·&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
+    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. &nbsp;,&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
   </div>
  </div>
 
@@ -162,7 +162,7 @@ $('#useData').onclick=async()=>{
  $('#useData').disabled=false;
 };
 $('#run').onclick=async()=>{
- const b=$('#run');b.disabled=true;$('#status').innerHTML='<span class="spin"></span> Modelling a good week, a typical week and a tough week…';
+ const b=$('#run');b.disabled=true;$('#status').innerHTML='<span class="spin"></span> Modelling a good week, a typical week and a tough week...';
  try{const r=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({attendances_now:+$('#attend').value,winter_uplift_pct:+$('#uplift').value,yoy_growth_pct:+$('#growth').value})});
   const d=await r.json();if(d.error)throw new Error(d.error);
@@ -175,7 +175,7 @@ function renderWinter(d){
  $('#fcSummary').textContent=d.forecast.summary+(d.modelled?' '+d.modelled+'.':'');
  $('#tiles').innerHTML=
   tile('blue','Expected demand',d.forecast.expected_per_day,'attendances a day this winter')+
-  tile(cls,'4-hour standard (typical week)',o.typical+'%','good week '+o.good+'% · tough week '+o.tough+'%')+
+  tile(cls,'4-hour standard (typical week)',o.typical+'%','good week '+o.good+'%, tough week '+o.tough+'%')+
   tile(o.corridor_per_day>=4?'red':o.corridor_per_day>=1?'amber':'green','Long waits for a bed',o.corridor_per_day,'patients a day waiting over 12 hours for admission')+
   tile(o.bed_occupancy>=92?'red':o.bed_occupancy>=85?'amber':'green','How full the hospital is',o.bed_occupancy+'%','average inpatient bed occupancy');
  const v=$('#verdict');v.className='verdict '+cls;
@@ -187,7 +187,7 @@ function renderWinter(d){
 }
 // ---- today ----
 $('#runToday').onclick=async()=>{
- const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help…';
+ const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help...';
  try{const r=await fetch('/api/plan-today',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({attendances_today:+$('#tAttend').value,hospital_fullness_pct:+$('#fullness').value})});
   const d=await r.json();if(d.error)throw new Error(d.error);
