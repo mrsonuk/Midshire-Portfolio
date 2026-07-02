@@ -240,6 +240,55 @@ def uec_scorecard(metrics: dict, overrides: dict | None = None) -> list:
     return out
 
 
+def sd_interpretation(result: dict) -> dict:
+    """Plain-language read of what the System-Dynamics plots are actually showing,
+    computed from the simulated SD history (stocks + feedback signals)."""
+    hist = result.get("sd_history") or []
+    if not hist:
+        return {"stocks": "", "feedback": ""}
+    occ = np.array([s["bed_occupancy"] * 100 for _, s in hist])
+    mh = np.array([s["mh_occupancy"] * 100 for _, s in hist])
+    crowd = np.array([s["crowding"] * 100 for _, s in hist])
+    bwm = np.array([s["bed_wait_multiplier"] for _, s in hist])
+    pull = np.array([s["community_pull"] for _, s in hist])
+    over92 = float((occ > 92).mean() * 100)
+    stocks = (
+        f"Inpatient bed occupancy averaged {occ.mean():.0f}% (peak {occ.max():.0f}%) and sat "
+        f"above the 92% exit-block line {over92:.0f}% of the week; mental-health bed occupancy "
+        f"averaged {mh.mean():.0f}%. The orange ED-crowding index (mean {crowd.mean():.0f}%) rises "
+        f"as those stocks fill — the fuller and longer occupancy stays above 92%, the more "
+        f"admissions stall and patients board in the ED.")
+    feedback = (
+        f"The red bed-wait multiplier averaged ×{bwm.mean():.1f} (peak ×{bwm.max():.1f}): that is how "
+        f"much a full hospital stretches the wait for an inpatient bed — the exit-block that roughly "
+        f"doubles admitted length-of-stay. The green community-pull line (mean {pull.mean():.2f} of 1) "
+        f"is the opposite force: community/virtual-ward headroom that discharges the ward faster and "
+        f"relieves the ED. When red is high and green is low, the ED is being squeezed from downstream.")
+    return {"stocks": stocks, "feedback": feedback}
+
+
+def stage_timing(result: dict, pathway: Pathway) -> dict:
+    """Per-stage time (queue + service) along the pathway, plus the patient count
+    and the true end-to-end total (mean length of stay)."""
+    events, patients = result["events"], result["patients"]
+    if events.empty or patients.empty:
+        return {"stages": [], "n_patients": 0, "mean_los": 0.0, "median_los": 0.0}
+    g = events.groupby(["stage", "stage_label"], sort=False).agg(
+        n=("pid", "count"), first=("service_start", "mean"),
+        mean_wait=("wait", "mean"), mean_service=("service", "mean")).reset_index()
+    g["mean_in_stage"] = g["mean_wait"] + g["mean_service"]
+    g = g.sort_values("first")
+    stages = [{"stage": r.stage_label, "n": int(r.n),
+               "mean_wait": round(float(r.mean_wait), 1),
+               "mean_service": round(float(r.mean_service), 1),
+               "mean_in_stage": round(float(r.mean_in_stage), 1)} for r in g.itertuples()]
+    los = patients["los"]
+    return {"stages": stages, "n_patients": int(len(patients)),
+            "mean_los": round(float(los.mean()), 1),
+            "median_los": round(float(los.median()), 1),
+            "sum_stage_time": round(float(g["mean_in_stage"].sum()), 1)}
+
+
 def diagnose(result: dict, pathway: Pathway) -> dict:
     util = resource_utilisation(result, pathway)
     waits = stage_waits(result)
