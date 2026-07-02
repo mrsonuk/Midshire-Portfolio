@@ -94,6 +94,16 @@ def build(dept: Department) -> dict:
         if r in STAFF_RESOURCES and r in staffing:
             raw["resources"][r] = list(staffing[r])
 
+    # --- nursing ratio: cubicles only open if there are nurses to cover them ---
+    # (safer-staffing style 1:N ratio; cutting the nurse rota closes cubicles)
+    ratio = (raw.get("uec") or {}).get("nurse_to_cubicle_ratio")
+    nurses = staffing.get("ed_nurse")
+    if ratio and nurses and "cubicle" in raw["resources"]:
+        cap = raw["resources"]["cubicle"]
+        cap24 = list(cap) if isinstance(cap, list) else [cap] * 24
+        raw["resources"]["cubicle"] = [max(1, min(int(c), int(n) * int(ratio)))
+                                       for c, n in zip(cap24, nurses)]
+
     # --- demand and whole-hospital levers ---
     profile = raw["arrivals"]["hourly_profile"]
     tot = sum(profile) or 1

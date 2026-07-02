@@ -11,6 +11,7 @@ export interface Standards {
   initial_assessment?: Band | null
   twelve_hour?: Band | null
   ambulance_handover?: Band | null
+  lwbs?: Band | null
   attendances_per_day?: number
 }
 

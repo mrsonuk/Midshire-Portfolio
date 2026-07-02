@@ -5,23 +5,69 @@
     "warmup_minutes": 1440,
     "target_minutes": 240,
     "arrivals": {
-        "hourly_profile": [6, 4, 4, 3, 3, 4, 4, 6, 13, 20, 23, 25, 25, 22, 21, 21, 21, 21, 20, 17, 16, 14, 10, 8],
-        "acuity_mix": {"Acuity 1": 0.88, "Acuity 2": 5.5, "Acuity 3": 24.65, "Acuity 4": 60.68, "Acuity 5": 8.29},
+        "hourly_profile": [
+            6,
+            4,
+            4,
+            3,
+            3,
+            4,
+            4,
+            6,
+            13,
+            20,
+            23,
+            25,
+            25,
+            22,
+            21,
+            21,
+            21,
+            21,
+            20,
+            17,
+            16,
+            14,
+            10,
+            8
+        ],
+        "acuity_mix": {
+            "Acuity 1": 0.88,
+            "Acuity 2": 5.5,
+            "Acuity 3": 24.65,
+            "Acuity 4": 60.68,
+            "Acuity 5": 8.29
+        },
         "attributes": {
             "ambulance": 0.316,
             "mental_health": 0.04,
-            "frailty": {"Acuity 1": 0.30, "Acuity 2": 0.28, "Acuity 3": 0.22, "Acuity 4": 0.10, "Acuity 5": 0.06},
-            "paediatric": {"Acuity 1": 0.08, "Acuity 2": 0.10, "Acuity 3": 0.16, "Acuity 4": 0.26, "Acuity 5": 0.34}
+            "frailty": {
+                "Acuity 1": 0.3,
+                "Acuity 2": 0.28,
+                "Acuity 3": 0.22,
+                "Acuity 4": 0.1,
+                "Acuity 5": 0.06
+            },
+            "paediatric": {
+                "Acuity 1": 0.08,
+                "Acuity 2": 0.1,
+                "Acuity 3": 0.16,
+                "Acuity 4": 0.26,
+                "Acuity 5": 0.34
+            }
         }
     },
     "uec": {
         "initial_assessment_node": "streaming",
-        "ambulance_handover_stages": ["ed_resus", "ed_cubicles", "rat"],
+        "ambulance_handover_stages": [
+            "ambulance_handover"
+        ],
         "ambulance_attr": "ambulance",
         "paediatric_attr": "paediatric",
         "mental_health_attr": "mental_health",
         "frailty_attr": "frailty",
-        "eemac_node": "eemac"
+        "eemac_node": "eemac",
+        "nurse_to_cubicle_ratio": 4
     },
     "sd": {
         "inpatient_beds": 320,
@@ -29,9 +75,9 @@
         "background_admissions_per_hour": 3.2,
         "ward_discharge_capacity_per_hour": 5.6,
         "mh_beds": 22,
-        "baseline_mh_occupancy": 0.90,
+        "baseline_mh_occupancy": 0.9,
         "mh_background_per_hour": 0.25,
-        "mh_discharge_capacity_per_hour": 0.60,
+        "mh_discharge_capacity_per_hour": 0.6,
         "community_capacity": 60,
         "community_clearance_per_hour": 4.0,
         "ambulances": 24
@@ -56,173 +102,949 @@
         "fau_bed": 12,
         "frailty_team": 5,
         "mh_clinician": 3,
-        "mh_assessment_room": 4
+        "mh_assessment_room": 4,
+        "handover_bay": 5,
+        "minors_enp": 2,
+        "porter_pool": 2
     },
     "nodes": [
-        {"id": "arrival", "type": "source", "label": "Arrival", "routes": [["streaming", 1.0]]},
-
-        {"id": "streaming", "type": "process", "label": "Streaming / initial assessment",
-         "band": "front_door", "bedded_care": false, "resource": "streaming_nurse",
-         "service": {"dist": "lognormal", "mean": 7, "stdev": 3},
-         "routes_by_attribute": {
-            "paediatric": [["paeds_assessment", 1.0]]
-         },
-         "routes_by_class": {
-            "Acuity 1": [["rat", 0.85], ["direct_specialty_bypass", 0.15]],
-            "Acuity 2": [["rat", 1.0]],
-            "Acuity 3": [["rat", 1.0]],
-            "Acuity 4": [["utc_minor_illness", 0.45], ["ed_minor_injury", 0.35], ["ed_ambulatory", 0.20]],
-            "Acuity 5": [["utc_minor_illness", 0.70], ["ed_minor_injury", 0.30]]
-         }},
-
-        {"id": "direct_specialty_bypass", "type": "process", "label": "Direct to specialty (bypass)",
-         "band": "front_door", "priority": 1,
-         "service": {"dist": "lognormal", "mean": 15, "stdev": 6},
-         "routes": [["await_inpatient_bed", 1.0]]},
-
-        {"id": "rat", "type": "process", "label": "Rapid assessment & treatment (RAT)",
-         "band": "front_door", "bedded_care": false, "resource": "rat_clinician",
-         "service": {"dist": "lognormal", "mean": 18, "stdev": 8},
-         "routes_by_class": {
-            "Acuity 1": [["ed_resus", 0.80], ["ed_cubicles", 0.20]],
-            "Acuity 2": [["ed_resus", 0.30], ["ed_cubicles", 0.70]],
-            "Acuity 3": [["ed_cubicles", 0.60], ["ed_ambulatory", 0.40]]
-         }},
-
-        {"id": "utc_minor_illness", "type": "process", "label": "UTC minor illness",
-         "band": "core_0_4h", "bedded_care": false, "resources": ["utc_room"],
-         "service": {"dist": "lognormal", "mean": 28, "stdev": 12},
-         "routes": [["disposition", 1.0]]},
-
-        {"id": "ed_minor_injury", "type": "process", "label": "ED/UTC minor injury",
-         "band": "core_0_4h", "bedded_care": false, "resources": ["minor_injury_space"],
-         "service": {"dist": "lognormal", "mean": 30, "stdev": 14},
-         "routes": [["imaging_decision", 1.0]]},
-
-        {"id": "ed_ambulatory", "type": "process", "label": "ED ambulatory (fit to sit)",
-         "band": "core_0_4h", "bedded_care": false, "acquire": ["fit_to_sit_chair"], "resource": "ed_doctor",
-         "service": {"dist": "lognormal", "mean": 55, "stdev": 25},
-         "routes": [["imaging_decision", 1.0]]},
-
-        {"id": "ed_cubicles", "type": "process", "label": "ED cubicles",
-         "band": "core_0_4h", "bedded_care": true, "acquire": ["cubicle"], "resource": "ed_doctor",
-         "service_by_class": {
-            "Acuity 1": {"dist": "lognormal", "mean": 95, "stdev": 40},
-            "Acuity 2": {"dist": "lognormal", "mean": 85, "stdev": 35},
-            "Acuity 3": {"dist": "lognormal", "mean": 70, "stdev": 30}
-         },
-         "service": {"dist": "lognormal", "mean": 80, "stdev": 35},
-         "routes": [["imaging_decision", 1.0]]},
-
-        {"id": "ed_resus", "type": "process", "label": "ED resus",
-         "band": "core_0_4h", "bedded_care": true, "priority": 1, "acquire": ["resus_bay"], "resource": "ed_doctor",
-         "service": {"dist": "lognormal", "mean": 130, "stdev": 50},
-         "routes": [["imaging_decision", 1.0]]},
-
-        {"id": "paeds_assessment", "type": "process", "label": "Paediatric area",
-         "band": "core_0_4h", "bedded_care": true, "acquire": ["paeds_cubicle"], "resource": "paeds_doctor",
-         "service_by_class": {
-            "Acuity 1": {"dist": "lognormal", "mean": 110, "stdev": 40},
-            "Acuity 2": {"dist": "lognormal", "mean": 80, "stdev": 30},
-            "Acuity 3": {"dist": "lognormal", "mean": 50, "stdev": 22},
-            "Acuity 4": {"dist": "lognormal", "mean": 24, "stdev": 11},
-            "Acuity 5": {"dist": "lognormal", "mean": 16, "stdev": 8}
-         },
-         "service": {"dist": "lognormal", "mean": 35, "stdev": 18},
-         "routes": [["imaging_decision", 1.0]]},
-
-        {"id": "imaging_decision", "type": "process", "label": "Imaging decision",
-         "band": "core_0_4h", "service": {"dist": "constant", "value": 0},
-         "routes_by_class": {
-            "Acuity 1": [["ct", 0.30], ["xray", 0.25], ["disposition", 0.45]],
-            "Acuity 2": [["ct", 0.20], ["xray", 0.33], ["disposition", 0.47]],
-            "Acuity 3": [["ct", 0.13], ["xray", 0.24], ["disposition", 0.63]],
-            "Acuity 4": [["ct", 0.04], ["xray", 0.16], ["disposition", 0.80]],
-            "Acuity 5": [["ct", 0.02], ["xray", 0.06], ["disposition", 0.92]]
-         }},
-
-        {"id": "ct", "type": "process", "label": "CT scan", "band": "core_0_4h",
-         "resource": "ct_scanner", "service": {"dist": "lognormal", "mean": 45, "stdev": 15},
-         "routes": [["disposition", 1.0]]},
-        {"id": "xray", "type": "process", "label": "X-ray", "band": "core_0_4h",
-         "resource": "xray_room", "service": {"dist": "lognormal", "mean": 26, "stdev": 10},
-         "routes": [["disposition", 1.0]]},
-
-        {"id": "disposition", "type": "process", "label": "Clinical decision (4h)",
-         "band": "core_0_4h",
-         "release": ["cubicle", "resus_bay", "fit_to_sit_chair", "paeds_cubicle"],
-         "service": {"dist": "lognormal", "mean": 18, "stdev": 9},
-         "routes_by_attribute": {
-            "mental_health": [["mh_liaison", 1.0]],
-            "frailty": [["fau", 0.40], ["disposition_general", 0.60]]
-         },
-         "routes": [["disposition_general", 1.0]]},
-
-        {"id": "disposition_general", "type": "process", "label": "Disposition",
-         "band": "core_0_4h", "service": {"dist": "constant", "value": 0},
-         "routes_by_signal": [{"signal": "community_pull", "target": "community_referral", "scale": 1.0}],
-         "routes_by_class": {
-            "Acuity 1": [["await_inpatient_bed", 0.55], ["eemac", 0.20], ["sdec", 0.10], ["discharge", 0.15]],
-            "Acuity 2": [["await_inpatient_bed", 0.45], ["eemac", 0.20], ["sdec", 0.12], ["discharge", 0.23]],
-            "Acuity 3": [["await_inpatient_bed", 0.22], ["eemac", 0.18], ["sdec", 0.15], ["cdu", 0.05], ["discharge", 0.40]],
-            "Acuity 4": [["await_inpatient_bed", 0.08], ["eemac", 0.07], ["sdec", 0.05], ["discharge", 0.80]],
-            "Acuity 5": [["await_inpatient_bed", 0.03], ["discharge", 0.97]]
-         }},
-
-        {"id": "eemac", "type": "process", "label": "EEMAC (extended ambulatory)",
-         "band": "emergency_4_12h", "bedded_care": false, "disposition_intent": "expected_discharge",
-         "max_band_minutes": 720, "acquire": ["eemac_space"], "resource": "ed_doctor",
-         "service": {"dist": "lognormal", "mean": 240, "stdev": 110},
-         "routes": [["eemac_outcome", 1.0]]},
-        {"id": "eemac_outcome", "type": "process", "label": "EEMAC outcome",
-         "band": "emergency_4_12h", "release": ["eemac_space"], "service": {"dist": "constant", "value": 0},
-         "routes": [["discharge", 0.82], ["await_inpatient_bed", 0.18]]},
-
-        {"id": "sdec", "type": "process", "label": "Specialty SDEC",
-         "band": "emergency_4_12h", "acquire": ["sdec_chair"], "resource": "specialty_doctor",
-         "service": {"dist": "lognormal", "mean": 180, "stdev": 80},
-         "routes": [["sdec_outcome", 1.0]]},
-        {"id": "sdec_outcome", "type": "process", "label": "SDEC outcome",
-         "band": "emergency_4_12h", "release": ["sdec_chair"], "service": {"dist": "constant", "value": 0},
-         "routes": [["discharge", 0.70], ["await_inpatient_bed", 0.30]]},
-
-        {"id": "cdu", "type": "process", "label": "Clinical decision unit",
-         "band": "emergency_4_12h", "bedded_care": true, "acquire": ["cdu_bed"], "resource": "ed_doctor",
-         "max_band_minutes": 1440, "service": {"dist": "lognormal", "mean": 300, "stdev": 140},
-         "release": ["cdu_bed"], "routes": [["discharge", 0.6], ["await_inpatient_bed", 0.4]]},
-
-        {"id": "fau", "type": "process", "label": "Frailty assessment unit (FAU)",
-         "band": "emergency_4_12h", "bedded_care": true, "acquire": ["fau_bed"], "resource": "frailty_team",
-         "service": {"dist": "lognormal", "mean": 150, "stdev": 70},
-         "release": ["fau_bed"],
-         "routes_by_signal": [{"signal": "community_pull", "target": "community_referral", "scale": 1.3}],
-         "routes": [["discharge", 0.5], ["await_inpatient_bed", 0.5]]},
-
-        {"id": "mh_liaison", "type": "process", "label": "Mental health liaison",
-         "band": "emergency_4_12h", "acquire": ["mh_assessment_room"], "resource": "mh_clinician",
-         "service": {"dist": "lognormal", "mean": 60, "stdev": 30},
-         "release": ["mh_assessment_room"],
-         "routes": [["await_mh_bed", 0.55], ["discharge", 0.45]]},
-
-        {"id": "await_inpatient_bed", "type": "process", "label": "Wait for inpatient bed",
-         "band": "admission_12h_plus", "service_signal": "bed_wait_multiplier",
-         "service": {"dist": "lognormal", "mean": 70, "stdev": 40},
-         "routes": [["admitted", 1.0]]},
-        {"id": "await_mh_bed", "type": "process", "label": "Wait for MH bed",
-         "band": "admission_12h_plus", "service_signal": "mh_bed_wait_multiplier",
-         "service": {"dist": "lognormal", "mean": 120, "stdev": 70},
-         "routes": [["admitted_mh", 1.0]]},
-
-        {"id": "community_referral", "type": "process", "label": "Refer to community / virtual ward",
-         "service": {"dist": "lognormal", "mean": 20, "stdev": 10},
-         "routes": [["discharged_community", 1.0]]},
-        {"id": "discharge", "type": "process", "label": "Discharge",
-         "service": {"dist": "lognormal", "mean": 12, "stdev": 7},
-         "routes": [["discharged", 1.0]]},
-
-        {"id": "admitted", "type": "sink", "label": "Admitted"},
-        {"id": "admitted_mh", "type": "sink", "label": "Admitted (MH)"},
-        {"id": "discharged", "type": "sink", "label": "Discharged"},
-        {"id": "discharged_community", "type": "sink", "label": "Discharged to community"}
+        {
+            "id": "arrival",
+            "type": "source",
+            "label": "Arrival",
+            "routes": [
+                [
+                    "streaming",
+                    1.0
+                ]
+            ],
+            "routes_by_attribute": {
+                "ambulance": [
+                    [
+                        "ambulance_handover",
+                        1.0
+                    ]
+                ]
+            }
+        },
+        {
+            "id": "ambulance_handover",
+            "type": "process",
+            "label": "Ambulance handover",
+            "band": "front_door",
+            "bedded_care": false,
+            "acquire": [
+                "handover_bay"
+            ],
+            "service": {
+                "dist": "lognormal",
+                "mean": 14,
+                "stdev": 6
+            },
+            "routes": [
+                [
+                    "streaming",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "streaming",
+            "type": "process",
+            "label": "Streaming / initial assessment",
+            "band": "front_door",
+            "bedded_care": false,
+            "resource": "streaming_nurse",
+            "service": {
+                "dist": "lognormal",
+                "mean": 7,
+                "stdev": 3
+            },
+            "routes_by_attribute": {
+                "paediatric": [
+                    [
+                        "paeds_assessment",
+                        1.0
+                    ]
+                ]
+            },
+            "routes_by_class": {
+                "Acuity 1": [
+                    [
+                        "rat",
+                        0.85
+                    ],
+                    [
+                        "direct_specialty_bypass",
+                        0.15
+                    ]
+                ],
+                "Acuity 2": [
+                    [
+                        "rat",
+                        1.0
+                    ]
+                ],
+                "Acuity 3": [
+                    [
+                        "rat",
+                        1.0
+                    ]
+                ],
+                "Acuity 4": [
+                    [
+                        "utc_minor_illness",
+                        0.45
+                    ],
+                    [
+                        "ed_minor_injury",
+                        0.35
+                    ],
+                    [
+                        "ed_ambulatory",
+                        0.2
+                    ]
+                ],
+                "Acuity 5": [
+                    [
+                        "utc_minor_illness",
+                        0.7
+                    ],
+                    [
+                        "ed_minor_injury",
+                        0.3
+                    ]
+                ]
+            },
+            "release": [
+                "handover_bay"
+            ]
+        },
+        {
+            "id": "direct_specialty_bypass",
+            "type": "process",
+            "label": "Direct to specialty (bypass)",
+            "band": "front_door",
+            "priority": 1,
+            "service": {
+                "dist": "lognormal",
+                "mean": 15,
+                "stdev": 6
+            },
+            "routes": [
+                [
+                    "await_inpatient_bed",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "rat",
+            "type": "process",
+            "label": "Rapid assessment & treatment (RAT)",
+            "band": "front_door",
+            "bedded_care": false,
+            "resource": "rat_clinician",
+            "service": {
+                "dist": "lognormal",
+                "mean": 18,
+                "stdev": 8
+            },
+            "routes_by_class": {
+                "Acuity 1": [
+                    [
+                        "ed_resus",
+                        0.8
+                    ],
+                    [
+                        "ed_cubicles",
+                        0.2
+                    ]
+                ],
+                "Acuity 2": [
+                    [
+                        "ed_resus",
+                        0.3
+                    ],
+                    [
+                        "ed_cubicles",
+                        0.7
+                    ]
+                ],
+                "Acuity 3": [
+                    [
+                        "ed_cubicles",
+                        0.6
+                    ],
+                    [
+                        "ed_ambulatory",
+                        0.4
+                    ]
+                ]
+            }
+        },
+        {
+            "id": "utc_minor_illness",
+            "type": "process",
+            "label": "UTC minor illness",
+            "band": "core_0_4h",
+            "bedded_care": false,
+            "resources": [
+                "utc_room"
+            ],
+            "service": {
+                "dist": "lognormal",
+                "mean": 28,
+                "stdev": 12
+            },
+            "routes": [
+                [
+                    "disposition",
+                    1.0
+                ]
+            ],
+            "renege": {
+                "patience": {
+                    "dist": "lognormal",
+                    "mean": 180,
+                    "stdev": 100
+                },
+                "to": "lwbs"
+            }
+        },
+        {
+            "id": "ed_minor_injury",
+            "type": "process",
+            "label": "ED/UTC minor injury",
+            "band": "core_0_4h",
+            "bedded_care": false,
+            "resources": [
+                "minor_injury_space",
+                "minors_enp"
+            ],
+            "service": {
+                "dist": "lognormal",
+                "mean": 30,
+                "stdev": 14
+            },
+            "routes": [
+                [
+                    "imaging_decision",
+                    1.0
+                ]
+            ],
+            "renege": {
+                "patience": {
+                    "dist": "lognormal",
+                    "mean": 180,
+                    "stdev": 100
+                },
+                "to": "lwbs"
+            }
+        },
+        {
+            "id": "ed_ambulatory",
+            "type": "process",
+            "label": "ED ambulatory (fit to sit)",
+            "band": "core_0_4h",
+            "bedded_care": false,
+            "acquire": [
+                "fit_to_sit_chair"
+            ],
+            "resource": "ed_doctor",
+            "service": {
+                "dist": "lognormal",
+                "mean": 55,
+                "stdev": 25
+            },
+            "routes": [
+                [
+                    "imaging_decision",
+                    1.0
+                ]
+            ],
+            "renege": {
+                "patience": {
+                    "dist": "lognormal",
+                    "mean": 180,
+                    "stdev": 100
+                },
+                "to": "lwbs"
+            }
+        },
+        {
+            "id": "ed_cubicles",
+            "type": "process",
+            "label": "ED cubicles",
+            "band": "core_0_4h",
+            "bedded_care": true,
+            "acquire": [
+                "cubicle"
+            ],
+            "resource": "ed_doctor",
+            "service_by_class": {
+                "Acuity 1": {
+                    "dist": "lognormal",
+                    "mean": 95,
+                    "stdev": 40
+                },
+                "Acuity 2": {
+                    "dist": "lognormal",
+                    "mean": 85,
+                    "stdev": 35
+                },
+                "Acuity 3": {
+                    "dist": "lognormal",
+                    "mean": 70,
+                    "stdev": 30
+                }
+            },
+            "service": {
+                "dist": "lognormal",
+                "mean": 80,
+                "stdev": 35
+            },
+            "routes": [
+                [
+                    "imaging_decision",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "ed_resus",
+            "type": "process",
+            "label": "ED resus",
+            "band": "core_0_4h",
+            "bedded_care": true,
+            "priority": 1,
+            "acquire": [
+                "resus_bay"
+            ],
+            "resource": "ed_doctor",
+            "service": {
+                "dist": "lognormal",
+                "mean": 130,
+                "stdev": 50
+            },
+            "routes": [
+                [
+                    "imaging_decision",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "paeds_assessment",
+            "type": "process",
+            "label": "Paediatric area",
+            "band": "core_0_4h",
+            "bedded_care": true,
+            "acquire": [
+                "paeds_cubicle"
+            ],
+            "resource": "paeds_doctor",
+            "service_by_class": {
+                "Acuity 1": {
+                    "dist": "lognormal",
+                    "mean": 110,
+                    "stdev": 40
+                },
+                "Acuity 2": {
+                    "dist": "lognormal",
+                    "mean": 80,
+                    "stdev": 30
+                },
+                "Acuity 3": {
+                    "dist": "lognormal",
+                    "mean": 50,
+                    "stdev": 22
+                },
+                "Acuity 4": {
+                    "dist": "lognormal",
+                    "mean": 24,
+                    "stdev": 11
+                },
+                "Acuity 5": {
+                    "dist": "lognormal",
+                    "mean": 16,
+                    "stdev": 8
+                }
+            },
+            "service": {
+                "dist": "lognormal",
+                "mean": 35,
+                "stdev": 18
+            },
+            "routes": [
+                [
+                    "imaging_decision",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "imaging_decision",
+            "type": "process",
+            "label": "Imaging decision",
+            "band": "core_0_4h",
+            "service": {
+                "dist": "constant",
+                "value": 0
+            },
+            "routes_by_class": {
+                "Acuity 1": [
+                    [
+                        "ct",
+                        0.3
+                    ],
+                    [
+                        "xray",
+                        0.25
+                    ],
+                    [
+                        "disposition",
+                        0.45
+                    ]
+                ],
+                "Acuity 2": [
+                    [
+                        "ct",
+                        0.2
+                    ],
+                    [
+                        "xray",
+                        0.33
+                    ],
+                    [
+                        "disposition",
+                        0.47
+                    ]
+                ],
+                "Acuity 3": [
+                    [
+                        "ct",
+                        0.13
+                    ],
+                    [
+                        "xray",
+                        0.24
+                    ],
+                    [
+                        "disposition",
+                        0.63
+                    ]
+                ],
+                "Acuity 4": [
+                    [
+                        "ct",
+                        0.04
+                    ],
+                    [
+                        "xray",
+                        0.16
+                    ],
+                    [
+                        "disposition",
+                        0.8
+                    ]
+                ],
+                "Acuity 5": [
+                    [
+                        "ct",
+                        0.02
+                    ],
+                    [
+                        "xray",
+                        0.06
+                    ],
+                    [
+                        "disposition",
+                        0.92
+                    ]
+                ]
+            }
+        },
+        {
+            "id": "ct",
+            "type": "process",
+            "label": "CT scan",
+            "band": "core_0_4h",
+            "resource": "ct_scanner",
+            "service": {
+                "dist": "lognormal",
+                "mean": 45,
+                "stdev": 15
+            },
+            "routes": [
+                [
+                    "disposition",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "xray",
+            "type": "process",
+            "label": "X-ray",
+            "band": "core_0_4h",
+            "resource": "xray_room",
+            "service": {
+                "dist": "lognormal",
+                "mean": 26,
+                "stdev": 10
+            },
+            "routes": [
+                [
+                    "disposition",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "disposition",
+            "type": "process",
+            "label": "Clinical decision (4h)",
+            "band": "core_0_4h",
+            "release": [
+                "cubicle",
+                "resus_bay",
+                "fit_to_sit_chair",
+                "paeds_cubicle"
+            ],
+            "service": {
+                "dist": "lognormal",
+                "mean": 18,
+                "stdev": 9
+            },
+            "routes_by_attribute": {
+                "mental_health": [
+                    [
+                        "mh_liaison",
+                        1.0
+                    ]
+                ],
+                "frailty": [
+                    [
+                        "fau",
+                        0.4
+                    ],
+                    [
+                        "disposition_general",
+                        0.6
+                    ]
+                ]
+            },
+            "routes": [
+                [
+                    "disposition_general",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "disposition_general",
+            "type": "process",
+            "label": "Disposition",
+            "band": "core_0_4h",
+            "service": {
+                "dist": "constant",
+                "value": 0
+            },
+            "routes_by_signal": [
+                {
+                    "signal": "community_pull",
+                    "target": "community_referral",
+                    "scale": 1.0
+                }
+            ],
+            "routes_by_class": {
+                "Acuity 1": [
+                    [
+                        "await_inpatient_bed",
+                        0.55
+                    ],
+                    [
+                        "eemac",
+                        0.2
+                    ],
+                    [
+                        "sdec",
+                        0.1
+                    ],
+                    [
+                        "discharge",
+                        0.15
+                    ]
+                ],
+                "Acuity 2": [
+                    [
+                        "await_inpatient_bed",
+                        0.45
+                    ],
+                    [
+                        "eemac",
+                        0.2
+                    ],
+                    [
+                        "sdec",
+                        0.12
+                    ],
+                    [
+                        "discharge",
+                        0.23
+                    ]
+                ],
+                "Acuity 3": [
+                    [
+                        "await_inpatient_bed",
+                        0.22
+                    ],
+                    [
+                        "eemac",
+                        0.18
+                    ],
+                    [
+                        "sdec",
+                        0.15
+                    ],
+                    [
+                        "cdu",
+                        0.05
+                    ],
+                    [
+                        "discharge",
+                        0.4
+                    ]
+                ],
+                "Acuity 4": [
+                    [
+                        "await_inpatient_bed",
+                        0.08
+                    ],
+                    [
+                        "eemac",
+                        0.07
+                    ],
+                    [
+                        "sdec",
+                        0.05
+                    ],
+                    [
+                        "discharge",
+                        0.8
+                    ]
+                ],
+                "Acuity 5": [
+                    [
+                        "await_inpatient_bed",
+                        0.03
+                    ],
+                    [
+                        "discharge",
+                        0.97
+                    ]
+                ]
+            }
+        },
+        {
+            "id": "eemac",
+            "type": "process",
+            "label": "EEMAC (extended ambulatory)",
+            "band": "emergency_4_12h",
+            "bedded_care": false,
+            "disposition_intent": "expected_discharge",
+            "max_band_minutes": 720,
+            "acquire": [
+                "eemac_space"
+            ],
+            "resource": "ed_doctor",
+            "service": {
+                "dist": "lognormal",
+                "mean": 240,
+                "stdev": 110
+            },
+            "routes": [
+                [
+                    "eemac_outcome",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "eemac_outcome",
+            "type": "process",
+            "label": "EEMAC outcome",
+            "band": "emergency_4_12h",
+            "release": [
+                "eemac_space"
+            ],
+            "service": {
+                "dist": "constant",
+                "value": 0
+            },
+            "routes": [
+                [
+                    "discharge",
+                    0.82
+                ],
+                [
+                    "await_inpatient_bed",
+                    0.18
+                ]
+            ]
+        },
+        {
+            "id": "sdec",
+            "type": "process",
+            "label": "Specialty SDEC",
+            "band": "emergency_4_12h",
+            "acquire": [
+                "sdec_chair"
+            ],
+            "resource": "specialty_doctor",
+            "service": {
+                "dist": "lognormal",
+                "mean": 180,
+                "stdev": 80
+            },
+            "routes": [
+                [
+                    "sdec_outcome",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "sdec_outcome",
+            "type": "process",
+            "label": "SDEC outcome",
+            "band": "emergency_4_12h",
+            "release": [
+                "sdec_chair"
+            ],
+            "service": {
+                "dist": "constant",
+                "value": 0
+            },
+            "routes": [
+                [
+                    "discharge",
+                    0.7
+                ],
+                [
+                    "await_inpatient_bed",
+                    0.3
+                ]
+            ]
+        },
+        {
+            "id": "cdu",
+            "type": "process",
+            "label": "Clinical decision unit",
+            "band": "emergency_4_12h",
+            "bedded_care": true,
+            "acquire": [
+                "cdu_bed"
+            ],
+            "resource": "ed_doctor",
+            "max_band_minutes": 1440,
+            "service": {
+                "dist": "lognormal",
+                "mean": 300,
+                "stdev": 140
+            },
+            "release": [
+                "cdu_bed"
+            ],
+            "routes": [
+                [
+                    "discharge",
+                    0.6
+                ],
+                [
+                    "await_inpatient_bed",
+                    0.4
+                ]
+            ]
+        },
+        {
+            "id": "fau",
+            "type": "process",
+            "label": "Frailty assessment unit (FAU)",
+            "band": "emergency_4_12h",
+            "bedded_care": true,
+            "acquire": [
+                "fau_bed"
+            ],
+            "resource": "frailty_team",
+            "service": {
+                "dist": "lognormal",
+                "mean": 150,
+                "stdev": 70
+            },
+            "release": [
+                "fau_bed"
+            ],
+            "routes_by_signal": [
+                {
+                    "signal": "community_pull",
+                    "target": "community_referral",
+                    "scale": 1.3
+                }
+            ],
+            "routes": [
+                [
+                    "discharge",
+                    0.5
+                ],
+                [
+                    "await_inpatient_bed",
+                    0.5
+                ]
+            ]
+        },
+        {
+            "id": "mh_liaison",
+            "type": "process",
+            "label": "Mental health liaison",
+            "band": "emergency_4_12h",
+            "acquire": [
+                "mh_assessment_room"
+            ],
+            "resource": "mh_clinician",
+            "service": {
+                "dist": "lognormal",
+                "mean": 60,
+                "stdev": 30
+            },
+            "release": [
+                "mh_assessment_room"
+            ],
+            "routes": [
+                [
+                    "await_mh_bed",
+                    0.55
+                ],
+                [
+                    "discharge",
+                    0.45
+                ]
+            ]
+        },
+        {
+            "id": "await_inpatient_bed",
+            "type": "process",
+            "label": "Wait for inpatient bed",
+            "band": "admission_12h_plus",
+            "service_signal": "bed_wait_multiplier",
+            "service": {
+                "dist": "lognormal",
+                "mean": 70,
+                "stdev": 40
+            },
+            "routes": [
+                [
+                    "transfer_to_ward",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "await_mh_bed",
+            "type": "process",
+            "label": "Wait for MH bed",
+            "band": "admission_12h_plus",
+            "service_signal": "mh_bed_wait_multiplier",
+            "service": {
+                "dist": "lognormal",
+                "mean": 120,
+                "stdev": 70
+            },
+            "routes": [
+                [
+                    "admitted_mh",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "community_referral",
+            "type": "process",
+            "label": "Refer to community / virtual ward",
+            "service": {
+                "dist": "lognormal",
+                "mean": 20,
+                "stdev": 10
+            },
+            "routes": [
+                [
+                    "discharged_community",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "discharge",
+            "type": "process",
+            "label": "Discharge",
+            "service": {
+                "dist": "lognormal",
+                "mean": 12,
+                "stdev": 7
+            },
+            "routes": [
+                [
+                    "discharged",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "admitted",
+            "type": "sink",
+            "label": "Admitted"
+        },
+        {
+            "id": "admitted_mh",
+            "type": "sink",
+            "label": "Admitted (MH)"
+        },
+        {
+            "id": "discharged",
+            "type": "sink",
+            "label": "Discharged"
+        },
+        {
+            "id": "discharged_community",
+            "type": "sink",
+            "label": "Discharged to community"
+        },
+        {
+            "id": "transfer_to_ward",
+            "type": "process",
+            "label": "Transfer to ward",
+            "band": "admission_12h_plus",
+            "bedded_care": false,
+            "resources": [
+                "porter_pool"
+            ],
+            "service": {
+                "dist": "lognormal",
+                "mean": 12,
+                "stdev": 4
+            },
+            "routes": [
+                [
+                    "admitted",
+                    1.0
+                ]
+            ]
+        },
+        {
+            "id": "lwbs",
+            "type": "sink",
+            "label": "Left without being seen"
+        }
     ]
 }

@@ -138,18 +138,48 @@ def main():
     assert prev["weekly_cost"] > 0 and prev["areas"] and len(prev["demand"]) == 24
     print(f"Rota preview OK: weekly cost £{prev['weekly_cost']:,}, {len(prev['areas'])} staff areas, no sim.")
 
-    # --- workforce v2: nursing/ENP/HCA/porter/reception costed, engine untouched ---
+    # --- workforce v2: full team costed; ENPs/porters real, HCA/reception advisory ---
     from ..workforce.roles import SUPPORT_RESOURCES
     from ..workforce.rota import cost_breakdown
     advisory = {a["resource"] for a in prev["areas"] if a.get("advisory")}
-    assert advisory == set(SUPPORT_RESOURCES), f"support areas missing from view: {advisory}"
+    assert advisory == set(SUPPORT_RESOURCES), f"advisory areas wrong: {advisory}"
     by_role = cost_breakdown(Department.default().rota)["by_role"]
     assert by_role.get("band5_nurse", 0) > 0 and by_role.get("porter", 0) > 0
-    # support pools are rostered + costed but never become engine constraints (yet)
-    assert not (set(SUPPORT_RESOURCES) & set(build_dept(Department.default()).get("resources", {})))
+    built = build_dept(Department.default())
+    # ENPs and porters are engine resources with by-hour rosters from the rota
+    assert isinstance(built["resources"]["minors_enp"], list)
+    assert isinstance(built["resources"]["porter_pool"], list)
+    # HCA / reception stay cost-only
+    assert not (set(SUPPORT_RESOURCES) & set(built["resources"]))
     nursing = sum(v for r, v in by_role.items()
                   if r in ("band5_nurse", "band6_nurse", "enp", "hca", "porter", "receptionist"))
-    print(f"Workforce v2 OK: full team costed (support staff £{nursing:,}/wk), engine unchanged.")
+    print(f"Workforce v2 OK: full team costed (support staff £{nursing:,}/wk); ENPs/porters staffed.")
+
+    # --- Phase 2a physics: handover queue, LWBS reneging, nurse-ratio cubicle cap ---
+    # ambulance handover is measured at an explicit stage
+    from ..analysis.metrics import uec_metrics
+    um = uec_metrics(res, p)
+    assert "ambulance_handover_45" in um and "ambulance_vehicle_hours_lost_per_day" in um
+    hov = res["events"][res["events"]["stage"] == "ambulance_handover"]
+    assert len(hov) > 200, "ambulance arrivals are not passing through handover"
+    assert kpis(res, p)["lwbs"] < 5, "baseline LWBS should be low"
+    # starve minors of capacity and LWBS emerges; the run stays conformant
+    starved = copy.deepcopy(p.raw)
+    for rname in ("minor_injury_space", "utc_room", "fit_to_sit_chair", "minors_enp"):
+        starved["resources"][rname] = 1
+    ps = Pathway.from_dict(starved)
+    rs = run_cosim(ps, seed=4)
+    ks = kpis(rs, ps)
+    assert ks["lwbs"] > 1.0, f"LWBS did not emerge under starvation ({ks['lwbs']:.1f}%)"
+    assert check(rs, ps)["passed"], "reneging exits broke conformance"
+    # a thin nursing rota closes cubicles via the 1:N ratio
+    thin = Department.from_dict({**Department.default().to_dict(),
+                                 "rota": [{"role": "band5_nurse", "start": 0, "end": 24, "count": 1},
+                                          {"role": "ed_consultant", "start": 0, "end": 24, "count": 2}]})
+    cub = build_dept(thin)["resources"]["cubicle"]
+    assert isinstance(cub, list) and max(cub) <= 4, f"nurse ratio did not cap cubicles: {cub}"
+    print(f"Phase 2a OK: handover measured ({um['ambulance_handover_mean']:.0f} min mean), "
+          f"LWBS {ks['lwbs']:.1f}% under starvation, nurses cap cubicles at 1:4.")
 
     # --- platform store: department persists (versioned), run cache hits by config hash ---
     import tempfile

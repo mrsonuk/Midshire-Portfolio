@@ -51,6 +51,7 @@ function renderTower(d){
   std('Seen within 15 min',s.initial_assessment,true,90,80,'%','initial assessment at the front door'),
   std('Over 12 hours',s.twelve_hour,false,10,15,'%','waiting over 12 hours'),
   std('Ambulance handover',s.ambulance_handover,true,95,85,'%','handed over within 45 min'),
+  std('Walked out unseen',s.lwbs,false,5,8,'%','left without being seen'),
  ].join('');
  const ph=d.bottleneck_peak_hours||[];
  const when=ph.length?`worst around ${HH(Math.min(...ph))}-${HH((Math.max(...ph)+1)%24)}`:'';

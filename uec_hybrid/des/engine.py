@@ -227,8 +227,22 @@ class Simulation:
                 [node["resource"]] if node.get("resource") else [])
             needed = [r for r in needed if r in self.resources and r not in held]
             reqs = [self.resources[r].request(priority=prio) for r in needed]
-            for req in reqs:
-                yield req
+            renege = node.get("renege")
+            if renege and reqs:
+                # patients give up if the wait exceeds their patience (LWBS)
+                patience = max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
+                yield self.env.all_of(reqs) | self.env.timeout(patience)
+                if not all(req.triggered for req in reqs):
+                    for r, req in zip(needed, reqs):
+                        if req.triggered:
+                            self.resources[r].release(req)
+                        else:
+                            req.cancel()
+                    node_id = renege.get("to")
+                    continue
+            else:
+                for req in reqs:
+                    yield req
             wait = self.env.now - node_entry
 
             service = dist.sample(self.rng, self._service_spec(node, acuity))
@@ -236,8 +250,8 @@ class Simulation:
             if sig:
                 service *= max(0.0, self.state.get(sig, 1.0))
             cap = node.get("max_band_minutes")
-            if cap is not None:                      # e.g. EEMAC 12h total cap
-                service = max(0.0, min(service, cap - (self.env.now - arrival)))
+            if cap is not None:                      # e.g. EEMAC: up to 12h IN the unit
+                service = max(0.0, min(service, cap - (self.env.now - node_entry)))
             service_start = self.env.now
             yield self.env.timeout(service)
 

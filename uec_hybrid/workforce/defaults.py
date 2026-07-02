@@ -32,8 +32,10 @@ DEFAULT_ROTA = [
     {"role": "band6_nurse", "start": 20, "end": 8,  "count": 2},
     {"role": "band5_nurse", "start": 8,  "end": 20, "count": 8},
     {"role": "band5_nurse", "start": 20, "end": 8,  "count": 5},
-    # nurse practitioners on minors (daytime into evening)
-    {"role": "enp", "start": 10, "end": 22, "count": 2},
+    # nurse practitioners on minors (day-heavy cover; minors demand ~45
+    # clinician-hours/day, so anything much thinner drives walk-outs)
+    {"role": "enp", "start": 8,  "end": 22, "count": 3},
+    {"role": "enp", "start": 22, "end": 8,  "count": 1},
     # support team
     {"role": "hca", "start": 8,  "end": 20, "count": 4},
     {"role": "hca", "start": 20, "end": 8,  "count": 2},

@@ -9,16 +9,18 @@ they are editable.
 """
 from __future__ import annotations
 
-# resources that represent STAFF (rostered) vs physical space/equipment (fixed)
+# resources that represent STAFF (rostered) vs physical space/equipment (fixed).
+# ENPs staff minor injury and porters staff ward transfers as engine resources;
+# ED nurses limit flow through the nurse-to-cubicle ratio applied in the builder.
 STAFF_RESOURCES = [
     "streaming_nurse", "rat_clinician", "ed_doctor", "paeds_doctor",
     "specialty_doctor", "frailty_team", "mh_clinician",
+    "ed_nurse", "minors_enp", "porter_pool",
 ]
 
-# rostered-and-costed workforce that does not yet limit flow in the engine
-# (nursing / minors-clinician / porter constraints arrive with pathway v2) -
+# rostered-and-costed workforce that does not yet limit flow in the engine -
 # it appears in the rota, the pay-bill and the staffing-vs-demand view.
-SUPPORT_RESOURCES = ["ed_nurse", "minors_enp", "hca_pool", "porter_pool", "reception"]
+SUPPORT_RESOURCES = ["hca_pool", "reception"]
 
 ROLES = {
     "streaming_nurse": {"label": "Streaming / triage nurse", "staffs": "streaming_nurse", "cost": 34},

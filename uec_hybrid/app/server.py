@@ -225,6 +225,7 @@ def _standards(dept, reps=5):
         "initial_assessment": band("initial_assessment_15min"),
         "twelve_hour": band("twelve_hour", hi=False),
         "ambulance_handover": band("ambulance_handover_45"),
+        "lwbs": band("lwbs", hi=False),
         "attendances_per_day": round(dept.attendances_per_day),
     })
 

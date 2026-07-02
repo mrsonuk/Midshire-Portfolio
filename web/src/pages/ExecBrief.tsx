@@ -65,6 +65,7 @@ export default function ExecBrief() {
           <Tile cls={(s.initial_assessment?.typical ?? 0) >= 80 ? 'green' : 'amber'} k="Seen within 15 min" v={`${s.initial_assessment?.typical ?? '-'}%`} band={s.initial_assessment} suffix="%" />
           <Tile cls={(s.twelve_hour?.typical ?? 0) <= 1 ? 'green' : (s.twelve_hour?.typical ?? 0) <= 3 ? 'amber' : 'red'} k="12-hour waits" v={`${s.twelve_hour?.typical ?? '-'}%`} band={s.twelve_hour} suffix="%" />
           <Tile cls={(s.ambulance_handover?.typical ?? 0) >= 85 ? 'green' : 'amber'} k="Handover ≤ 45 min" v={`${s.ambulance_handover?.typical ?? '-'}%`} band={s.ambulance_handover} suffix="%" />
+          {s.lwbs && <Tile cls={(s.lwbs.typical ?? 0) <= 5 ? 'green' : 'amber'} k="Walked out unseen" v={`${s.lwbs.typical ?? '-'}%`} band={s.lwbs} suffix="%" />}
         </div>
       </div>
 

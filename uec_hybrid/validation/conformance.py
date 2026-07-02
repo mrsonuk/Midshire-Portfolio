@@ -55,11 +55,12 @@ def check(result: dict, pathway: Pathway) -> dict:
             # bedded-care rule
             for s, bedded in zip(grp["stage"], grp["bedded_care"]):
                 pass  # bedded_care is a node property; runtime check below
-            # EEMAC / capped-band time
+            # EEMAC / capped-band time: time IN the capped unit never exceeds
+            # its cap (e.g. EEMAC offers up to 12 hours of care in the unit)
             for cap_node, cap in ref["eemac_cap"].items():
                 sub = grp[grp["stage"] == cap_node]
                 for _, r in sub.iterrows():
-                    if (r["service_end"] - patients.set_index("pid").loc[pid, "arrival"]) > cap + 1:
+                    if (r["service_end"] - r["queue_entry"]) > cap + 1:
                         violations.append({"pid": int(pid), "type": "band_time_exceeded",
                                            "detail": f"{cap_node} > {cap} min"})
     conformant = n - len({v["pid"] for v in violations})

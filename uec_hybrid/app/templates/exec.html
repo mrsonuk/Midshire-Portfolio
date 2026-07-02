@@ -93,7 +93,8 @@ function band(b,suf){return b?`good week ${b.good}${suf}, tough week ${b.tough}$
    tile(rag4h(s.four_hour?.typical??0),'4-hour standard',(s.four_hour?.typical??'-')+'%',band(s.four_hour,'%'))+
    tile((s.initial_assessment?.typical??0)>=80?'green':'amber','Seen within 15 min',(s.initial_assessment?.typical??'-')+'%',band(s.initial_assessment,'%'))+
    tile((s.twelve_hour?.typical??0)<=1?'green':(s.twelve_hour?.typical??0)<=3?'amber':'red','12-hour waits',(s.twelve_hour?.typical??'-')+'%',band(s.twelve_hour,'%'))+
-   tile((s.ambulance_handover?.typical??0)>=85?'green':'amber','Handover ≤ 45 min',(s.ambulance_handover?.typical??'-')+'%',band(s.ambulance_handover,'%'));
+   tile((s.ambulance_handover?.typical??0)>=85?'green':'amber','Handover ≤ 45 min',(s.ambulance_handover?.typical??'-')+'%',band(s.ambulance_handover,'%'))+
+   (s.lwbs?tile((s.lwbs.typical??0)<=5?'green':'amber','Walked out unseen',(s.lwbs.typical??'-')+'%',band(s.lwbs,'%')):'');
   $('#bottleneck').innerHTML=d.bottleneck;
   $('#recommendation').innerHTML=d.recommendation;
   $('#wfLine').innerHTML=`Weekly pay-bill about <b>£${d.workforce.weekly_cost.toLocaleString()}</b>. ${d.workforce.headline}`;
