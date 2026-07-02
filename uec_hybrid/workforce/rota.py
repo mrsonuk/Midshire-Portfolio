@@ -12,7 +12,7 @@ falls behind demand.
 """
 from __future__ import annotations
 
-from .roles import ROLES, STAFF_RESOURCES, SUPPORT_RESOURCES
+from .roles import ROLES, STAFF_RESOURCES, SUPPORT_RESOURCES, role_rates
 
 
 def _hours_of(shift) -> list[int]:
@@ -41,22 +41,22 @@ def staffing_by_hour(rota: list[dict]) -> dict[str, list[int]]:
 
 
 def weekly_cost(rota: list[dict]) -> float:
+    rates = role_rates()
     daily = 0.0
     for sh in rota:
-        role = ROLES.get(sh["role"])
-        if not role:
+        if sh["role"] not in ROLES:
             continue
-        daily += int(sh.get("count", 1)) * len(_hours_of(sh)) * role["cost"]
+        daily += int(sh.get("count", 1)) * len(_hours_of(sh)) * rates[sh["role"]]
     return round(daily * 7, 0)
 
 
 def cost_breakdown(rota: list[dict]) -> dict:
+    rates = role_rates()
     by_role = {}
     for sh in rota:
-        role = ROLES.get(sh["role"])
-        if not role:
+        if sh["role"] not in ROLES:
             continue
-        c = int(sh.get("count", 1)) * len(_hours_of(sh)) * role["cost"] * 7
+        c = int(sh.get("count", 1)) * len(_hours_of(sh)) * rates[sh["role"]] * 7
         by_role[sh["role"]] = by_role.get(sh["role"], 0) + c
     return {"weekly_total": weekly_cost(rota), "by_role": {k: round(v) for k, v in by_role.items()}}
 

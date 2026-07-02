@@ -19,7 +19,7 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 
 from ..des.pathway import Pathway
 from ..coupling.cosim import run_cosim
-from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, diagnose)
+from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, scorecard_defaults, diagnose)
 from ..analysis.montecarlo import monte_carlo
 from ..analysis.scenarios import compare_scenarios, tornado
 from ..validation.conformance import check as conformance_check
@@ -302,8 +302,43 @@ def api_trust_import():
         store.save_calibration("your_department", result["patch"], result["summary"])
     else:
         store.clear_calibration("your_department")
+    if result.get("cost_book"):
+        save_cost_book(result["cost_book"])           # £ figures from the workbook
+    if result.get("role_rates"):
+        from ..workforce.roles import save_role_rates
+        save_role_rates(result["role_rates"])         # staff hourly rates from the workbook
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "summary": result["summary"], "provenance": result["provenance"]})
+
+
+# --- editable Model ED standards (admin-level: the same for every trust) ------- #
+def _scorecard_overrides() -> dict:
+    return store.get_setting("scorecard_targets") or {}
+
+
+@app.route("/api/scorecard-targets", methods=["GET", "POST"])
+def api_scorecard_targets():
+    """View or edit the RAG standard targets (target + amber band per metric).
+    Data-driven so the standards can move (e.g. 4-hour 78% -> 95%) without code."""
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        valid = {d["key"] for d in scorecard_defaults()}
+        clean = {}
+        for key, ov in body.items():
+            if key not in valid or not isinstance(ov, dict):
+                continue
+            row = {}
+            for f in ("target", "amber"):
+                if ov.get(f) is not None:
+                    try:
+                        row[f] = float(ov[f])
+                    except (TypeError, ValueError):
+                        pass
+            if row:
+                clean[key] = row
+        store.save_setting("scorecard_targets", clean)
+        return jsonify({"ok": True, "overrides": clean})
+    return jsonify({"defaults": scorecard_defaults(), "overrides": _scorecard_overrides()})
 
 
 def _control_tower_payload(seed=2):
@@ -536,13 +571,14 @@ def api_simulate():
     body = request.get_json(force=True)
     p, sd_over, fb, raw = _build(body)
     seed = int(body.get("seed", 0))
+    targets = _scorecard_overrides()
 
     def compute():
         res = run_cosim(p, seed=seed, feedback=fb, sd_overrides=sd_over)
         m = {**kpis(res, p), **uec_metrics(res, p)}
         conf = conformance_check(res, p)
         return {
-            "kpis": m, "scorecard": uec_scorecard(m), "diagnosis": diagnose(res, p),
+            "kpis": m, "scorecard": uec_scorecard(m, targets), "diagnosis": diagnose(res, p),
             "flow_model": flow_model_data(res, p),
             "conformance": {k: conf[k] for k in ("conformance_rate", "n_violations", "passed", "by_type")},
             "figures": {
@@ -553,7 +589,7 @@ def api_simulate():
                 "sankey": J(fig.sankey_figure(res, p)),
                 "heatmap": J(fig.occupancy_heatmap_figure(res, p)),
             }}
-    key = {"raw": raw, "seed": seed, "feedback": fb, "sd": sd_over}
+    key = {"raw": raw, "seed": seed, "feedback": fb, "sd": sd_over, "targets": targets}
     return jsonify(store.cached_or_compute("simulate", key, compute))
 
 

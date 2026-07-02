@@ -363,8 +363,32 @@ def main():
     parsed2 = wbk.read_workbook(buf.getvalue(), filename="edited.xlsx")
     assert parsed2["patch"] and "hourly_profile" in parsed2["patch"]["arrivals"]
     assert abs(parsed2["department"].attendances_per_day - (9 * 20 + 15 * 5)) < 1
+    # workbook Costs tab carries the cost book + staff hourly rates
+    from ..finance.costbook import DEFAULT_COST_BOOK
+    from ..workforce.roles import ROLES, role_rates, save_role_rates
+    from ..workforce.rota import weekly_cost
+    from ..platform import store as _store
+    assert parsed["cost_book"]["admission_avoided"] == DEFAULT_COST_BOOK["admission_avoided"]
+    assert parsed["role_rates"] and len(parsed["role_rates"]) == len(ROLES)
     print(f"Workbook OK: template -> department ({len(wdept.rota)} shifts, "
-          f"{len(wdept.enabled)} areas); edited arrivals -> calibration patch.")
+          f"{len(wdept.enabled)} areas); costs + {len(parsed['role_rates'])} role rates; "
+          f"edited arrivals -> calibration patch.")
+
+    # --- editable role rates: an override changes the pay-bill (no code edit) ---
+    base_cost = weekly_cost(Department.default().rota)
+    save_role_rates({"ed_consultant": ROLES["ed_consultant"]["cost"] * 2})
+    raised = weekly_cost(Department.default().rota)
+    assert raised > base_cost, (raised, base_cost)
+    _store.save_setting("role_rates", {})                # reset
+    assert weekly_cost(Department.default().rota) == base_cost
+
+    # --- editable Model ED standards: an override flips the RAG verdict ---
+    from ..analysis.metrics import uec_scorecard as _sc, scorecard_defaults
+    assert any(d["key"] == "four_hour" for d in scorecard_defaults())
+    assert _sc({"four_hour": 80})[0]["status"] == "green"          # default target 78
+    assert _sc({"four_hour": 80}, {"four_hour": {"target": 95, "amber": 5}})[0]["status"] == "red"
+    print("Editable costs & standards OK: role rates move the pay-bill; "
+          "scorecard targets are data-driven and flip the RAG verdict.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
@@ -425,8 +449,19 @@ def main():
     assert up["ok"] and up["department"]["enabled"], up
     assert client.post("/api/trust/import", content_type="multipart/form-data",
                        data={}).status_code == 400
+    # importing the template applies its cost book (into store settings)
+    assert store.get_setting("role_rates") is not None, "import should set role rates"
     print(f"Trust endpoints OK: {len(tl)} trusts listed; select persists (290/day); "
-          f"template downloads ({len(tmpl.data)//1024} KB) and imports.")
+          f"template downloads ({len(tmpl.data)//1024} KB) and imports (with costs).")
+
+    # --- scorecard targets endpoint: view defaults, edit, round-trip, reset ---
+    st = client.get("/api/scorecard-targets").get_json()
+    assert any(d["key"] == "four_hour" for d in st["defaults"])
+    client.post("/api/scorecard-targets", json={"four_hour": {"target": 95, "amber": 5}})
+    assert client.get("/api/scorecard-targets").get_json()["overrides"]["four_hour"]["target"] == 95
+    client.post("/api/scorecard-targets", json={})            # reset
+    assert client.get("/api/scorecard-targets").get_json()["overrides"] == {}
+    print("Scorecard targets OK: standards editable via API and reset cleanly.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report

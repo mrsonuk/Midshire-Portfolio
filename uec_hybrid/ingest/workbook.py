@@ -25,7 +25,12 @@ from openpyxl import Workbook, load_workbook
 
 from ..department.config import AREAS, DEFAULT_HOURS, Department
 from ..workforce.defaults import DEFAULT_ROTA
-from ..workforce.roles import ROLES
+from ..workforce.roles import ROLES, default_rates
+from ..finance.costbook import DEFAULT_COST_BOOK
+
+# cost-book figures a trust can set from the workbook (scalars only)
+COST_BOOK_KEYS = ["admission_avoided", "four_hour_breach", "twelve_hour_breach",
+                  "agency_premium", "agency_share_pct"]
 
 OVERVIEW_KEYS = {
     "name": "name",
@@ -171,6 +176,23 @@ def _read_acuity(rows):
     return mix or None
 
 
+def _read_costs(rows):
+    """Optional Costs sheet (item/value): cost-book figures + per-role hourly
+    rates. Returns (cost_book, role_rates), each a dict or None."""
+    body = [r for r in rows[1:] if r and r[0] not in (None, "")]
+    cost_book, rates = {}, {}
+    for r in body:
+        item = _norm(r[0])
+        v = _num(r[1]) if len(r) > 1 else None
+        if v is None:
+            continue
+        if item in COST_BOOK_KEYS:
+            cost_book[item] = v
+        elif item in ROLES:
+            rates[item] = v
+    return (cost_book or None), (rates or None)
+
+
 def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     """Parse an uploaded workbook (.xlsx) or a single Overview CSV into a
     Department (+ optional calibration patch, summary, provenance)."""
@@ -178,11 +200,12 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     is_csv = (filename or "").lower().endswith(".csv")
     summary: list[str] = []
     over, areas_enabled, areas_hours, rota, arrivals, acuity = {}, None, None, None, None, None
+    cost_book, rates = None, None
 
     if is_csv:
         text = data.decode("utf-8-sig", errors="replace")
         over = _read_overview([list(r) for r in csv.reader(io.StringIO(text))])
-        summary.append("Read Overview from CSV (areas/rota/arrivals need the Excel template).")
+        summary.append("Read Overview from CSV (areas/rota/arrivals/costs need the Excel template).")
     else:
         wb = load_workbook(io.BytesIO(data), data_only=True, read_only=True)
         sheets = {name.strip().lower(): wb[name] for name in wb.sheetnames}
@@ -196,6 +219,8 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
             arrivals = _read_arrivals(_sheet_rows(sheets["arrivals"]))
         if "acuitymix" in sheets:
             acuity = _read_acuity(_sheet_rows(sheets["acuitymix"]))
+        if "costs" in sheets:
+            cost_book, rates = _read_costs(_sheet_rows(sheets["costs"]))
 
     # --- build the department (default for anything the workbook didn't set) ---
     base = Department.default().to_dict()
@@ -232,8 +257,13 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
             k: round(v / tot * 100, 2) for k, v in acuity.items()}
         summary.append("Acuity mix set from workbook.")
 
+    if cost_book:
+        summary.append(f"Cost book: {', '.join(sorted(cost_book))} set from workbook.")
+    if rates:
+        summary.append(f"Role rates: {len(rates)} set from workbook.")
+
     return {"department": dept, "patch": (patch or None), "summary": summary,
-            "provenance": prov}
+            "provenance": prov, "cost_book": cost_book, "role_rates": rates}
 
 
 # --------------------------------------------------------------------------- #
@@ -290,6 +320,16 @@ def build_template() -> Workbook:
     ac.append(["acuity", "share"])
     for i in range(1, 6):
         ac.append([f"Acuity {i}", ""])
+
+    co = wb.create_sheet("Costs")
+    co.append(["item", "value", "note"])
+    co.append(["# cost book (£, editable planning assumptions)", "", ""])
+    for k in COST_BOOK_KEYS:
+        co.append([k, DEFAULT_COST_BOOK.get(k), ""])
+    co.append(["# staff hourly rates (£/hour incl. on-costs)", "", ""])
+    rates = default_rates()
+    for role, meta in ROLES.items():
+        co.append([role, rates[role], meta["label"]])
 
     return wb
 
