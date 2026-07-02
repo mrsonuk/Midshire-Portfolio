@@ -65,3 +65,31 @@ AREA_LABEL = {
 
 def roles_for(resource: str) -> list[str]:
     return [r for r, m in ROLES.items() if m["staffs"] == resource]
+
+
+# --------------------------------------------------------------------------- #
+# Editable hourly rates: defaults live above; a trust can override them (from the
+# cost workbook or the cost book) without touching code. Overrides are stored as
+# a setting and merged over the defaults, so unedited roles keep their default.
+# --------------------------------------------------------------------------- #
+_RATES_KEY = "role_rates"
+
+
+def default_rates() -> dict:
+    return {k: v["cost"] for k, v in ROLES.items()}
+
+
+def role_rates() -> dict:
+    """Hourly rate per role = defaults merged with any stored override."""
+    from ..platform import store
+    saved = store.get_setting(_RATES_KEY) or {}
+    return {**default_rates(), **{k: float(v) for k, v in saved.items() if k in ROLES}}
+
+
+def save_role_rates(values: dict) -> dict:
+    """Persist trust edits to role hourly rates (known roles only)."""
+    from ..platform import store
+    clean = {k: float(v) for k, v in (values or {}).items()
+             if k in ROLES and v is not None}
+    store.save_setting(_RATES_KEY, clean)
+    return role_rates()

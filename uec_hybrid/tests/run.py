@@ -309,10 +309,12 @@ def main():
     assert apply_patch(build_dept(other), patch)["arrivals"]["acuity_mix"] == patch["arrivals"]["acuity_mix"]
     print("Calibration OK: derived patch re-applies to any department build.")
 
-    # --- trust profile ingest: a real trust's published figures -> department ---
-    from ..ingest import (get_profile, to_department, provenance,
-                          validate_against_observed)
-    prof = get_profile("rff")                       # case-insensitive lookup
+    # --- trust profile ingest: registry loaded from the CSV snapshot ---
+    from ..ingest import (get_profile, list_profiles, to_department, provenance,
+                          notes, validate_against_observed)
+    codes = {t["ods_code"] for t in list_profiles()}
+    assert {"RFF", "RHU", "RHW"} <= codes, codes         # registry is data, not code
+    prof = get_profile("rff")                            # case-insensitive lookup
     tdept = to_department(prof)
     # published INPUTS flow into the department...
     assert tdept.attendances_per_day == 290, tdept.attendances_per_day
@@ -326,15 +328,97 @@ def main():
     assert abs(sum(traw["arrivals"]["hourly_profile"]) - 290) < 2
     # things open data can't supply keep the template default (flagged, not invented)
     assert tdept.inpatient_beds == Department.default().inpatient_beds
-    assert any("bed count" in n.lower() for n in prof.notes)
+    assert any("bed count" in n.lower() for n in notes(prof))
     assert any(r["kind"] == "validation-target" for r in provenance(prof))
+    # a trust with no published attendances degrades gracefully to the default
+    rhw = to_department(get_profile("RHW"))
+    assert rhw.attendances_per_day == Department.default().attendances_per_day
+    assert rhw.inpatient_beds == 627                     # beds ARE published for RHW
     # the model's OUTPUT 4-hour is validated against the trust's REAL figure
     tp = Pathway.from_dict(traw)
     modelled = kpis(run_cosim(tp, seed=2), tp).get("four_hour", 0.0)
     v = validate_against_observed(prof, modelled)
     assert v["observed"] == 67.5 and v["modelled"] >= 0
-    print(f"Trust ingest OK: Barnsley (RFF) 290/day @ 91.8% occ; modelled 4-hour "
-          f"{v['modelled']}% vs observed {v['observed']}% (delta {v['delta_pct_points']} pts).")
+    print(f"Trust ingest OK: {len(codes)} trusts from CSV; Barnsley (RFF) 290/day @ 91.8% occ; "
+          f"modelled 4-hour {v['modelled']}% vs observed {v['observed']}% (delta {v['delta_pct_points']} pts).")
+
+    # --- workbook ingest: template round-trips to a Department (+ calibration) ---
+    from ..ingest import workbook as wbk
+    wb_bytes = wbk.template_bytes()
+    parsed = wbk.read_workbook(wb_bytes, filename="template.xlsx")
+    wdept = parsed["department"]
+    assert wdept.attendances_per_day == round(Department.default().attendances_per_day)
+    assert set(wdept.enabled) == set(Department.default().enabled), wdept.enabled
+    assert len(wdept.rota) == len(Department.default().rota), len(wdept.rota)
+    assert build_dept(wdept)["resources"], "workbook department must build"
+    assert not any("unknown roles" in s for s in parsed["summary"]), parsed["summary"]
+    # an edited workbook (arrivals sheet) produces a calibration patch
+    from openpyxl import load_workbook
+    import io as _io
+    wb2 = load_workbook(_io.BytesIO(wb_bytes))
+    arr = wb2["Arrivals"]
+    for h in range(24):
+        arr.cell(row=h + 2, column=2, value=(20 if 9 <= h < 18 else 5))
+    buf = _io.BytesIO(); wb2.save(buf)
+    parsed2 = wbk.read_workbook(buf.getvalue(), filename="edited.xlsx")
+    assert parsed2["patch"] and "hourly_profile" in parsed2["patch"]["arrivals"]
+    assert abs(parsed2["department"].attendances_per_day - (9 * 20 + 15 * 5)) < 1
+    # workbook Costs tab carries the cost book + staff hourly rates
+    from ..finance.costbook import DEFAULT_COST_BOOK
+    from ..workforce.roles import ROLES, role_rates, save_role_rates
+    from ..workforce.rota import weekly_cost
+    from ..platform import store as _store
+    assert parsed["cost_book"]["admission_avoided"] == DEFAULT_COST_BOOK["admission_avoided"]
+    assert parsed["role_rates"] and len(parsed["role_rates"]) == len(ROLES)
+    print(f"Workbook OK: template -> department ({len(wdept.rota)} shifts, "
+          f"{len(wdept.enabled)} areas); costs + {len(parsed['role_rates'])} role rates; "
+          f"edited arrivals -> calibration patch.")
+
+    # --- editable role rates: an override changes the pay-bill (no code edit) ---
+    base_cost = weekly_cost(Department.default().rota)
+    save_role_rates({"ed_consultant": ROLES["ed_consultant"]["cost"] * 2})
+    raised = weekly_cost(Department.default().rota)
+    assert raised > base_cost, (raised, base_cost)
+    _store.save_setting("role_rates", {})                # reset
+    assert weekly_cost(Department.default().rota) == base_cost
+
+    # --- editable Model ED standards: an override flips the RAG verdict ---
+    from ..analysis.metrics import uec_scorecard as _sc, scorecard_defaults
+    assert any(d["key"] == "four_hour" for d in scorecard_defaults())
+    assert _sc({"four_hour": 80})[0]["status"] == "green"          # default target 78
+    assert _sc({"four_hour": 80}, {"four_hour": {"target": 95, "amber": 5}})[0]["status"] == "red"
+    print("Editable costs & standards OK: role rates move the pay-bill; "
+          "scorecard targets are data-driven and flip the RAG verdict.")
+
+    # --- editable service times (the model's physics) tune the outcome ---
+    from .. import model_params as mp
+    from ..department.builder import BASE_RAW as _BASE
+    srows = mp.service_params(_BASE)
+    assert len(srows) > 10 and all("mean" in r for r in srows)
+    _b = copy.deepcopy(_BASE)
+    _mean = lambda raw, nid: next(x for x in raw["nodes"] if x["id"] == nid)["service"]["mean"]
+    assert _mean(mp.apply_params(_b, {"service_scale": 2.0}), "streaming") == _mean(_b, "streaming") * 2
+    assert _mean(_b, "streaming") == 7, "apply_params must not mutate the base raw"
+    assert _mean(mp.apply_params(_b, {"service_mean": {"streaming": 99}}), "streaming") == 99
+    # slower service -> worse 4-hour: the physics genuinely moves the model
+    p_base = Pathway.from_dict(build_dept(Department.default()))
+    p_slow = Pathway.from_dict(mp.apply_params(build_dept(Department.default()), {"service_scale": 1.5}))
+    fh_base = kpis(run_cosim(p_base, seed=2), p_base)["four_hour"]
+    fh_slow = kpis(run_cosim(p_slow, seed=2), p_slow)["four_hour"]
+    assert fh_slow < fh_base, (fh_slow, fh_base)
+    # persistence validates/drops junk
+    saved = mp.save_params({"service_scale": 1.2, "service_mean": {"streaming": 30, "nope": -1}})
+    assert saved["service_scale"] == 1.2 and saved["service_mean"] == {"streaming": 30.0}
+    _store.save_setting("pathway_params", {})            # reset
+    # workbook ServiceTimes tab also carries service params
+    from openpyxl import load_workbook as _lw
+    _wbx = _lw(_io.BytesIO(wbk.template_bytes()))
+    _sx = _wbx["ServiceTimes"]; _sx.cell(row=2, column=3, value=1.1); _sx.cell(row=3, column=3, value=88)
+    _bx = _io.BytesIO(); _wbx.save(_bx)
+    _sp = wbk.read_workbook(_bx.getvalue(), filename="e.xlsx")["service_params"]
+    assert _sp["service_scale"] == 1.1 and _sp["service_mean"]
+    print(f"Service-time tuning OK: {len(srows)} stages editable; x1.5 slower cuts 4-hour "
+          f"{fh_base:.0f}%->{fh_slow:.0f}%; workbook ServiceTimes tab parses.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
@@ -379,6 +463,44 @@ def main():
         assert client.get(page, follow_redirects=True).status_code == 200, f"{page} failed"
     print(f"Exec brief OK: risk level {ex['risk']['level']}, "
           f"4-hour typical {ex['standards']['four_hour']['typical']}%; all surfaces serve.")
+
+    # --- data-driven set-up endpoints: pick a trust, download + import a workbook ---
+    tl = client.get("/api/trusts").get_json()["trusts"]
+    assert any(t["ods_code"] == "RFF" for t in tl), "trust list should include Barnsley"
+    sel = client.post("/api/trust/select", json={"ods": "RFF"}).get_json()
+    assert sel["ok"] and sel["department"]["attendances_per_day"] == 290
+    assert store.load_department()["baseline_bed_occupancy"] == 0.918, "trust must persist"
+    assert client.post("/api/trust/select", json={"ods": "ZZZ"}).status_code == 404
+    tmpl = client.get("/api/trust/template")
+    assert tmpl.status_code == 200 and len(tmpl.data) > 3000 and tmpl.data[:2] == b"PK"
+    from io import BytesIO as _BIO
+    up = client.post("/api/trust/import", content_type="multipart/form-data",
+                     data={"file": (_BIO(tmpl.data), "template.xlsx")}).get_json()
+    assert up["ok"] and up["department"]["enabled"], up
+    assert client.post("/api/trust/import", content_type="multipart/form-data",
+                       data={}).status_code == 400
+    # importing the template applies its cost book (into store settings)
+    assert store.get_setting("role_rates") is not None, "import should set role rates"
+    print(f"Trust endpoints OK: {len(tl)} trusts listed; select persists (290/day); "
+          f"template downloads ({len(tmpl.data)//1024} KB) and imports (with costs).")
+
+    # --- scorecard targets endpoint: view defaults, edit, round-trip, reset ---
+    st = client.get("/api/scorecard-targets").get_json()
+    assert any(d["key"] == "four_hour" for d in st["defaults"])
+    client.post("/api/scorecard-targets", json={"four_hour": {"target": 95, "amber": 5}})
+    assert client.get("/api/scorecard-targets").get_json()["overrides"]["four_hour"]["target"] == 95
+    client.post("/api/scorecard-targets", json={})            # reset
+    assert client.get("/api/scorecard-targets").get_json()["overrides"] == {}
+    print("Scorecard targets OK: standards editable via API and reset cleanly.")
+
+    # --- pathway params endpoint: view stages, edit service times, reset ---
+    pp = client.get("/api/pathway-params").get_json()
+    assert len(pp["stages"]) > 10 and "params" in pp
+    client.post("/api/pathway-params", json={"service_scale": 1.1})
+    assert client.get("/api/pathway-params").get_json()["params"]["service_scale"] == 1.1
+    client.post("/api/pathway-params", json={})               # reset
+    assert client.get("/api/pathway-params").get_json()["params"] == {}
+    print("Pathway params OK: service-time assumptions editable via API and reset.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report

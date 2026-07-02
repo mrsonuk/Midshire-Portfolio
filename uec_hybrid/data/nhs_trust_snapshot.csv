@@ -1,0 +1,4 @@
+ods_code,name,attendances_per_day,four_hour_pct,twelve_hour_pct,bed_occupancy,inpatient_beds,source,as_of
+RFF,Barnsley Hospital NHS Foundation Trust,290,67.5,,0.918,,"Barnsley 2024-25 Annual Report (~106,000 ED attendances; 67.5% 4-hour full year, 81% March); G&A bed occupancy ~91.8% (Sept 2024, UEC SitRep). Single-site Type 1 ED.",2024-25
+RHU,Portsmouth Hospitals University NHS Trust,384,,,,1053,"CQC / Queen Alexandra Hospital (>140,000 emergency attendances per year -> ~384/day; 1,053 inpatient beds). 4-hour and occupancy not in figures pulled - add from A&E return.",2024-25
+RHW,Royal Berkshire NHS Foundation Trust,,65.7,,,627,"NHS A&E stats / Royal Berkshire 2024-25 Annual Report (65.7% Type 1 4-hour, 2024/25); 627 acute of ~813 inpatient beds. Attendances/day not in figures pulled - add from A&E return.",2024-25

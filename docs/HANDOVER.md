@@ -187,6 +187,10 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 |---|---|---|
 | `/api/setup` | GET | Department, areas catalogue, roles |
 | `/api/department` | POST | Save department (new version) |
+| `/api/trusts` | GET | Trusts pre-fillable from the open-data snapshot |
+| `/api/trust/select` | POST | Load a trust (`{ods}`) as the department |
+| `/api/trust/template` | GET | Blank Excel set-up workbook (xlsx) |
+| `/api/trust/import` | POST | Set up department from an uploaded workbook |
 | `/api/control-tower` | POST | Flow map + standards + pinch (cached) |
 | `/api/recommend` | POST | CI-gated recommendations (cached, minutes first run) |
 | `/api/workforce` `/api/rota-preview` | POST | Staffing vs demand; instant no-sim preview |
@@ -198,6 +202,8 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 | `/api/forecast-data` `/api/sample-history` | POST/GET | History upload -> forecast; template CSV |
 | `/api/benchmarks` | GET/POST | Template download / peer upload |
 | `/api/costbook` | GET/POST | Trust-editable finance assumptions |
+| `/api/scorecard-targets` | GET/POST | Editable RAG standard targets (data-driven, admin-level) |
+| `/api/pathway-params` | GET/POST | Editable service-time assumptions (global scale + per-stage means) |
 | `/api/simulate` `/api/montecarlo` `/api/scenarios` `/api/validate` | POST | Analyst engine (cached) |
 | `/api/calibrate` `/api/calibrate/reset` | POST | ECDS calibration (scope: pathway key or `your_department`) |
 | `/api/sample-data` | GET | ECDS-shaped template CSV |

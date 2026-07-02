@@ -212,12 +212,27 @@ def _rag(val, target, higher_better, amber):
     return "green" if val <= target else ("amber" if val <= target + amber else "red")
 
 
-def uec_scorecard(metrics: dict) -> list:
-    """RAG cards for every standard the run produced a value for."""
+def scorecard_defaults() -> list:
+    """The built-in standards as editable rows (target + amber band per metric)."""
+    return [{"key": k, "label": l, "target": t, "unit": u, "higher_better": hb,
+             "amber": a, "note": n} for (k, l, t, u, hb, a, n) in SCORECARD_SPEC]
+
+
+def uec_scorecard(metrics: dict, overrides: dict | None = None) -> list:
+    """RAG cards for every standard the run produced a value for.
+
+    ``overrides`` (e.g. from an editable settings store) may adjust the target
+    and/or amber band per metric key: ``{"four_hour": {"target": 95, "amber": 5}}``.
+    Anything not overridden keeps the built-in Model ED / UEC Plan default.
+    """
+    overrides = overrides or {}
     out = []
     for key, label, target, unit, hb, amber, note in SCORECARD_SPEC:
         if key not in metrics:
             continue
+        ov = overrides.get(key) or {}
+        target = float(ov.get("target", target))
+        amber = float(ov.get("amber", amber))
         val = metrics[key]
         out.append({"key": key, "label": label, "value": val, "target": target,
                     "unit": unit, "higher_better": hb, "note": note,

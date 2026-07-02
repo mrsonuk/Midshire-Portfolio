@@ -41,7 +41,8 @@ def build_report(pathway_or_file, out_pdf, replications=16, seed=7, name=None, i
     res = run_cosim(p, seed=seed)
     m = {**kpis(res, p), **uec_metrics(res, p)}
     diag = diagnose(res, p)
-    scorecard = uec_scorecard(m)
+    from .platform import store
+    scorecard = uec_scorecard(m, store.get_setting("scorecard_targets") or {})
     mc = monte_carlo(p, replications=replications, base_seed=1000)
     cmp = compare_scenarios(p, [
         {"name": "+40 inpatient beds", "sd": {"inpatient_beds": p.sd.get("inpatient_beds", 320) + 40}},

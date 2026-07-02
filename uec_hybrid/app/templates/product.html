@@ -165,6 +165,23 @@
  </section>
 
  <section class="panel" id="panel-setup">
+  <div class="card"><h2>Start from your trust</h2>
+   <p class="sub">Skip the manual set-up: load your trust's published figures, or import a filled-in
+    spreadsheet. Either way the fields below fill in automatically — you can then fine-tune and re-run.</p>
+   <label>Load a trust's published figures</label>
+   <select id="trustPick" style="min-width:340px;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px">
+    <option value="">Select your NHS trust…</option></select>
+   <button id="useTrust" class="sec">Use this trust</button>
+   <div class="status" id="trustStatus"></div>
+   <p class="hint" id="trustProv"></p>
+   <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
+   <label>Or import an Excel workbook</label>
+   <p class="sub"><a id="dlTemplate" href="/api/trust/template">Download the template</a>,
+    fill in the tabs (areas, beds, rota, optional arrivals), then upload it here — no coding needed.</p>
+   <input type="file" id="trustFile" accept=".xlsx,.csv" style="font-size:13px">
+   <button id="importTrust" class="sec">Import workbook</button>
+   <div class="status" id="importStatus"></div>
+  </div>
   <div class="card"><h2>Set up your emergency department</h2>
    <p class="sub">Describe your department; the control tower then models how it runs. Areas you switch off have their patients re-routed safely.</p>
    <label>Department name</label><input type="text" id="dName">

@@ -19,7 +19,7 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 
 from ..des.pathway import Pathway
 from ..coupling.cosim import run_cosim
-from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, diagnose)
+from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, scorecard_defaults, diagnose)
 from ..analysis.montecarlo import monte_carlo
 from ..analysis.scenarios import compare_scenarios, tornado
 from ..validation.conformance import check as conformance_check
@@ -79,6 +79,7 @@ def _build(body):
     scale = float(body.get("arrivals_scale", 1.0)) * demand_mult
     if scale != 1.0 and "hourly_profile" in raw.get("arrivals", {}):
         raw["arrivals"]["hourly_profile"] = [h * scale for h in raw["arrivals"]["hourly_profile"]]
+    raw = model_params.apply_params(raw, model_params.load_params())   # service-time overrides
     p = Pathway.from_dict(raw); p.name = name
     sd_over = body.get("sd_overrides") or None
     return p, sd_over, bool(body.get("feedback", True)), raw
@@ -178,6 +179,9 @@ from ..department.builder import build as build_dept
 from ..department.model_ed_gap import gap_analysis
 from ..workforce.roles import ROLES, AREA_LABEL
 from ..workforce.view import workforce_view
+from ..ingest import trust_profile as trusts
+from ..ingest import workbook as trust_workbook
+from .. import model_params
 from ..viz.flow_model import control_tower
 
 CURRENT = {"dept": None}
@@ -196,10 +200,13 @@ def _dept() -> Department:
 
 
 def _dept_raw():
-    """The department's runnable pathway, with any stored calibration applied."""
+    """The department's runnable pathway, with any stored calibration and
+    service-time (pathway-parameter) overrides applied."""
     raw = build_dept(_dept())
     patch = _calibration_patch("your_department")
-    return apply_patch(raw, patch) if patch else raw
+    if patch:
+        raw = apply_patch(raw, patch)
+    return model_params.apply_params(raw, model_params.load_params())
 
 
 def _standards(dept, reps=5):
@@ -248,6 +255,110 @@ def api_set_department():
     CURRENT["dept"] = Department.from_dict(request.get_json(force=True))
     version = store.save_department(CURRENT["dept"].to_dict())
     return jsonify({"ok": True, "department": CURRENT["dept"].to_dict(), "version": version})
+
+
+# --- data-driven set-up: pick your trust, or import an Excel/CSV workbook ------ #
+@app.route("/api/trusts")
+def api_trusts():
+    """Trusts the product can pre-fill from the bundled NHS open-data snapshot."""
+    return jsonify({"trusts": trusts.list_profiles()})
+
+
+@app.route("/api/trust/select", methods=["POST"])
+def api_trust_select():
+    """Load a chosen trust's published figures as the saved department."""
+    ods = (request.get_json(force=True) or {}).get("ods")
+    try:
+        profile = trusts.get_profile(ods)
+    except KeyError as e:
+        return jsonify({"error": str(e)}), 404
+    dept = trusts.to_department(profile)
+    CURRENT["dept"] = dept
+    version = store.save_department(dept.to_dict())
+    store.clear_calibration("your_department")        # a fresh trust starts clean
+    return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
+                    "provenance": trusts.provenance(profile), "notes": trusts.notes(profile),
+                    "source": profile.source, "as_of": profile.as_of})
+
+
+@app.route("/api/trust/template")
+def api_trust_template():
+    """Download the blank Excel set-up workbook (pre-filled with defaults)."""
+    return send_file(io.BytesIO(trust_workbook.template_bytes()), as_attachment=True,
+                     download_name="model_ed_department_template.xlsx",
+                     mimetype="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
+@app.route("/api/trust/import", methods=["POST"])
+def api_trust_import():
+    """Set up the department from an uploaded Excel/CSV workbook (+ any arrivals
+    it carries become a calibration)."""
+    if "file" not in request.files:
+        return jsonify({"error": "no file uploaded"}), 400
+    f = request.files["file"]
+    try:
+        result = trust_workbook.read_workbook(f.read(), filename=f.filename)
+    except Exception as e:
+        return jsonify({"error": f"could not read workbook: {e}"}), 400
+    dept = result["department"]
+    CURRENT["dept"] = dept
+    version = store.save_department(dept.to_dict())
+    if result.get("patch"):
+        store.save_calibration("your_department", result["patch"], result["summary"])
+    else:
+        store.clear_calibration("your_department")
+    if result.get("cost_book"):
+        save_cost_book(result["cost_book"])           # £ figures from the workbook
+    if result.get("role_rates"):
+        from ..workforce.roles import save_role_rates
+        save_role_rates(result["role_rates"])         # staff hourly rates from the workbook
+    if result.get("service_params"):
+        model_params.save_params(result["service_params"])   # service-time assumptions
+    return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
+                    "summary": result["summary"], "provenance": result["provenance"]})
+
+
+# --- editable Model ED standards (admin-level: the same for every trust) ------- #
+def _scorecard_overrides() -> dict:
+    return store.get_setting("scorecard_targets") or {}
+
+
+@app.route("/api/scorecard-targets", methods=["GET", "POST"])
+def api_scorecard_targets():
+    """View or edit the RAG standard targets (target + amber band per metric).
+    Data-driven so the standards can move (e.g. 4-hour 78% -> 95%) without code."""
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        valid = {d["key"] for d in scorecard_defaults()}
+        clean = {}
+        for key, ov in body.items():
+            if key not in valid or not isinstance(ov, dict):
+                continue
+            row = {}
+            for f in ("target", "amber"):
+                if ov.get(f) is not None:
+                    try:
+                        row[f] = float(ov[f])
+                    except (TypeError, ValueError):
+                        pass
+            if row:
+                clean[key] = row
+        store.save_setting("scorecard_targets", clean)
+        return jsonify({"ok": True, "overrides": clean})
+    return jsonify({"defaults": scorecard_defaults(), "overrides": _scorecard_overrides()})
+
+
+@app.route("/api/pathway-params", methods=["GET", "POST"])
+def api_pathway_params():
+    """View or edit the model's service-time assumptions (global scale + per-stage
+    means). Data-driven so the core physics can be tuned/calibrated without code;
+    applied to every simulated surface (control tower, standards, analyst)."""
+    from ..department.builder import BASE_RAW
+    if request.method == "POST":
+        saved = model_params.save_params(request.get_json(force=True) or {})
+        return jsonify({"ok": True, "params": saved})
+    return jsonify({"stages": model_params.service_params(BASE_RAW),
+                    "params": model_params.load_params()})
 
 
 def _control_tower_payload(seed=2):
@@ -480,13 +591,14 @@ def api_simulate():
     body = request.get_json(force=True)
     p, sd_over, fb, raw = _build(body)
     seed = int(body.get("seed", 0))
+    targets = _scorecard_overrides()
 
     def compute():
         res = run_cosim(p, seed=seed, feedback=fb, sd_overrides=sd_over)
         m = {**kpis(res, p), **uec_metrics(res, p)}
         conf = conformance_check(res, p)
         return {
-            "kpis": m, "scorecard": uec_scorecard(m), "diagnosis": diagnose(res, p),
+            "kpis": m, "scorecard": uec_scorecard(m, targets), "diagnosis": diagnose(res, p),
             "flow_model": flow_model_data(res, p),
             "conformance": {k: conf[k] for k in ("conformance_rate", "n_violations", "passed", "by_type")},
             "figures": {
@@ -497,7 +609,7 @@ def api_simulate():
                 "sankey": J(fig.sankey_figure(res, p)),
                 "heatmap": J(fig.occupancy_heatmap_figure(res, p)),
             }}
-    key = {"raw": raw, "seed": seed, "feedback": fb, "sd": sd_over}
+    key = {"raw": raw, "seed": seed, "feedback": fb, "sd": sd_over, "targets": targets}
     return jsonify(store.cached_or_compute("simulate", key, compute))
 
 
