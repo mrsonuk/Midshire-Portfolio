@@ -263,3 +263,24 @@ Runs alongside Phase 1 - trusts cannot buy without it:
 | Trust data quality derails pilots | Data-quality report at ingestion; calibration falls back per-parameter to flagged defaults |
 | Fabricated-looking financials destroy credibility | Cost book is trust-editable, assumptions printed on every business case |
 | IG blocks procurement | §10 workstream starts in Phase 1, not after |
+
+---
+
+## 12. Delivery log
+
+- **Phase 0 (done):** repo hygiene; persistence (SQLite/Postgres store: versioned
+  department, calibrations, settings, run cache by config hash); every surface
+  connected to the one saved department; calibration reaches the product.
+- **Phase 1 (done):** finance engine + trust-editable cost book; executive brief;
+  one-click board-report PDF with investment page; full-team workforce model;
+  React + TypeScript shell at /app (exec brief ported); interactive redesign
+  (flow-map drill-downs, workforce charts with demand overlay, who-is-on drill).
+- **Phase 2 (done):** kernel physics: measured ambulance handover with held bays,
+  LWBS via queue reneging, porter-staffed ward transfers, ENPs on minors,
+  1:4 nurse-to-cubicle ratio; arrival streams (ambulance/walk-in/GP/111) as
+  share partitions; covariate forecasting with 28-day backtest; surge stress
+  tests + inverse staffing solver; CI-gated recommendation engine; Sankey and
+  hour-by-area heatmap.
+- **Next (Phase 3):** intraday prediction from live feeds, benchmarking vs
+  published NHSE statistics, remaining React ports, multi-site ICB view,
+  optimisation under budget constraints v2.
