@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model ED Optimiser - Pitch</title>
+<style>
+ :root{--dark:#003087;--blue:#005EB8;--aqua:#00A9CE;--green:#009639;--orange:#ED8B00;
+  --red:#DA291C;--grey:#425563;--line:#E8EDEE;--page:#F0F4F7;}
+ *{box-sizing:border-box}
+ body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:#1a2733;color:#231F20}
+ .slide{width:1280px;height:720px;margin:24px auto;background:#fff;border-radius:10px;
+  box-shadow:0 8px 40px rgba(0,0,0,.35);padding:56px 68px;position:relative;overflow:hidden;
+  display:none;flex-direction:column}
+ .slide.active{display:flex}
+ .slide .no{position:absolute;bottom:20px;right:28px;color:var(--grey);font-size:13px;font-weight:700}
+ .brand{position:absolute;bottom:20px;left:28px;color:var(--grey);font-size:13px}
+ .brand b{color:var(--blue)}
+ .kicker{font-size:15px;font-weight:800;color:var(--aqua);text-transform:uppercase;letter-spacing:1.5px;margin:0 0 10px}
+ h1{font-size:52px;color:var(--dark);margin:0 0 12px;line-height:1.1}
+ h2{font-size:36px;color:var(--dark);margin:0 0 18px;line-height:1.15}
+ .lead{font-size:21px;color:var(--grey);line-height:1.5;max-width:900px}
+ ul.big{font-size:20px;line-height:1.55;color:#2b3a47;margin:10px 0 0;padding-left:26px}
+ ul.big li{margin-bottom:12px}
+ ul.big b{color:var(--dark)}
+ .cols{display:flex;gap:36px;flex:1;min-height:0;margin-top:8px}
+ .col{flex:1;min-width:0}
+ .shot{flex:1.25;min-width:0;display:flex;align-items:flex-start;justify-content:center}
+ .shot img{max-width:100%;max-height:520px;object-fit:contain;object-position:top;
+  border:1px solid var(--line);border-radius:8px;box-shadow:0 4px 18px rgba(16,37,62,.18)}
+ .titlebar{height:10px;background:linear-gradient(90deg,var(--dark),var(--blue) 55%,var(--aqua));
+  position:absolute;top:0;left:0;right:0}
+ .nhslogo{display:inline-block;background:var(--blue);color:#fff;font-weight:800;font-size:26px;
+  padding:6px 16px;border-radius:6px;letter-spacing:2px;margin-bottom:26px}
+ .stat{background:var(--page);border-left:8px solid var(--blue);border-radius:8px;padding:16px 20px;margin-bottom:14px}
+ .stat .v{font-size:30px;font-weight:800;color:var(--dark)}
+ .stat .k{font-size:15px;color:var(--grey)}
+ .stat.g{border-left-color:var(--green)} .stat.o{border-left-color:var(--orange)} .stat.r{border-left-color:var(--red)}
+ .quoteish{font-size:24px;color:var(--dark);font-weight:700;background:var(--page);
+  border-left:8px solid var(--green);border-radius:8px;padding:20px 24px;margin-top:22px;line-height:1.4}
+ .footer-note{font-size:14px;color:var(--grey);margin-top:auto;padding-top:14px}
+ .steps{display:flex;gap:14px;margin-top:26px}
+ .step{flex:1;background:var(--page);border-top:7px solid var(--blue);border-radius:8px;padding:16px}
+ .step .n{font-size:13px;font-weight:800;color:var(--aqua);letter-spacing:1px}
+ .step .t{font-size:18px;font-weight:800;color:var(--dark);margin:4px 0 6px}
+ .step .d{font-size:14.5px;color:var(--grey);line-height:1.45}
+ .grid2{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:18px}
+ .card{background:var(--page);border-radius:9px;padding:18px 20px;border-left:7px solid var(--aqua)}
+ .card .t{font-weight:800;color:var(--dark);font-size:19px;margin-bottom:6px}
+ .card .d{font-size:15.5px;color:#2b3a47;line-height:1.5}
+ .nav{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);color:#9fb2c2;font-size:13px;z-index:10}
+ @media print{
+  body{background:#fff}
+  .nav{display:none}
+  .slide{display:flex !important;margin:0;border-radius:0;box-shadow:none;page-break-after:always;width:100%;height:100vh}
+ }
+</style>
+</head>
+<body>
+
+<section class="slide active">
+ <div class="titlebar"></div>
+ <div style="margin:auto 0">
+  <div class="nhslogo">NHS</div>
+  <p class="kicker">Model ED Optimiser</p>
+  <h1>Run tomorrow's emergency department today</h1>
+  <p class="lead">A digital twin of <b>your</b> ED - flow, workforce and money in one place -
+   so every change is tested in the model before it is tested on patients.</p>
+  <p class="lead" style="margin-top:26px;font-size:18px">Built on the NHS England Model Emergency Department ·
+   runs on locked-down NHS networks · every assumption visible and editable</p>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b> - pitch deck</div><div class="no">1</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">The problem</p>
+ <h2>The questions every ED leadership team is asked</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li>"Will we hold the <b>4-hour position</b> this winter, and what would it actually take?"</li>
+    <li>"Why are ambulances <b>queuing at the door</b>, and which change frees them fastest?"</li>
+    <li>"Is the <b>rota</b> matched to the demand curve, or are we paying agency at the wrong hours?"</li>
+    <li>"Which investment - SDEC, UTC, frailty unit, beds - is <b>worth it</b>, in pounds?"</li>
+   </ul>
+  </div>
+  <div class="col">
+   <div class="quoteish">Today these are answered with spreadsheets, instinct and last year's pain.
+    Each answer is a one-off, unauditable, and untested against reality.</div>
+   <p class="footer-note">Boards and ICBs increasingly ask for modelled evidence behind winter plans
+    and capital bids. The trusts that bring it win the argument.</p>
+  </div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">2</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">The product</p>
+ <h2>Your department, as a live control tower</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li>Every area of <b>your ED</b> - your sizes, your opening hours, your rota</li>
+    <li>Patients flow live; the <b>pinch-point pulses red</b> with when it bites</li>
+    <li>Click any area: waits, staffing on shift, where patients come from and go to</li>
+    <li>Headline standards as a <b>typical week with the good-week / tough-week spread</b>, never a false point estimate</li>
+   </ul>
+  </div>
+  <div class="shot"><img src="img/control_tower.png" alt="Control tower"></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">3</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">Why it can be trusted</p>
+ <h2>Three properties no spreadsheet has</h2>
+ <div class="grid2">
+  <div class="card"><div class="t">Exit-block is emergent, not assumed</div>
+   <div class="d">The model contains the hospital around the ED. When wards fill, admissions
+    back up and corridor care appears - because the bed stock filled, not because a
+    consultant typed a fudge factor. Turn the feedback off and the naive model returns.</div></div>
+  <div class="card"><div class="t">It proves its own faithfulness</div>
+   <div class="d">Every simulated patient journey is checked against the intended pathway
+    (process-map conformance). A clean run passes at 100%; corrupted runs are caught.
+    Clinical teams see the validation, not a promise.</div></div>
+  <div class="card"><div class="t">Honest uncertainty, honest money</div>
+   <div class="d">Every figure is a Monte-Carlo range, every pound comes from a
+    trust-editable cost book with the assumptions printed on the page. Synthetic
+    placeholders are flagged until your data replaces them.</div></div>
+  <div class="card"><div class="t">Real ED physics</div>
+   <div class="d">Ambulance handover bays that block when the front door crowds. Patients
+    who walk out when the wait beats their patience. Cubicles that close when the nursing
+    rota thins. Porters who move admissions. Sickest first, always.</div></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">4</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">For the executive</p>
+ <h2>One screen, one honest position</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li><b>OPEL-style risk</b> from your simulated position and hospital fullness</li>
+    <li>The four headline standards plus walk-outs, each with its spread</li>
+    <li><b>Where you sit against peers</b> - percentile position among similar-sized trusts</li>
+    <li>The pinch point, the biggest investment case, and a <b>one-click board-ready PDF</b></li>
+   </ul>
+  </div>
+  <div class="shot"><img src="img/exec.png" alt="Executive brief"></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">5</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">For the workforce lead</p>
+ <h2>Are you staffed for the demand curve?</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li>Every role - consultants to porters - charted against the arrival curve, light hours in red</li>
+    <li>Click an hour: <b>exactly who is on</b>, and the shift to add when it is light</li>
+    <li>Edit the rota and watch the charts, the pay-bill and the pinch-point move <b>instantly</b></li>
+    <li>The full weekly pay-bill by role - the number a director of finance checks first</li>
+   </ul>
+  </div>
+  <div class="shot"><img src="img/workforce.png" alt="Workforce studio"></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">6</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">For the business case</p>
+ <h2>Every gap priced, every claim backed by the model</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li>Which Model ED elements you have, which you lack, and what each would add <b>at your demand</b></li>
+    <li>Front-door elements judged on the 4-hour standard; same-day elements on <b>admissions avoided</b></li>
+    <li>Annual benefit, cost band, ROI and payback from <b>your</b> cost book, assumptions printed</li>
+    <li>Flows into the board report PDF as a ready investment case</li>
+   </ul>
+  </div>
+  <div class="shot"><img src="img/gaps.png" alt="Gap analysis"></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">7</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">Decision support</p>
+ <h2>Ask it the questions you actually have</h2>
+ <div class="grid2">
+  <div class="card"><div class="t">"Would we cope with a bad flu season?"</div>
+   <div class="d">Named stress tests - flu, norovirus ward closures, a strike day, heatwave -
+    run against your ED exactly as configured. Then the inverse: the cheapest staffing
+    additions that hold the 4-hour target, or an honest "staffing alone will not hold it".</div></div>
+  <div class="card"><div class="t">"What should we change first?"</div>
+   <div class="d">The recommendation engine searches your own weak points - rota gaps, pinch
+    resources, opening hours - and only recommends changes whose improvement clears a
+    statistical confidence bar. It would rather say nothing than recommend noise.</div></div>
+  <div class="card"><div class="t">"What does this winter look like?"</div>
+   <div class="d">Upload your daily history: the forecast learns your trend, weekday shape,
+    seasonality and bank-holiday spikes - and shows its own backtested accuracy before you
+    rely on it.</div></div>
+  <div class="card"><div class="t">"Today is running hot - how bad by midnight?"</div>
+   <div class="d">Type this morning's arrivals. It projects the day from your own curve,
+    flags early escalation, and ranks the no-cost actions that help most tonight.</div></div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">8</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">Your data, your control</p>
+ <h2>Built for NHS reality</h2>
+ <div class="cols">
+  <div class="col">
+   <ul class="big">
+    <li><b>Runs offline</b> - no cloud dependency, no CDN, deployable inside the trust network</li>
+    <li><b>No patient-identifiable data</b> - calibrates from aggregate ECDS-style extracts</li>
+    <li>Every number traceable to the exact configuration that produced it</li>
+    <li>Starts useful on day one with flagged synthetic defaults; gets sharper as your data replaces them</li>
+   </ul>
+  </div>
+  <div class="col">
+   <div class="stat g"><div class="v">Calibrate once, everywhere</div><div class="k">one upload updates the control tower, planner, exec brief and board report together</div></div>
+   <div class="stat"><div class="v">Self-validating</div><div class="k">conformance checking runs with every simulation</div></div>
+   <div class="stat o"><div class="v">Assumptions on every page</div><div class="k">no invented benchmarks, no hidden fudge factors</div></div>
+  </div>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">9</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <p class="kicker">Engagement</p>
+ <h2>A pilot you can see working in weeks</h2>
+ <div class="steps">
+  <div class="step"><div class="n">WEEKS 1-2</div><div class="t">Discovery</div>
+   <div class="d">Set up your ED in the product: areas, hours, rota, beds. It runs on day one.</div></div>
+  <div class="step"><div class="n">WEEKS 3-4</div><div class="t">Calibrate &amp; validate</div>
+   <div class="d">Your attendance extract replaces the placeholders; clinicians see the conformance validation.</div></div>
+  <div class="step"><div class="n">WEEKS 5-8</div><div class="t">Co-design scenarios</div>
+   <div class="d">Winter plan, surge stress tests, workforce options - built with your ops and clinical teams.</div></div>
+  <div class="step"><div class="n">WEEKS 9-12</div><div class="t">The case &amp; the habit</div>
+   <div class="d">Board-ready business case from the model, and the control tower in weekly use.</div></div>
+ </div>
+ <div class="quoteish" style="margin-top:30px">Fixed-fee pilot → annual platform licence → optimisation cycles.
+  The product does the analysis; your teams own the decisions.</div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">10</div>
+</section>
+
+<section class="slide">
+ <div class="titlebar"></div>
+ <div style="margin:auto 0">
+  <p class="kicker">The ask</p>
+  <h1 style="font-size:44px">Pick one department.<br>Give us twelve weeks.</h1>
+  <p class="lead" style="margin-top:18px">We will hand your board a modelled winter plan, a costed
+   investment case, and a control tower your site team checks every morning - all validated
+   against your own data, with every assumption on the table.</p>
+  <p class="lead" style="margin-top:26px;font-size:18px;color:var(--dark)"><b>Model ED Optimiser</b> -
+   see the queue before the queue sees you.</p>
+ </div>
+ <div class="brand"><b>Model ED Optimiser</b></div><div class="no">11</div>
+</section>
+
+<div class="nav">arrow keys / click to advance · P to print</div>
+<script>
+const slides=[...document.querySelectorAll('.slide')];let i=0;
+function show(n){i=Math.max(0,Math.min(slides.length-1,n));slides.forEach((s,j)=>s.classList.toggle('active',j===i));}
+document.addEventListener('keydown',e=>{
+ if(e.key==='ArrowRight'||e.key===' '||e.key==='PageDown')show(i+1);
+ if(e.key==='ArrowLeft'||e.key==='PageUp')show(i-1);
+ if(e.key==='Home')show(0); if(e.key==='End')show(slides.length-1);
+ if(e.key==='p'||e.key==='P')window.print();
+});
+document.addEventListener('click',e=>{if(!e.target.closest('a'))show(i+1);});
+</script>
+</body>
+</html>
