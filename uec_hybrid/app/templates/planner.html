@@ -59,27 +59,28 @@
 </head>
 <body>
 <header><div class="logo">NHS</div><div>
- <h1>Urgent &amp; Emergency Care — Demand &amp; Capacity Planner</h1>
- <p>For ICB and operational planning · works for any emergency department</p>
+ <h1>Urgent &amp; Emergency Care - Demand &amp; Capacity Planner</h1>
+ <p>For ICB and operational planning, works for any emergency department</p>
 </div></header>
 <nav style="background:#fff;border-bottom:1px solid var(--line);padding:0 26px;display:flex;gap:4px">
- <a href="/" style="padding:12px 16px;font-weight:700;font-size:14px;color:var(--blue);text-decoration:none">← Back to Model ED Optimiser</a>
+ <a href="/" style="padding:12px 16px;font-weight:700;font-size:14px;color:var(--blue);text-decoration:none">Back to Model ED Optimiser</a>
  <a href="/" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none">Control tower</a>
- <a href="/analyst" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none;margin-left:auto">Analyst view</a>
+ <a href="/exec" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none;margin-left:auto">Executive brief</a>
+ <a href="/analyst" style="padding:12px 16px;font-weight:600;font-size:14px;color:var(--grey);text-decoration:none">Analyst view</a>
 </nav>
 <div class="wrap">
  <p class="sub" id="deptNote" style="margin:10px 0 0;display:none"></p>
 
  <div class="modes">
-  <div class="mode active" data-mode="winter"><div class="t">Plan for this winter</div><div class="d">ICB winter &amp; investment planning — where to invest</div></div>
-  <div class="mode" data-mode="today"><div class="t">Today / this week</div><div class="d">Operational — which lever to flex now</div></div>
+  <div class="mode active" data-mode="winter"><div class="t">Plan for this winter</div><div class="d">ICB winter &amp; investment planning - where to invest</div></div>
+  <div class="mode" data-mode="today"><div class="t">Today / this week</div><div class="d">Operational - which lever to flex now</div></div>
  </div>
 
  <!-- WINTER -->
  <div id="winter">
   <div class="card">
    <h2>1. Tell us about your emergency department</h2>
-   <p class="sub">Three numbers to start — or upload your own attendance history and we’ll work out the demand for you.</p>
+   <p class="sub">Three numbers to start - or upload your own attendance history and we’ll work out the demand for you.</p>
    <label>How many people attend A&amp;E on a typical day now?</label>
    <div class="field"><input type="number" id="attend" value="320" min="60" max="1200" step="10"><span class="hint">attendances per day</span></div>
    <label>Expected winter rise in attendances: <span class="rngval" id="upV">12%</span></label>
@@ -100,11 +101,27 @@
    <div class="card"><h2>2. What winter looks like at your current set-up</h2>
     <p class="sub" id="fcSummary"></p><div class="tiles" id="tiles"></div><div class="verdict" id="verdict"></div></div>
    <div class="card"><h2>3. What’s driving the pressure</h2><div class="drives" id="drives"></div></div>
-   <div class="card"><h2>4. Your options — what would it take?</h2>
+   <div class="card"><h2>4. Your options - what would it take?</h2>
     <p class="sub">Each option run at the expected winter demand, ranked by how much it improves the 4-hour standard. Cost is an indicative band.</p>
     <div id="options"></div></div>
    <div class="card"><h2>5. Bottom line</h2><div class="bottom" id="bottom"></div>
-    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative — validate locally. &nbsp;·&nbsp; <a href="/analyst">Analyst / technical view</a></p></div>
+    <p class="foot">Planning estimate from a model of your department and the hospital around it, using typical NHS patterns until you add your own data. Indicative - validate locally. <a href="/analyst">Analyst / technical view</a></p></div>
+  </div>
+  <div class="card">
+   <h2>Stress test: would you cope?</h2>
+   <p class="sub">Run a named pressure against your department exactly as set up, and ask what staffing
+    would hold the 4-hour position through it.</p>
+   <div class="field">
+    <select id="surgeSel" style="padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px"></select>
+    <button class="sec" id="runSurge" style="margin-top:0">Run stress test</button>
+    <button class="sec" id="solveSurge" style="margin-top:0">What staffing would hold it?</button>
+   </div>
+   <div class="status" id="sStatus"></div>
+   <div id="surgeOut" style="display:none">
+    <p class="sub" id="surgeStory" style="margin-top:12px"></p>
+    <div class="tiles" id="surgeTiles"></div>
+    <div class="drives" id="surgeSolve" style="display:none;margin-top:10px"></div>
+   </div>
   </div>
  </div>
 
@@ -117,6 +134,9 @@
    <div class="field"><input type="number" id="tAttend" value="360" min="60" max="1400" step="10"><span class="hint">a busy day is higher than your average</span></div>
    <label>How full is the hospital right now? <span class="rngval" id="fullV">94%</span></label>
    <div class="field"><input type="range" id="fullness" min="80" max="99" value="94"><span class="hint">inpatient bed occupancy</span></div>
+   <label>Live: arrivals so far today, by hour (optional)</label>
+   <div class="field"><input type="text" id="soFar" placeholder="e.g. 6,4,3,3,4,5,8,14,22" style="width:340px;padding:9px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px">
+    <span class="hint">comma-separated from midnight; overrides the guess above and projects the rest of today</span></div>
    <button id="runToday">Check today</button>
    <div class="status" id="tStatus"></div>
   </div>
@@ -140,7 +160,7 @@ function rag(v){return v>=78?'green':v>=72?'amber':'red';}
  const a=Math.round(d.department.attendances_per_day);
  if(a){$('#attend').value=a;if($('#tAttend'))$('#tAttend').value=Math.round(a*1.06);
   const n=$('#deptNote');n.style.display='block';
-  n.innerHTML=`Starting from <b>${d.department.name}</b> as set up in the control tower (${a} attendances a day). Change the numbers below to plan.`;}
+  n.innerHTML=`Plans model <b>${d.department.name}</b> exactly as set up in the control tower - same areas, opening hours, rota and beds (${a} attendances a day). Change the numbers below to plan.`;}
 }catch(e){}})();
 document.querySelectorAll('.mode').forEach(m=>m.onclick=()=>{
  document.querySelectorAll('.mode').forEach(x=>x.classList.toggle('active',x===m));
@@ -161,7 +181,7 @@ $('#useData').onclick=async()=>{
  $('#useData').disabled=false;
 };
 $('#run').onclick=async()=>{
- const b=$('#run');b.disabled=true;$('#status').innerHTML='<span class="spin"></span> Modelling a good week, a typical week and a tough week…';
+ const b=$('#run');b.disabled=true;$('#status').innerHTML='<span class="spin"></span> Modelling a good week, a typical week and a tough week...';
  try{const r=await fetch('/api/plan',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({attendances_now:+$('#attend').value,winter_uplift_pct:+$('#uplift').value,yoy_growth_pct:+$('#growth').value})});
   const d=await r.json();if(d.error)throw new Error(d.error);
@@ -170,24 +190,56 @@ $('#run').onclick=async()=>{
  b.disabled=false;
 };
 function renderWinter(d){
- const o=d.outcome,t=d.target,cls=rag(o.typical);$('#fcSummary').textContent=d.forecast.summary;
+ const o=d.outcome,t=d.target,cls=rag(o.typical);
+ $('#fcSummary').textContent=d.forecast.summary+(d.modelled?' '+d.modelled+'.':'');
  $('#tiles').innerHTML=
   tile('blue','Expected demand',d.forecast.expected_per_day,'attendances a day this winter')+
-  tile(cls,'4-hour standard (typical week)',o.typical+'%','good week '+o.good+'% · tough week '+o.tough+'%')+
+  tile(cls,'4-hour standard (typical week)',o.typical+'%','good week '+o.good+'%, tough week '+o.tough+'%')+
   tile(o.corridor_per_day>=4?'red':o.corridor_per_day>=1?'amber':'green','Long waits for a bed',o.corridor_per_day,'patients a day waiting over 12 hours for admission')+
   tile(o.bed_occupancy>=92?'red':o.bed_occupancy>=85?'amber':'green','How full the hospital is',o.bed_occupancy+'%','average inpatient bed occupancy');
  const v=$('#verdict');v.className='verdict '+cls;
- v.textContent=o.meets?`You would broadly meet the ${t}% four-hour standard — but you’d still slip below it about ${o.miss_weeks} weeks in 10.`
+ v.textContent=o.meets?`You would broadly meet the ${t}% four-hour standard - but you’d still slip below it about ${o.miss_weeks} weeks in 10.`
    :`At the expected demand you would miss the ${t}% four-hour standard about ${o.miss_weeks} weeks in 10. Something needs to change.`;
  $('#drives').innerHTML=o.constraint;
  $('#options').innerHTML=d.options.map((x,i)=>optRow(x,i===0,d.options[0].delta,'cost')).join('');
  $('#bottom').innerHTML=d.recommendation;
 }
+// ---- stress tests ----
+(async function(){try{const d=await fetch('/api/surge').then(r=>r.json());
+ $('#surgeSel').innerHTML=d.templates.map(t=>`<option value="${t.key}">${t.label}</option>`).join('');
+}catch(e){}})();
+async function runSurge(solve){
+ const b1=$('#runSurge'),b2=$('#solveSurge');b1.disabled=b2.disabled=true;
+ $('#sStatus').innerHTML='<span class="spin"></span> '+(solve?'Solving the staffing that holds the line (a few minutes the first time)...':'Running the stress test...');
+ try{
+  const r=await fetch('/api/surge',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({template:$('#surgeSel').value,solve})});
+  const d=await r.json();if(d.error)throw new Error(d.error);
+  $('#surgeOut').style.display='block';$('#surgeStory').textContent=d.story;
+  const cls=v=>rag(v);
+  $('#surgeTiles').innerHTML=
+   tile(cls(d.baseline.typical),'Normal week',d.baseline.typical+'%','4-hour standard today')+
+   tile(cls(d.surge.typical),d.label,d.surge.typical+'%',(d.delta_four_hour>=0?'+':'')+d.delta_four_hour+' points vs normal')+
+   tile(d.delta_corridor>1?'red':d.delta_corridor>0?'amber':'green','Long bed-waits',d.surge.corridor_per_day,(d.delta_corridor>=0?'+':'')+d.delta_corridor+'/day vs normal');
+  const s=d.solver;
+  if(s){$('#surgeSolve').style.display='block';
+   $('#surgeSolve').innerHTML='<b>'+s.headline+'</b>'+(s.additions.length?
+    '<ul style="margin:8px 0 0 18px">'+s.additions.map(a=>`<li>${a.step}: gets you to ${a.four_hour}% (about £${a.weekly_cost.toLocaleString()}/week)</li>`).join('')+'</ul>':'');}
+  else $('#surgeSolve').style.display='none';
+  $('#sStatus').textContent='';
+ }catch(e){$('#sStatus').innerHTML='<span style="color:#DA291C">Could not run: '+e.message+'</span>';}
+ b1.disabled=b2.disabled=false;
+}
+$('#runSurge').onclick=()=>runSurge(false);
+$('#solveSurge').onclick=()=>runSurge(true);
+
 // ---- today ----
 $('#runToday').onclick=async()=>{
- const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help…';
+ const b=$('#runToday');b.disabled=true;$('#tStatus').innerHTML='<span class="spin"></span> Checking today and the actions that help...';
+ const soFar=$('#soFar').value.trim()?$('#soFar').value.split(',').map(x=>+x.trim()).filter(x=>!isNaN(x)):null;
  try{const r=await fetch('/api/plan-today',{method:'POST',headers:{'Content-Type':'application/json'},
-   body:JSON.stringify({attendances_today:+$('#tAttend').value,hospital_fullness_pct:+$('#fullness').value})});
+   body:JSON.stringify({attendances_today:+$('#tAttend').value,hospital_fullness_pct:+$('#fullness').value,
+     ...(soFar&&soFar.length>=3?{arrivals_so_far:soFar}:{})})});
   const d=await r.json();if(d.error)throw new Error(d.error);
   renderToday(d);$('#tStatus').textContent='';$('#todayResults').style.display='block';$('#todayResults').scrollIntoView({behavior:'smooth'});
  }catch(e){$('#tStatus').innerHTML='<span style="color:#DA291C">Something went wrong: '+e.message+'</span>';}
@@ -195,7 +247,8 @@ $('#runToday').onclick=async()=>{
 };
 function renderToday(d){
  $('#risk').className='risk '+d.risk.colour;$('#risk').textContent=d.risk.label;
- $('#tHeadline').innerHTML=d.headline;$('#tFirst').innerHTML=d.first;
+ $('#tHeadline').innerHTML=(d.projection?'<b>'+d.projection.note+'</b><br>':'')
+   +d.headline+(d.modelled?' <span style="color:#425563">('+d.modelled+'.)</span>':'');$('#tFirst').innerHTML=d.first;
  $('#tActions').innerHTML=d.actions.map((x,i)=>optRow(x,i===0,d.actions[0].delta,'today')).join('');
 }
 // shared row
@@ -205,8 +258,10 @@ function optRow(x,isRec,maxd,kind){
  const meta = kind==='cost'
    ? `<span class="pill ${x.cost}">${x.cost} cost</span><div style="margin-top:6px;color:#425563">${x.kind}</div>`
    : `<div style="font-weight:700;color:#003087">${x.owner}</div><div style="margin-top:4px;color:#425563">${x.effort}</div>`;
- const m = kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' — meets the target':''}. ${x.build}.`
-   : `Gets today to about <b>${x.four_hour}%</b>${x.corridor_relief>0?`, clears ~${x.corridor_relief} long bed-waits`:''}.`;
+ const fin = kind==='cost'&&x.finance&&x.finance.annual_benefit>0
+   ? `<div style="margin-top:4px;color:#003087;font-weight:600">${x.finance.summary}</div>` : '';
+ const m = (kind==='cost' ? `Gets you to about <b>${x.four_hour}%</b>${x.meets?' - meets the target':''}. ${x.build}.`
+   : `Gets today to about <b>${x.four_hour}%</b>${x.corridor_relief>0?`, clears ~${x.corridor_relief} long bed-waits`:''}.`)+fin;
  return `<div class="opt ${isRec&&x.delta>0?'rec':''}">
    <div class="imp"><div class="d" style="color:${x.delta>=0?'#009639':'#DA291C'}">${sign}${x.delta}</div><div class="r">points on 4-hr</div></div>
    <div class="body"><div class="t">${x.label}${isRec&&x.delta>0?'<span class="recbadge">'+(kind==='cost'?'BEST VALUE':'DO FIRST')+'</span>':''}</div>

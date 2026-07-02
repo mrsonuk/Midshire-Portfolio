@@ -1,5 +1,5 @@
 """
-CoSimulator — the master clock binding the DES and SD solvers.
+CoSimulator - the master clock binding the DES and SD solvers.
 
 It owns one SimPy environment (inside the DES ``Simulation``), one ``SDModel`` and
 the shared ``SystemState``. A recurring SimPy process fires every ``dt`` simulated

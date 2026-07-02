@@ -1,5 +1,5 @@
 """
-The ECDS calibration seam — the clean point where synthetic placeholders are
+The ECDS calibration seam - the clean point where synthetic placeholders are
 replaced by real Emergency Care Data Set attendance extracts.
 
 Identifiable-from-attendance-data parameters (arrival profile, acuity mix,
@@ -28,25 +28,31 @@ def _estimate_days(df):
     return max(1, round(len(df) / 300))
 
 
-def calibrate(df: pd.DataFrame, raw: dict) -> tuple[dict, list]:
-    raw = copy.deepcopy(raw)
-    arrivals = raw.setdefault("arrivals", {})
+def derive_patch(df: pd.DataFrame) -> tuple[dict, list]:
+    """Derive the attendance-identifiable parameters from an ECDS extract.
+
+    Returns a JSON-able patch (independent of any particular pathway) plus a
+    plain-language summary. Because the patch is stored separately and applied
+    to a *freshly built* pathway each run, a calibration keeps following the
+    department through later set-up changes (areas toggled, rota edited).
+    """
+    patch: dict = {"arrivals": {}, "attributes": {}, "admission_rates": {}}
     summary = [f"Loaded {len(df):,} attendance records."]
 
     if "arrival_hour" in df:
         days = _estimate_days(df)
         counts = (df["arrival_hour"].astype(int) % 24).value_counts().reindex(range(24), fill_value=0).sort_index()
-        arrivals["hourly_profile"] = [round(c / days, 2) for c in counts]
-        summary.append(f"Arrival profile re-derived (peak {int(max(arrivals['hourly_profile']))}/h).")
+        patch["arrivals"]["hourly_profile"] = [round(c / days, 2) for c in counts]
+        summary.append(f"Arrival profile re-derived (peak {int(max(patch['arrivals']['hourly_profile']))}/h).")
 
     if "acuity" in df:
         ac = pd.to_numeric(df["acuity"], errors="coerce").dropna().astype(int)
         mix = {f"Acuity {i}": round(float((ac == i).mean() * 100), 2) for i in range(1, 6)}
         if sum(mix.values()) > 0:
-            arrivals["acuity_mix"] = mix
+            patch["arrivals"]["acuity_mix"] = mix
             summary.append("Acuity mix updated from data.")
 
-    attrs = arrivals.setdefault("attributes", {})
+    attrs = patch["attributes"]
     if "arrival_mode" in df:
         attrs["ambulance"] = round(float(df["arrival_mode"].astype(str).str.lower().str.contains("amb").mean()), 4)
         summary.append(f"Ambulance arrivals {attrs['ambulance']*100:.0f}%.")
@@ -55,30 +61,61 @@ def calibrate(df: pd.DataFrame, raw: dict) -> tuple[dict, list]:
     if "mental_health" in df:
         attrs["mental_health"] = round(float(pd.to_numeric(df["mental_health"], errors="coerce").fillna(0).mean()), 4)
 
-    # admission rate by acuity -> patch the disposition node
     if "acuity" in df and "disposition" in df:
         ac = pd.to_numeric(df["acuity"], errors="coerce")
         adm = df["disposition"].astype(str).str.lower().str.contains("admit")
-        node = next((n for n in raw["nodes"] if n.get("id") == "disposition_general"), None)
-        if node and "routes_by_class" in node:
-            changed = []
-            for i in range(1, 6):
-                sel = ac == i
-                if sel.sum() >= 20:
-                    rate = float(adm[sel].mean())
-                    cls = f"Acuity {i}"
-                    if cls in node["routes_by_class"]:
-                        # scale the admit-vs-discharge split toward the observed rate
-                        node["routes_by_class"][cls] = [
-                            ["await_inpatient_bed", round(rate, 3)],
-                            ["discharge", round(1 - rate, 3)]]
-                        changed.append(f"A{i} {rate*100:.0f}%")
-            if changed:
-                summary.append("Admission rate by acuity updated: " + ", ".join(changed) + ".")
+        changed = []
+        for i in range(1, 6):
+            sel = ac == i
+            if sel.sum() >= 20:
+                rate = float(adm[sel].mean())
+                patch["admission_rates"][f"Acuity {i}"] = round(rate, 3)
+                changed.append(f"A{i} {rate*100:.0f}%")
+        if changed:
+            summary.append("Admission rate by acuity updated: " + ", ".join(changed) + ".")
 
-    summary.append("Per-stage service times unchanged — not identifiable from attendance "
+    summary.append("Per-stage service times unchanged - not identifiable from attendance "
                    "data; provide stage-level timestamps to calibrate these.")
-    return raw, summary
+    return patch, summary
+
+
+def apply_patch(raw: dict, patch: dict) -> dict:
+    """Apply a derived calibration patch to any pathway raw (deep-copied)."""
+    from .streams import skew_stream_mixes
+    raw = copy.deepcopy(raw)
+    arrivals = raw.setdefault("arrivals", {})
+    for k, v in (patch.get("arrivals") or {}).items():
+        if k == "acuity_mix":
+            skew_stream_mixes(arrivals, copy.deepcopy(v))  # streams follow the data
+        else:
+            arrivals[k] = copy.deepcopy(v)
+    attrs = arrivals.setdefault("attributes", {})
+    for k, v in (patch.get("attributes") or {}).items():
+        attrs[k] = v
+    # streams pin the ambulance attribute, so a calibrated conveyance rate must
+    # move the ambulance stream's SHARE, not just the (inert) global attribute
+    if "ambulance" in (patch.get("attributes") or {}) and arrivals.get("streams"):
+        from .streams import daily_stream_split, scale_stream_share
+        current = daily_stream_split(arrivals).get("ambulance", 0.0)
+        target = float(patch["attributes"]["ambulance"])
+        if current > 0:
+            scale_stream_share(arrivals, "ambulance", target / current)
+    rates = patch.get("admission_rates") or {}
+    if rates:
+        node = next((n for n in raw.get("nodes", []) if n.get("id") == "disposition_general"), None)
+        if node and "routes_by_class" in node:
+            for cls, rate in rates.items():
+                if cls in node["routes_by_class"]:
+                    # scale the admit-vs-discharge split toward the observed rate
+                    node["routes_by_class"][cls] = [
+                        ["await_inpatient_bed", round(rate, 3)],
+                        ["discharge", round(1 - rate, 3)]]
+    return raw
+
+
+def calibrate(df: pd.DataFrame, raw: dict) -> tuple[dict, list]:
+    patch, summary = derive_patch(df)
+    return apply_patch(raw, patch), summary
 
 
 def generate_sample(days: int = 14, seed: int = 0) -> pd.DataFrame:

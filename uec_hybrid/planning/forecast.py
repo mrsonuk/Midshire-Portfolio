@@ -1,5 +1,5 @@
 """
-Demand forecast for UEC / ED planning — in planners' terms, not modelling terms.
+Demand forecast for UEC / ED planning - in planners' terms, not modelling terms.
 
 A planner describes their department today (attendances a day, current 4-hour
 performance, size) and the expected winter pressure (a percent uplift and any
@@ -41,7 +41,7 @@ def forecast(attendances_per_day: float, winter_uplift_pct: float = 12.0,
         "summary": (f"About {round(winter)} attendances a day this winter, "
                     f"up from {round(attendances_per_day)} now "
                     f"(a {winter_uplift_pct:.0f}% winter rise). "
-                    f"Busiest on {busiest_day}s and around {peak_hour}:00–"
+                    f"Busiest on {busiest_day}s and around {peak_hour}:00-"
                     f"{(peak_hour+3) % 24}:00."),
     }
 
@@ -49,49 +49,97 @@ def forecast(attendances_per_day: float, winter_uplift_pct: float = 12.0,
 # --------------------------------------------------------------------------- #
 # Forecast from the planner's own attendance history (replaces the % guess)
 # --------------------------------------------------------------------------- #
+# England & Wales bank holidays (shipped list; extend for later years).
+BANK_HOLIDAYS = {
+    "2022-01-03", "2022-04-15", "2022-04-18", "2022-05-02", "2022-06-02", "2022-06-03",
+    "2022-08-29", "2022-09-19", "2022-12-26", "2022-12-27",
+    "2023-01-02", "2023-04-07", "2023-04-10", "2023-05-01", "2023-05-08", "2023-05-29",
+    "2023-08-28", "2023-12-25", "2023-12-26",
+    "2024-01-01", "2024-03-29", "2024-04-01", "2024-05-06", "2024-05-27",
+    "2024-08-26", "2024-12-25", "2024-12-26",
+    "2025-01-01", "2025-04-18", "2025-04-21", "2025-05-05", "2025-05-26",
+    "2025-08-25", "2025-12-25", "2025-12-26",
+    "2026-01-01", "2026-04-03", "2026-04-06", "2026-05-04", "2026-05-25",
+    "2026-08-31", "2026-12-25", "2026-12-28",
+    "2027-01-01", "2027-03-26", "2027-03-29", "2027-05-03", "2027-05-31",
+    "2027-08-30", "2027-12-27", "2027-12-28",
+}
+
+
+def _design(dates: pd.DatetimeIndex, t0) -> np.ndarray:
+    """Regression features: trend, weekday, annual seasonality (two harmonics),
+    bank holiday and the day after (both run hot in EDs)."""
+    t = (dates - t0).days.to_numpy() / 365.0
+    doy = dates.dayofyear.to_numpy()
+    dow = dates.dayofweek.to_numpy()
+    bh = np.array([d.strftime("%Y-%m-%d") in BANK_HOLIDAYS for d in dates], float)
+    after = np.array([(d - pd.Timedelta(days=1)).strftime("%Y-%m-%d") in BANK_HOLIDAYS
+                      for d in dates], float)
+    cols = [np.ones(len(dates)), t,
+            np.sin(2 * np.pi * doy / 365), np.cos(2 * np.pi * doy / 365),
+            np.sin(4 * np.pi * doy / 365), np.cos(4 * np.pi * doy / 365),
+            bh, after]
+    cols += [(dow == d).astype(float) for d in range(1, 7)]   # Monday is baseline
+    return np.column_stack(cols)
+
+
 def forecast_from_history(df: pd.DataFrame) -> dict:
-    """Derive the winter forecast from a daily attendance history.
+    """Winter forecast from a daily attendance history via a small regression:
+    trend + weekday + annual seasonality + bank-holiday effects, backtested on
+    a 28-day holdout so the accuracy is shown, never implied.
 
     Expects a 'date' column and an 'attendances' column (or one row per
-    attendance with a 'date'). Produces the same forecast a planner would get
-    from the sliders, but read from their own data, with a plain note explaining
-    what the data showed (recent level, growth, how much higher winter runs).
+    attendance with a 'date'). Returns the same keys the sliders produce, plus
+    'accuracy' and 'components'.
     """
     df = df.copy()
     if "date" not in df:
         raise ValueError("history needs a 'date' column")
     df["date"] = pd.to_datetime(df["date"], errors="coerce")
     df = df.dropna(subset=["date"])
-    if "attendances" in df:
-        daily = df.groupby("date")["attendances"].sum().sort_index()
-    else:
-        daily = df.groupby("date").size().sort_index()
+    daily = (df.groupby("date")["attendances"].sum() if "attendances" in df
+             else df.groupby("date").size()).sort_index()
     if len(daily) < 28:
         raise ValueError("need at least ~4 weeks of daily history")
 
-    recent_level = float(daily.tail(56).mean())                # last 8 weeks
-    annual_mean = float(daily.mean())
-    by_month = daily.groupby(daily.index.month).mean()
-    winter_factor = float(by_month.reindex([12, 1, 2]).dropna().mean() / annual_mean) \
-        if not by_month.reindex([12, 1, 2]).dropna().empty else 1.12
-    recent_month = int(daily.index[-1].month)
-    recent_factor = float(by_month.get(recent_month, annual_mean) / annual_mean)
+    dates, y = daily.index, daily.to_numpy(dtype=float)
+    t0 = dates[0]
 
-    # year-on-year growth (last 90 days vs the same period a year earlier, else slope)
-    yoy = 0.0
-    if (daily.index[-1] - daily.index[0]).days > 400:
-        last = daily.tail(90).mean()
-        prev = daily[(daily.index >= daily.index[-1] - pd.Timedelta(days=455)) &
-                     (daily.index <= daily.index[-1] - pd.Timedelta(days=365))].mean()
-        if prev and not np.isnan(prev):
-            yoy = (last / prev - 1) * 100
-    else:
-        slope = np.polyfit(np.arange(len(daily)), daily.values, 1)[0]
-        yoy = slope * 365 / max(1.0, annual_mean) * 100
+    def fit(idx):
+        X = _design(dates[idx], t0)
+        beta, *_ = np.linalg.lstsq(X, y[idx], rcond=None)
+        return beta
 
-    # project the recent level forward, adjusting from its season to winter
-    expected = recent_level * (1 + yoy / 100.0) * (winter_factor / max(0.5, recent_factor))
-    winter_uplift_pct = (expected / recent_level - 1) * 100
+    # backtest: hold out the most recent 28 days when there is enough history
+    accuracy = None
+    if len(daily) >= 120:
+        train = np.arange(len(daily) - 28)
+        beta_bt = fit(train)
+        pred = _design(dates[-28:], t0) @ beta_bt
+        mape = float(np.mean(np.abs(pred - y[-28:]) / np.maximum(1.0, y[-28:])) * 100)
+        accuracy = {"mape_pct": round(mape, 1), "holdout_days": 28}
+
+    beta = fit(np.arange(len(daily)))
+
+    def predict(ds):
+        return _design(pd.DatetimeIndex(ds), t0) @ beta
+
+    # recent level: the model's view of a typical day right now
+    recent_level = float(np.mean(predict(pd.date_range(dates[-1] - pd.Timedelta(days=27),
+                                                       dates[-1]))))
+    # winter: a typical day across the ongoing-or-upcoming Dec-Feb window
+    # (history ending in Dec belongs to THIS winter; Jan/Feb to the one that
+    # started the previous December)
+    last = dates[-1]
+    winter_year = last.year - 1 if last.month <= 2 else last.year
+    winter_start = pd.Timestamp(year=winter_year, month=12, day=1)
+    winter_days = pd.date_range(winter_start, winter_start + pd.Timedelta(days=89))
+    expected = float(np.mean(predict(winter_days)))
+    winter_uplift_pct = (expected / max(1.0, recent_level) - 1) * 100
+
+    annual_mean = float(np.mean(y))
+    yoy = float(beta[1] / max(1.0, annual_mean) * 100)          # trend %/year
+    bh_pct = float(beta[6] / max(1.0, annual_mean) * 100)       # bank-holiday lift
 
     # hour-of-day shape from data if present, else the standard shape
     profile = HOURLY
@@ -104,10 +152,12 @@ def forecast_from_history(df: pd.DataFrame) -> dict:
 
     busiest_day = max(DOW, key=DOW.get)
     peak_hour = int(np.argmax(profile))
-    note = (f"Based on your data: about {round(recent_level)} attendances a day "
-            f"recently, growing roughly {yoy:+.0f}% a year, and running about "
-            f"{(winter_factor-1)*100:+.0f}% versus the yearly average in winter. "
+    note = (f"Based on your data: about {round(recent_level)} attendances a day now, "
+            f"trend {yoy:+.0f}% a year, bank holidays running about {bh_pct:+.0f}%. "
             f"Forecast for this winter: about {round(expected)} a day.")
+    if accuracy:
+        note += (f" Backtested on your last {accuracy['holdout_days']} days: typically "
+                 f"within {accuracy['mape_pct']:.0f}% of the actual daily figure.")
     return {
         "now_per_day": round(recent_level),
         "expected_per_day": round(expected),
@@ -119,6 +169,10 @@ def forecast_from_history(df: pd.DataFrame) -> dict:
         "hourly_profile": hourly,
         "summary": note,
         "from_data": True,
+        "accuracy": accuracy,
+        "components": {"trend_pct_per_year": round(yoy, 1),
+                       "bank_holiday_pct": round(bh_pct, 1),
+                       "winter_vs_now_pct": round(winter_uplift_pct, 1)},
     }
 
 
@@ -134,6 +188,7 @@ def generate_daily_history(years: float = 2.0, base: float = 320.0, seed: int = 
         trend = 1 + 0.03 * (i / 365)                       # +3% / year
         # seasonal: winter peak, summer trough (cosine on day-of-year)
         seasonal = 1 + 0.12 * np.cos(2 * np.pi * (d.dayofyear - 15) / 365)
-        val = base * trend * seasonal * dow[d.dayofweek] * rng.normal(1.0, 0.07)
+        bh = 1.15 if d.strftime("%Y-%m-%d") in BANK_HOLIDAYS else 1.0
+        val = base * trend * seasonal * dow[d.dayofweek] * bh * rng.normal(1.0, 0.07)
         rows.append({"date": d.date().isoformat(), "attendances": max(1, int(round(val)))})
     return pd.DataFrame(rows)

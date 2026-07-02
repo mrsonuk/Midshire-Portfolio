@@ -28,8 +28,16 @@ def _clean(t):
     return t.replace("<b>", "").replace("</b>", "")
 
 
-def build_report(pathway_file, out_pdf, replications=16, seed=7):
-    p = Pathway.load(pathway_file)
+def build_report(pathway_or_file, out_pdf, replications=16, seed=7, name=None, invest=None):
+    """Build the decision report.
+
+    ``pathway_or_file`` is a pathway JSON path or an already-built raw dict
+    (e.g. the configured department). ``invest`` is an optional gap-analysis
+    payload (with finance blocks) rendered as an investment-case page."""
+    p = (Pathway.from_dict(pathway_or_file) if isinstance(pathway_or_file, dict)
+         else Pathway.load(pathway_or_file))
+    if name:
+        p.name = name
     res = run_cosim(p, seed=seed)
     m = {**kpis(res, p), **uec_metrics(res, p)}
     diag = diagnose(res, p)
@@ -40,14 +48,16 @@ def build_report(pathway_file, out_pdf, replications=16, seed=7):
         {"name": "+30% community capacity", "sd": {"community_capacity": int(p.sd.get("community_capacity", 60) * 1.3),
                                                    "community_clearance_per_hour": 6}},
         {"name": "Winter +15% demand", "arrivals_scale": 1.15},
-    ], replications=max(6, replications // 2))
+    ], replications=max(2, replications // 2))
 
     Path(out_pdf).parent.mkdir(parents=True, exist_ok=True)
     with PdfPages(out_pdf) as pdf:
         _summary_page(pdf, p, m, diag, scorecard, mc, cmp)
         _sd_page(pdf, p, res)
+        if invest and invest.get("missing"):
+            _invest_page(pdf, invest)
         d = pdf.infodict()
-        d["Title"] = f"UEC Hybrid Simulator — {p.name}"
+        d["Title"] = f"UEC Hybrid Simulator - {p.name}"
     return out_pdf
 
 
@@ -57,7 +67,7 @@ def _summary_page(pdf, p, m, diag, scorecard, mc, cmp):
     ax.add_patch(plt.Rectangle((0, 0.92), 1, 0.08, color=NHS_BLUE))
     ax.text(0.03, 0.957, "NHS", fontsize=19, weight="bold", color=NHS_BLUE, ha="center", va="center",
             bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none"))
-    ax.text(0.10, 0.963, "UEC Hybrid Simulator — Decision Report", fontsize=17, color="white", weight="bold", va="center")
+    ax.text(0.10, 0.963, "UEC Hybrid Simulator - Decision Report", fontsize=17, color="white", weight="bold", va="center")
     ax.text(0.10, 0.935, p.name, fontsize=11, color="#CFE6F7", va="center")
 
     y = 0.87
@@ -66,7 +76,7 @@ def _summary_page(pdf, p, m, diag, scorecard, mc, cmp):
         f"Modelled demand: {m['throughput_per_day']:.0f} attendances/day ({m['n_patients']:,} over the simulated period).",
         f"4-hour standard: {m['four_hour']:.0f}% (95% CI {s4.get('ci_low',0):.0f}-{s4.get('ci_high',0):.0f}% over {mc['replications']} weeks); {m['breaches']:,} breaches.",
         f"12-hour waits {m['twelve_hour']:.1f}%; admitted {m['admit_rate']:.0f}%; mean LOS {m['mean_los']/60:.1f} h.",
-        f"Inpatient bed occupancy {m.get('bed_occupancy',0):.0f}% — the System-Dynamics driver of ED exit-block.",
+        f"Inpatient bed occupancy {m.get('bed_occupancy',0):.0f}% - the System-Dynamics driver of ED exit-block.",
     ]
     ax.text(0.03, y, "Executive summary", fontsize=14, color=NHS_DARK, weight="bold"); y -= 0.038
     for ln in lines:
@@ -96,17 +106,17 @@ def _summary_page(pdf, p, m, diag, scorecard, mc, cmp):
         col = NHS_GREY if r["scenario"] == "Baseline" else (NHS_GREEN if d >= 0 else NHS_RED)
         ax.text(0.04, y, r["scenario"], fontsize=9.5, color=NHS_GREY)
         ax.text(0.55, y, f"{r['four_hour']:.0f}%", fontsize=9.5, color=NHS_GREY)
-        ax.text(0.72, y, "—" if r["scenario"] == "Baseline" else f"{d:+.0f} pts", fontsize=9.5, weight="bold", color=col)
+        ax.text(0.72, y, "-" if r["scenario"] == "Baseline" else f"{d:+.0f} pts", fontsize=9.5, weight="bold", color=col)
         ax.text(0.88, y, f"{r.get('bed_occupancy',0):.0f}%", fontsize=9.5, color=NHS_GREY); y -= 0.024
 
-    ax.text(0.03, 0.03, "Hybrid SD+DES model — synthetic data grounded in the NHS Model ED. "
+    ax.text(0.03, 0.03, "Hybrid SD+DES model - synthetic data grounded in the NHS Model ED. "
             "Validate against local data before operational use.", fontsize=8, color=NHS_GREY)
     pdf.savefig(fig, facecolor="white"); plt.close(fig)
 
 
 def _sd_page(pdf, p, res):
     fig, (a1, a2) = plt.subplots(2, 1, figsize=(11.69, 8.27), dpi=150)
-    fig.suptitle("System Dynamics — whole-system stocks and feedback", fontsize=15,
+    fig.suptitle("System Dynamics - whole-system stocks and feedback", fontsize=15,
                  color=NHS_DARK, weight="bold", x=0.12, ha="left")
     hist = res.get("sd_history") or []
     hours = [t / 60 for t, _ in hist]
@@ -120,6 +130,40 @@ def _sd_page(pdf, p, res):
     for a in (a1, a2):
         a.spines[["top", "right"]].set_visible(False)
     fig.tight_layout(rect=[0, 0, 1, 0.95])
+    pdf.savefig(fig, facecolor="white"); plt.close(fig)
+
+
+def _invest_page(pdf, invest):
+    """Investment case: the missing Model ED elements, what each is worth and
+    what it costs - priced from the trust-editable cost book."""
+    fig = plt.figure(figsize=(11.69, 8.27), dpi=150)
+    ax = fig.add_axes([0, 0, 1, 1]); ax.set_axis_off()
+    ax.add_patch(plt.Rectangle((0, 0.92), 1, 0.08, color=NHS_BLUE))
+    ax.text(0.03, 0.957, "NHS", fontsize=19, weight="bold", color=NHS_BLUE, ha="center", va="center",
+            bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="none"))
+    ax.text(0.10, 0.963, "Investment case - missing Model ED elements", fontsize=17,
+            color="white", weight="bold", va="center")
+    ax.text(0.10, 0.935, f"Baseline 4-hour performance about {invest.get('baseline_four_hour', 0)}%; "
+            f"{invest.get('have', 0)} of {invest.get('total', 0)} Model ED elements in place.",
+            fontsize=11, color="#CFE6F7", va="center")
+
+    y = 0.86
+    note = ""
+    for item in invest["missing"][:7]:
+        fin = item.get("finance") or {}
+        ax.text(0.03, y, item["label"], fontsize=12, weight="bold", color=NHS_DARK)
+        ax.text(0.97, y, f"{item.get('cost', 'Moderate')} cost", fontsize=10, weight="bold",
+                ha="right", color={"Low": NHS_GREEN, "Moderate": NHS_ORANGE}.get(item.get("cost"), NHS_RED))
+        y -= 0.028
+        ax.text(0.04, y, _clean(item.get("benefit", "")), fontsize=10, color=NHS_GREY); y -= 0.026
+        if fin.get("summary"):
+            ax.text(0.04, y, fin["summary"], fontsize=10, weight="bold", color=NHS_BLUE); y -= 0.026
+            note = (fin.get("assumptions") or [note])[-1]
+        y -= 0.014
+        if y < 0.12:
+            break
+    ax.text(0.03, 0.045, "Every figure comes from the trust-editable cost book. " + _clean(note),
+            fontsize=8, color=NHS_GREY, wrap=True)
     pdf.savefig(fig, facecolor="white"); plt.close(fig)
 
 

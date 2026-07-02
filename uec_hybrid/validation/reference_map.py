@@ -46,6 +46,13 @@ def reference_map(pathway: Pathway) -> dict:
     for (a, b) in list(legal):
         if b in closed_fb:
             legal.add((a, closed_fb[b]))
+    # reneging: a patient who gives up at a node exits from its PREDECESSOR's
+    # event chain straight to the renege sink, so that hop is legal too.
+    renege_to = {nid: node["renege"]["to"] for nid, node in pathway.nodes.items()
+                 if node.get("renege")}
+    for (a, b) in list(legal):
+        if b in renege_to:
+            legal.add((a, renege_to[b]))
     sinks = {nid: node.get("label", nid) for nid, node in pathway.nodes.items()
              if node.get("type") == "sink"}
     return {"legal": legal, "band_index": band_index, "bedded": bedded,

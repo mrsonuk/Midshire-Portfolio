@@ -1,5 +1,5 @@
 """
-uec_hybrid — a hybrid System-Dynamics + Discrete-Event Simulation model of NHS
+uec_hybrid - a hybrid System-Dynamics + Discrete-Event Simulation model of NHS
 Urgent & Emergency Care, grounded in the NHS England "Model Emergency Department"
 (Feb 2026) and the Sussex "Urgent and Emergency Care Model" (Aug 2025).
 """

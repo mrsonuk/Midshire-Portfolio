@@ -1,5 +1,5 @@
 """
-SystemState — the single shared object across the SD<->DES seam.
+SystemState - the single shared object across the SD<->DES seam.
 
 Two halves with deliberately opposite update disciplines:
 

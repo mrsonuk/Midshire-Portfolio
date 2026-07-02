@@ -1,7 +1,7 @@
 """
 The "are you staffed for the demand curve?" view: per staff area, the headcount by
 hour against the arrivals shape, the hours where staffing lags demand, plus the
-weekly pay-bill — all in plain terms for an ED ops/workforce lead.
+weekly pay-bill - all in plain terms for an ED ops/workforce lead.
 
 ``staffing_and_cost`` is pure and simulation-free, so the rota editor can preview a
 change instantly; ``workforce_view`` wraps it for a whole department.
@@ -9,7 +9,7 @@ change instantly; ``workforce_view`` wraps it for a whole department.
 from __future__ import annotations
 
 from .rota import staffing_by_hour, weekly_cost, cost_breakdown, understaffed_hours
-from .roles import STAFF_RESOURCES, AREA_LABEL, ROLES
+from .roles import STAFF_RESOURCES, SUPPORT_RESOURCES, RATIO_RESOURCES, AREA_LABEL, ROLES
 
 
 def _demand_profile(attendances_per_day: float) -> list[float]:
@@ -19,7 +19,7 @@ def _demand_profile(attendances_per_day: float) -> list[float]:
 
 
 def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
-    """Staffing-vs-demand and cost for a rota — no simulation, instant.
+    """Staffing-vs-demand and cost for a rota - no simulation, instant.
 
     ``present`` optionally restricts the staff areas shown (e.g. only those the
     department actually has); ``None`` shows every staffed area in the rota.
@@ -28,8 +28,12 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
     demand = _demand_profile(attendances_per_day)
 
     areas = []
-    for res in STAFF_RESOURCES:
-        if present is not None and res not in present:
+    for res in STAFF_RESOURCES + SUPPORT_RESOURCES:
+        # engine-constraining areas follow the department's set-up; ratio-
+        # constrained nursing and the cost-only support workforce are always
+        # shown (they never appear in a built pathway's resource list).
+        if (res in STAFF_RESOURCES and res not in RATIO_RESOURCES
+                and present is not None and res not in present):
             continue
         if res not in staffing:
             continue
@@ -39,6 +43,7 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
             "resource": res, "label": AREA_LABEL.get(res, res),
             "staffing": s, "peak": max(s), "overnight": min(s),
             "understaffed_hours": under,
+            "advisory": res in SUPPORT_RESOURCES,
             "roles": [{"id": r, "label": ROLES[r]["label"]} for r in ROLES if ROLES[r]["staffs"] == res],
         })
     # a plain headline about the worst-staffed window
@@ -46,8 +51,8 @@ def staffing_and_cost(rota, attendances_per_day: float, present=None) -> dict:
     headline = "Your staffing broadly matches demand through the day."
     if worst and worst["understaffed_hours"]:
         hrs = worst["understaffed_hours"]
-        span = f"{min(hrs):02d}:00–{(max(hrs)+1) % 24:02d}:00"
-        headline = (f"{worst['label']} look light against demand around {span} — "
+        span = f"{min(hrs):02d}:00-{(max(hrs)+1) % 24:02d}:00"
+        headline = (f"{worst['label']} look light against demand around {span} - "
                     f"the most likely time you’ll fall behind.")
     return {
         "demand": [round(x, 1) for x in demand],

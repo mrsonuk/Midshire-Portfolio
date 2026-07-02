@@ -27,8 +27,8 @@ function renderPathway(){
   for(const[n,c] of Object.entries(p.resources)){
     const r=el("div","row"); r.append(el("span",null,n.replace(/_/g," ")));
     if(Array.isArray(c)){
-      // a by-hour staffing rota (set in the product) — show its peak, keep the rota
-      r.append(el("span",null,"rota · peak "+Math.max.apply(null,c)));
+      // a by-hour staffing rota (set in the product) - show its peak, keep the rota
+      r.append(el("span",null,"rota, peak "+Math.max.apply(null,c)));
     }else{
       const i=el("input");i.type="number";i.min=0;i.value=c;i.dataset.res=n;r.append(i);
     }
@@ -42,9 +42,9 @@ function cfg(extra){return Object.assign({pathway:current,overrides:overrides(),
   sd_overrides:{inpatient_beds:+$("#sd_beds").value,community_capacity:+$("#sd_comm").value}},extra||{});}
 
 function setBusy(on,msg,cls){busy=on;document.querySelectorAll("button").forEach(b=>b.disabled=on);
-  const s=$("#status");s.className="status "+(cls||(on?"run":"ok"));s.innerHTML=on?'<span class="spin"></span> '+(msg||"Working…"):(msg||"");}
+  const s=$("#status");s.className="status "+(cls||(on?"run":"ok"));s.innerHTML=on?'<span class="spin"></span> '+(msg||"Working..."):(msg||"");}
 async function post(u,b){const r=await fetch(u,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(b)});if(!r.ok)throw new Error("server "+r.status);return r.json();}
-function loading(id,m){Plotly.purge(id);$("#"+id).innerHTML='<div class="loading"><span class="spin"></span> '+(m||"Simulating…")+'</div>';}
+function loading(id,m){Plotly.purge(id);$("#"+id).innerHTML='<div class="loading"><span class="spin"></span> '+(m||"Simulating...")+'</div>';}
 function plot(id,f){Plotly.purge(id);$("#"+id).innerHTML="";return Plotly.newPlot(id,f.data,f.layout,{responsive:true,displayModeBar:false});}
 function switchTab(n){document.querySelectorAll(".tab").forEach(t=>t.classList.toggle("active",t.dataset.tab===n));
   document.querySelectorAll(".panel").forEach(p=>p.classList.toggle("active",p.id==="panel-"+n));}
@@ -53,25 +53,27 @@ function renderScorecard(cards){
   const box=$("#scorecard");box.innerHTML="";
   for(const c of cards){const d=el("div","sc "+c.status);const a=c.higher_better?"≥":"<";
     d.innerHTML='<div class="ring">'+c.value.toFixed(0)+c.unit+'</div><div><div class="lbl">'+c.label+
-      '</div><div class="tgt">Target '+a+" "+c.target+c.unit+" · "+c.note+'</div></div><div class="badge">'+c.status.toUpperCase()+'</div>';
+      '</div><div class="tgt">Target '+a+" "+c.target+c.unit+", "+c.note+'</div></div><div class="badge">'+c.status.toUpperCase()+'</div>';
     box.append(d);}
 }
 function showDiag(d){$("#diagnosis").innerHTML='<div class="dh">Bottleneck diagnosis</div><p>'+d.headline+'</p><p>'+d.recommendation+'</p>';}
 
 async function runSim(){
   if(busy)return;
-  try{setBusy(true,"Simulating (SD+DES)…");loading("utilisation");loading("waits");loading("sd_stocks");loading("sd_feedback");
+  try{setBusy(true,"Simulating (SD+DES)...");loading("utilisation");loading("waits");loading("sd_stocks");loading("sd_feedback");
     const d=await post("/api/simulate",cfg());
     renderScorecard(d.scorecard);showDiag(d.diagnosis);renderFlowMap(d.flow_model);
     await plot("utilisation",d.figures.utilisation);await plot("waits",d.figures.waits);
     await plot("sd_stocks",d.figures.sd_stocks);await plot("sd_feedback",d.figures.sd_feedback);
+    if(d.figures.sankey)await plot("sankey",d.figures.sankey);
+    if(d.figures.heatmap)await plot("heatmap",d.figures.heatmap);
     renderValSummary(d.conformance,null);
     setBusy(false,"Simulation complete ("+(d.conformance.passed?"pathway validated":"validation: "+d.conformance.n_violations+" violations")+")","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
 }
 async function runMC(){
   if(busy)return;switchTab("mc");
-  try{setBusy(true,"Monte-Carlo (24 weeks)…");loading("mc_four");loading("mc_twelve");loading("mc_occ");
+  try{setBusy(true,"Monte-Carlo (24 weeks)...");loading("mc_four");loading("mc_twelve");loading("mc_occ");
     const d=await post("/api/montecarlo",cfg({replications:24}));
     const ip=$("#mcInterp");ip.style.display="block";ip.innerHTML='<div class="dh">What this means</div><p>'+d.interpretation+'</p>';
     await plot("mc_four",d.four_hour);await plot("mc_twelve",d.twelve);await plot("mc_occ",d.occ_band);
@@ -105,7 +107,7 @@ function renderFlowMap(data){
     const c=el("div","fmnode "+kind);if(n.is_bottleneck)c.classList.add("bottleneck");
     c.style.left=px(n)+"px";c.style.top=py(n)+"px";
     let h='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
-    if(n.kind==="process")h+='<div class="wt">wait '+n.mean_wait.toFixed(0)+"m · "+n.utilisation.toFixed(0)+'% busy</div>';
+    if(n.kind==="process")h+='<div class="wt">wait '+n.mean_wait.toFixed(0)+"m, "+n.utilisation.toFixed(0)+'% busy</div>';
     if(n.is_bottleneck)h+='<div class="flag">BOTTLENECK</div>';
     c.innerHTML=h;host.append(c);}
   let last=performance.now();
@@ -116,7 +118,7 @@ function renderFlowMap(data){
   const sb=$("#stocks");sb.innerHTML="";
   for(const s of data.stocks||[]){const col=s.occupancy>92?"var(--red)":s.occupancy>80?"var(--orange)":"var(--green)";
     const d=el("div","stock");d.innerHTML='<div class="sn">'+s.name+'</div><div class="so" style="color:'+col+'">'+s.occupancy+
-      '%</div><div class="bar"><i style="width:'+Math.min(100,s.occupancy)+'%;background:'+col+'"></i></div><div class="sf">'+s.signal+" → "+s.feeds+'</div>';sb.append(d);}
+      '%</div><div class="bar"><i style="width:'+Math.min(100,s.occupancy)+'%;background:'+col+'"></i></div><div class="sf">'+s.signal+" "+s.feeds+'</div>';sb.append(d);}
 }
 
 // ---- scenarios ----
@@ -135,7 +137,7 @@ function addScenarioRow(pre){
   const nm=el("input");nm.type="text";nm.value=pre.name;nm.dataset.k="name";nm.style.marginBottom="6px";d.append(nm);
   const res=PATHWAYS[current].resources;
   const r1=el("div","row");const sel=el("select");sel.dataset.k="res";
-  sel.append(new Option("— ED resource —",""));for(const r in res)sel.append(new Option(r.replace(/_/g," "),r));
+  sel.append(new Option("- ED resource -",""));for(const r in res)sel.append(new Option(r.replace(/_/g," "),r));
   const dl=el("input");dl.type="number";dl.value=pre.resources?(""+Object.values(pre.resources)[0]).replace("+",""):0;dl.dataset.k="delta";dl.style.width="62px";
   sel.value=pre.resources?Object.keys(pre.resources)[0]:"";r1.append(el("span",null,"Δ capacity"),sel,dl);d.append(r1);
   const r2=el("div","row");const beds=el("input");beds.type="number";beds.dataset.k="beds";beds.placeholder="beds";beds.style.width="62px";
@@ -162,7 +164,7 @@ function collectScenarios(){
 }
 async function runScenarios(){
   if(busy)return;
-  try{setBusy(true,"Comparing scenarios…");loading("scn_four");loading("scn_twelve");loading("scn_tornado");
+  try{setBusy(true,"Comparing scenarios...");loading("scn_four");loading("scn_twelve");loading("scn_tornado");
     const d=await post("/api/scenarios",cfg({scenarios:collectScenarios(),replications:8}));
     await plot("scn_four",d.four_hour);await plot("scn_twelve",d.twelve);
     if(d.tornado)await plot("scn_tornado",d.tornado);else $("#scn_tornado").innerHTML="";
@@ -186,8 +188,8 @@ function renderScnTable(rows){
 function renderValSummary(conf,variants){
   const col=conf.passed?"var(--green)":"var(--red)";
   let h='<div class="dh">Process-map conformance</div><p style="color:'+col+';font-weight:700">'+
-    (conf.passed?"PASS — simulated pathway faithfully reproduces the Model ED design":
-     "ISSUES — "+conf.n_violations+" violations")+'</p><p>Conformance rate: '+conf.conformance_rate.toFixed(1)+"% of patients.</p>";
+    (conf.passed?"PASS - simulated pathway faithfully reproduces the Model ED design":
+     "ISSUES - "+conf.n_violations+" violations")+'</p><p>Conformance rate: '+conf.conformance_rate.toFixed(1)+"% of patients.</p>";
   if(conf.by_type&&Object.keys(conf.by_type).length)h+="<p>By type: "+JSON.stringify(conf.by_type)+"</p>";
   $("#valSummary").innerHTML=h;
   if(variants){let t="<table><tr><th>Count</th><th>Variant</th></tr>";
@@ -195,7 +197,7 @@ function renderValSummary(conf,variants){
     $("#variants").innerHTML=t+"</table>";}
 }
 async function loadValidation(){
-  try{setBusy(true,"Validating pathway…");
+  try{setBusy(true,"Validating pathway...");
     const d=await post("/api/validate",cfg());renderValSummary(d.conformance,d.variants);
     setBusy(false,d.conformance.passed?"Validation passed":"Validation found issues","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
@@ -205,7 +207,7 @@ async function loadValidation(){
 function setCalib(on){const e=$("#calibState");e.textContent="Data source: "+(on?"uploaded extract (calibrated)":"synthetic (placeholder)");e.style.color=on?"var(--green)":"var(--grey)";}
 async function runCalibrate(){
   if(busy)return;const f=$("#dataFile").files[0];if(!f){setBusy(false,"Choose a CSV first","err");return;}
-  try{setBusy(true,"Calibrating…");const fd=new FormData();fd.append("file",f);fd.append("pathway",current);
+  try{setBusy(true,"Calibrating...");const fd=new FormData();fd.append("file",f);fd.append("pathway",current);
     const r=await fetch("/api/calibrate",{method:"POST",body:fd});const d=await r.json();
     if(!r.ok||d.error)throw new Error(d.error||"failed");
     const b=$("#calibSummary");b.style.display="block";
@@ -215,7 +217,7 @@ async function runCalibrate(){
 }
 async function resetCalib(){
   if(busy)return;
-  try{setBusy(true,"Resetting…");await post("/api/calibrate/reset",{pathway:current});
+  try{setBusy(true,"Resetting...");await post("/api/calibrate/reset",{pathway:current});
     $("#calibSummary").style.display="none";setCalib(false);await runSim();setBusy(false,"Reset to synthetic","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
 }

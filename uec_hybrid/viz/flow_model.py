@@ -12,8 +12,8 @@ from ..analysis.metrics import (flow_counts, stage_waits, resource_utilisation, 
 
 BAND_LABEL = {
     "front_door": "Front door (15 min)",
-    "core_0_4h": "Core ED (0–4h)",
-    "emergency_4_12h": "Emergency / specialist (4–12h)",
+    "core_0_4h": "Core ED (0-4h)",
+    "emergency_4_12h": "Emergency / specialist (4-12h)",
     "admission_12h_plus": "Admission (>12h)",
 }
 
@@ -111,7 +111,7 @@ def _occ_by_hour(starts, ends, warmup, duration, step=10):
     grid = np.arange(warmup, duration, step)
     hod = (grid / 60 % 24).astype(int)
     counts = np.array([int(((starts <= t) & (ends > t)).sum()) for t in grid])
-    # whole numbers throughout — people and patients are counted, not fractional
+    # whole numbers throughout - people and patients are counted, not fractional
     return [int(round(float(counts[hod == h].mean()))) if (hod == h).any() else 0 for h in range(24)]
 
 
@@ -138,7 +138,7 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
                                                    sub["service_end"].to_numpy(), w, dur)
 
     # Operational bottleneck: the busiest pinch-point across the WORKING DAY
-    # (08:00–22:00, when ops teams act), not an overnight low-volume artefact.
+    # (08:00-22:00, when ops teams act), not an overnight low-volume artefact.
     peak_hours, op_bottleneck = [], data.get("bottleneck")
     if not events.empty:
         ev = events.copy()
@@ -155,8 +155,28 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
             lh = bs.groupby("hod")["wait"].sum()
             peak_hours = sorted(int(h) for h in lh[lh >= lh.max() * 0.6].index)
 
+    # what serves each area (spaces + staff) so the drill-down can explain WHO
+    # and WHAT a patient is waiting for there, and who is on at a given hour
+    from ..workforce.roles import STAFF_RESOURCES, ROLES, AREA_LABEL, roles_for
+    area_resources, resource_meta = {}, {}
+    for nid, node in pathway.nodes.items():
+        res = list(node.get("resources") or ([node["resource"]] if node.get("resource") else []))
+        res += list(node.get("acquire") or [])
+        if res:
+            area_resources[node.get("label", nid)] = res
+        for r in res:
+            if r not in resource_meta:
+                resource_meta[r] = {
+                    "staff": r in STAFF_RESOURCES,
+                    "label": AREA_LABEL.get(r, r.replace("_", " ")),
+                    "roles": [ROLES[k]["label"] for k in roles_for(r)],
+                    "capacity": pathway.resources.get(r),   # int, or 24-hour roster list
+                }
+
     data["bottleneck"] = op_bottleneck
     data["census_by_hour"] = census
     data["area_by_hour"] = by_hour
     data["bottleneck_peak_hours"] = peak_hours
+    data["area_resources"] = area_resources
+    data["resource_meta"] = resource_meta
     return data

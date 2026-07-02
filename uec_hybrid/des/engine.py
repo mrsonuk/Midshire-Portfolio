@@ -96,21 +96,36 @@ class Simulation:
 
 
     # -- arrivals ---------------------------------------------------------- #
-    def _acuity_for(self) -> str:
-        mix = self.pathway.arrivals.get("acuity_mix")
+    def _acuity_for(self, mix=None) -> str:
+        mix = mix or self.pathway.arrivals.get("acuity_mix")
         if not mix:
             return "default"
         labels = list(mix)
         w = np.array([mix[k] for k in labels], dtype=float)
         return str(self.rng.choice(labels, p=w / w.sum()))
 
-    def _attributes_for(self, acuity: str) -> set:
+    def _attributes_for(self, acuity: str, overrides=None) -> set:
         attrs = set()
-        for name, prob in (self.pathway.arrivals.get("attributes") or {}).items():
+        probs = dict(self.pathway.arrivals.get("attributes") or {})
+        probs.update(overrides or {})       # a stream can pin/override attributes
+        for name, prob in probs.items():
             p = float(prob.get(acuity, 0.0)) if isinstance(prob, dict) else float(prob)
             if self.rng.random() < p:
                 attrs.add(name)
         return attrs
+
+    def _stream_for(self, hour):
+        """Pick the arrival stream for this hour. Streams partition the total
+        hourly profile by per-hour shares, so demand scaling stays one knob."""
+        streams = self.pathway.arrivals.get("streams")
+        if not streams:
+            return None
+        w = np.array([float(s["share_by_hour"][hour]) if "share_by_hour" in s
+                      else float(s.get("share", 0)) for s in streams])
+        tot = w.sum()
+        if tot <= 0:
+            return None
+        return streams[int(self.rng.choice(len(streams), p=w / tot))]
 
     def _arrival_generator(self):
         arrivals = self.pathway.arrivals
@@ -122,9 +137,11 @@ class Simulation:
                        else float(arrivals.get("rate_per_hour", 10)))
             yield self.env.timeout(self.rng.exponential(60.0 / rate))
             self._pid += 1
-            acuity = self._acuity_for()
-            self.env.process(self._patient(self._pid, acuity, source,
-                                           self._attributes_for(acuity)))
+            stream = self._stream_for(int((self.env.now / 60) % 24))
+            acuity = self._acuity_for((stream or {}).get("acuity_mix"))
+            attrs = self._attributes_for(acuity, (stream or {}).get("attributes"))
+            self.env.process(self._patient(self._pid, acuity, source, attrs,
+                                           stream=(stream or {}).get("name")))
 
     # -- routing ----------------------------------------------------------- #
     def _service_spec(self, node, acuity):
@@ -151,7 +168,7 @@ class Simulation:
             is_open = True
         elif o < c:
             is_open = o <= hour < c
-        else:                                 # wraps midnight (e.g. 22–06)
+        else:                                 # wraps midnight (e.g. 22-06)
             is_open = hour >= o or hour < c
         return target if is_open else node.get("closed_fallback", target)
 
@@ -179,7 +196,7 @@ class Simulation:
         return self._resolve_open(str(self.rng.choice(targets, p=probs / probs.sum())))
 
     # -- patient journey --------------------------------------------------- #
-    def _patient(self, pid, acuity, source, attrs):
+    def _patient(self, pid, acuity, source, attrs, stream=None):
         arrival = self.env.now
         prio = _priority_of(acuity, source)
         node_id = self._route(source, acuity, attrs)
@@ -202,7 +219,8 @@ class Simulation:
                 self._record_disposition(disp)
                 row = {"pid": pid, "acuity": acuity, "arrival": arrival,
                        "exit": stop, "los": stop - arrival, "disposition": disp,
-                       "priority": prio, "bands": ",".join(sorted(bands_seen))}
+                       "priority": prio, "stream": stream,
+                       "bands": ",".join(sorted(bands_seen))}
                 for name in (self.pathway.arrivals.get("attributes") or {}):
                     row[f"attr_{name}"] = name in attrs
                 self.patient_log.append(row)
@@ -227,8 +245,37 @@ class Simulation:
                 [node["resource"]] if node.get("resource") else [])
             needed = [r for r in needed if r in self.resources and r not in held]
             reqs = [self.resources[r].request(priority=prio) for r in needed]
-            for req in reqs:
-                yield req
+            grant = {}                      # resource -> time it was observed granted
+            renege = node.get("renege")
+            if renege and reqs:
+                # patients give up if the wait exceeds their patience (LWBS)
+                patience = max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
+                deadline = self.env.now + patience
+                gave_up = False
+                for r, req in zip(needed, reqs):
+                    remaining = deadline - self.env.now
+                    if remaining <= 0 and not req.triggered:
+                        gave_up = True
+                        break
+                    if not req.triggered:
+                        yield req | self.env.timeout(remaining)
+                    if not req.triggered:
+                        gave_up = True
+                        break
+                    grant[r] = self.env.now
+                if gave_up:
+                    for r, req in zip(needed, reqs):
+                        if req.triggered:
+                            self.resources[r].release(req)
+                            self._hold(pid, r, grant.get(r, self.env.now), self.env.now)
+                        else:
+                            req.cancel()
+                    node_id = renege.get("to")
+                    continue
+            else:
+                for r, req in zip(needed, reqs):
+                    yield req
+                    grant[r] = self.env.now
             wait = self.env.now - node_entry
 
             service = dist.sample(self.rng, self._service_spec(node, acuity))
@@ -236,14 +283,16 @@ class Simulation:
             if sig:
                 service *= max(0.0, self.state.get(sig, 1.0))
             cap = node.get("max_band_minutes")
-            if cap is not None:                      # e.g. EEMAC 12h total cap
-                service = max(0.0, min(service, cap - (self.env.now - arrival)))
+            if cap is not None:                      # e.g. EEMAC: up to 12h IN the unit
+                service = max(0.0, min(service, cap - (self.env.now - node_entry)))
             service_start = self.env.now
             yield self.env.timeout(service)
 
             for r, req in zip(needed, reqs):
                 self.resources[r].release(req)
-                self._hold(pid, r, service_start, self.env.now)
+                # held from the moment it was granted (includes any time spent
+                # blocked on the node's OTHER resources), not just the service
+                self._hold(pid, r, grant.get(r, service_start), self.env.now)
             self._record(pid, acuity, node, node_entry, service_start,
                          self.env.now, wait, service, needed)
 

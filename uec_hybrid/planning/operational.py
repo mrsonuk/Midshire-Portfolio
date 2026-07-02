@@ -2,7 +2,7 @@
 Operational "today / this week" view.
 
 A different audience and decision from winter planning: a site / flow manager
-asking "today is shaping up badly — what do I flex now?" The levers here cost no
+asking "today is shaping up badly - what do I flex now?" The levers here cost no
 capital (discharge push, SDEC hours, staff flex, escalation space, redirect to
 UTC, community calls), framed by effort and who owns them, with an OPEL-style risk
 read that operational teams recognise. Same hidden engine; same plain language.
@@ -13,7 +13,7 @@ from .planner import build_department, _spread, TARGET
 
 # No-capital actions a manager can take today, each as an engine change.
 ACTIONS = [
-    {"id": "discharge", "label": "Push discharges — get more inpatients out by midday",
+    {"id": "discharge", "label": "Push discharges - get more inpatients out by midday",
      "sd": {"ward_discharge_capacity_per_hour": "*1.3"},
      "effort": "Board round + criteria-to-reside review", "owner": "Ward / discharge teams"},
     {"id": "sdec", "label": "Open SDEC longer today / pull the SDEC consultant forward",
@@ -36,12 +36,12 @@ ACTIONS = [
 
 def _opel(four_hour, fullness):
     if four_hour >= 85 and fullness < 92:
-        return {"level": 1, "label": "OPEL 1 — manageable", "colour": "green"}
+        return {"level": 1, "label": "OPEL 1 - manageable", "colour": "green"}
     if four_hour >= TARGET and fullness < 95:
-        return {"level": 2, "label": "OPEL 2 — under pressure", "colour": "amber"}
+        return {"level": 2, "label": "OPEL 2 - under pressure", "colour": "amber"}
     if four_hour >= 68:
-        return {"level": 3, "label": "OPEL 3 — serious pressure", "colour": "orange"}
-    return {"level": 4, "label": "OPEL 4 — critical (corridor care / divert risk)", "colour": "red"}
+        return {"level": 3, "label": "OPEL 3 - serious pressure", "colour": "orange"}
+    return {"level": 4, "label": "OPEL 4 - critical (corridor care / divert risk)", "colour": "red"}
 
 
 def _with_fullness(raw, fullness):
@@ -49,15 +49,48 @@ def _with_fullness(raw, fullness):
     return raw
 
 
-def today_plan(attendances_today=340, hospital_fullness_pct=94.0) -> dict:
-    base_raw, fc = build_department(attendances_today, winter_uplift_pct=0)
+def project_today(arrivals_so_far: list, department=None, calibration=None) -> dict:
+    """Intraday projection: compare this morning's ACTUAL arrivals-by-hour with
+    the department's expected shape, and project the whole day from the ratio.
+    The observed hours are taken as hours 00:00 onward."""
+    hours_seen = len([a for a in arrivals_so_far if a is not None])
+    observed = float(sum(float(a or 0) for a in arrivals_so_far[:hours_seen]))
+    if department is not None:
+        raw, _ = build_department(department=department, calibration=calibration,
+                                  winter_uplift_pct=0)
+        profile = raw["arrivals"]["hourly_profile"]
+    else:
+        from .forecast import HOURLY
+        profile = list(HOURLY)
+    expected_so_far = float(sum(profile[:hours_seen])) or 1.0
+    ratio = observed / expected_so_far if hours_seen >= 3 else 1.0
+    projected = observed + ratio * float(sum(profile[hours_seen:]))
+    return {
+        "hours_seen": hours_seen,
+        "observed_so_far": round(observed),
+        "expected_so_far": round(expected_so_far),
+        "ratio": round(ratio, 2),
+        "projected_today": round(projected),
+        "note": (f"By {hours_seen:02d}:00 you have seen {round(observed)} arrivals against "
+                 f"an expected {round(expected_so_far)} - running at x{ratio:.2f}. On that "
+                 f"trajectory today lands at about {round(projected)} attendances."
+                 + (" That is materially above plan - consider early escalation."
+                    if ratio >= 1.15 else "")),
+    }
+
+
+def today_plan(attendances_today=340, hospital_fullness_pct=94.0,
+               department=None, calibration=None) -> dict:
+    base_raw, fc = build_department(attendances_today, winter_uplift_pct=0,
+                                    department=department, calibration=calibration)
     _with_fullness(base_raw, hospital_fullness_pct)
     base = _spread(base_raw, reps=5)
     risk = _opel(base["typical"], hospital_fullness_pct)
 
     actions = []
     for a in ACTIONS:
-        raw, _ = build_department(attendances_today, winter_uplift_pct=0, extra=a)
+        raw, _ = build_department(attendances_today, winter_uplift_pct=0, extra=a,
+                                  department=department, calibration=calibration)
         _with_fullness(raw, hospital_fullness_pct)
         res = _spread(raw, reps=4, seed=800)
         actions.append({
@@ -72,7 +105,7 @@ def today_plan(attendances_today=340, hospital_fullness_pct=94.0) -> dict:
         disc = next((x for x in actions if x["id"] == "discharge"), None)
         if disc and disc["delta"] >= top["delta"] - 1:
             top = disc
-    first = (f"Do this first: <b>{top['label'].lower()}</b> — it buys you about "
+    first = (f"Do this first: <b>{top['label'].lower()}</b> - it buys you about "
              f"{max(0, top['delta'])} points on the 4-hour standard today "
              f"({top['owner']})." if top else "")
     headline = (f"Today is shaping up as a {'tough' if risk['level'] >= 3 else 'busy'} day: "
@@ -83,4 +116,7 @@ def today_plan(attendances_today=340, hospital_fullness_pct=94.0) -> dict:
     return {"expected_today": fc["expected_per_day"], "fullness": round(hospital_fullness_pct),
             "risk": risk, "do_nothing": {"four_hour": base["typical"],
             "corridor_per_day": base["corridor_per_day"]},
-            "headline": headline, "actions": actions, "first": first, "target": TARGET}
+            "headline": headline, "actions": actions, "first": first, "target": TARGET,
+            "modelled": (f"Modelled on {department.name} as set up in the product"
+                         + (", calibrated from your uploaded data" if calibration else "")
+                         if department is not None else "Modelled on a typical department of this size")}

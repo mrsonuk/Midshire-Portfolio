@@ -1,6 +1,6 @@
 """
 Model ED gap analysis: which high-performing Model ED elements the department has,
-which it's missing, and — for each gap — its modelled benefit **measured the right
+which it's missing, and - for each gap - its modelled benefit **measured the right
 way**. Front-door areas (UTC, RAT, fit-to-sit, children's) are judged on 4-hour
 flow; same-day / assessment areas (SDEC, EEMAC, CDU, frailty, MH) are judged on the
 admissions they avoid and the long (12-hour) waits they cut, because those patients
@@ -46,12 +46,12 @@ def gap_analysis(dept: Department) -> dict:
         twelve_delta = round(base["twelve_hour"] - after["twelve_hour"], 1)
         if key in FLOW:
             value, unit = four_delta, "pts on 4-hr"
-            benefit = f"Speeds front-door flow — about {four_delta:+d} points on the 4-hour standard."
+            benefit = f"Speeds front-door flow - about {four_delta:+d} points on the 4-hour standard."
             score = four_delta
         else:
             value, unit = adm_avoided, "fewer admits/day"
             extra = f" and cuts long (12-hour) waits by {twelve_delta:.1f} points" if twelve_delta > 0.2 else ""
-            benefit = f"Same-day / assessment pathway — avoids about {adm_avoided:.0f} admissions a day{extra}, easing bed pressure."
+            benefit = f"Same-day / assessment pathway - avoids about {adm_avoided:.0f} admissions a day{extra}, easing bed pressure."
             score = adm_avoided * 4 + max(0, twelve_delta)   # comparable magnitude
         missing.append({"key": key, "label": a["label"], "why": a["why"], "cost": ADD_COST.get(key, "Moderate"),
                         "value": value, "unit": unit, "benefit": benefit, "four_after": round(after["four_hour"]),

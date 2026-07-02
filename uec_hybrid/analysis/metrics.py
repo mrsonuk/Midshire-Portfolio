@@ -33,7 +33,18 @@ def kpis(result: dict, pathway: Pathway) -> dict:
         "n_twelve_hour": int((los > 720).sum()),
         "admit_rate": float(admitted.mean() * 100),
         "mean_los_admitted": float(los[admitted].mean()) if admitted.any() else 0.0,
+        "lwbs": float(patients["disposition"].str.contains(
+            "without being seen", case=False, na=False).mean() * 100),
     }
+    # per-stream view (ambulance / walk-in / GP / 111) when the pathway streams
+    if "stream" in patients.columns and patients["stream"].notna().any():
+        k["by_stream"] = {
+            str(name): {
+                "per_day": float(len(sub) / sim_days),
+                "share_pct": float(len(sub) / len(patients) * 100),
+                "four_hour": float((sub["los"] <= pathway.target_minutes).mean() * 100),
+            } for name, sub in patients.groupby("stream")}
+
     # initial assessment within 15 minutes (Model ED front-door standard)
     node = pathway.uec.get("initial_assessment_node")
     if node and not events.empty:
@@ -67,6 +78,11 @@ def uec_metrics(result: dict, pathway: Pathway) -> dict:
             handover = first["service_start"] - arr.reindex(first.index)
             out["ambulance_handover_45"] = float((handover <= 45).mean() * 100)
             out["ambulance_handover_mean"] = float(handover.mean())
+            # crew time stuck at the door beyond a 15-minute norm = vehicle
+            # hours not answering calls (measured, per day)
+            sim_days = max(1e-9, (pathway.sim_duration - pathway.warmup) / 1440.0)
+            out["ambulance_vehicle_hours_lost_per_day"] = float(
+                (handover - 15).clip(lower=0).sum() / 60.0 / sim_days)
 
     mh = uec.get("mental_health_attr")
     if mh and f"attr_{mh}" in patients.columns:
@@ -175,6 +191,8 @@ SCORECARD_SPEC = [
      "<10% of attendances over 12 hours"),
     ("ambulance_handover_45", "Ambulance handover ≤45 min", 95.0, "%", True, 10,
      "Release-to-Rescue 45-minute handover"),
+    ("lwbs", "Left without being seen", 5.0, "%", False, 3,
+     "long waits drive walk-outs and unseen clinical risk"),
     ("mh_liaison_1h", "MH liaison ≤1 hour", 90.0, "%", True, 15,
      "Core24 1-hour mental-health liaison response"),
     ("mh_over_24h", "Mental health >24h in ED", 5.0, "%", False, 10,
@@ -223,7 +241,7 @@ def diagnose(result: dict, pathway: Pathway) -> dict:
         row = cand.iloc[0] if not cand.empty else util.iloc[0]
         constraint, cu = row["resource"], float(row["utilisation"])
     pretty = (constraint or "").replace("_", " ")
-    headline = (f"Biggest delay: <b>{worst['stage_label']}</b> — mean wait "
+    headline = (f"Biggest delay: <b>{worst['stage_label']}</b> - mean wait "
                 f"{worst['mean_wait']:.0f} min ({worst['lost_hours']:.0f} patient-hours lost).")
     if constraint and cu >= 80:
         rec = f"<b>{pretty}</b> is the binding constraint ({cu:.0f}% utilisation); add capacity here first."
@@ -231,7 +249,7 @@ def diagnose(result: dict, pathway: Pathway) -> dict:
         rec = f"<b>{pretty}</b> is busy ({cu:.0f}% utilisation) and likely drives this queue."
     else:
         rec = (f"No single resource is saturated (top {pretty} {cu:.0f}%); the delay is "
-               f"likely downstream exit-block — see bed occupancy on the System Dynamics tab.")
+               f"likely downstream exit-block - see bed occupancy on the System Dynamics tab.")
     return {"headline": headline, "recommendation": rec, "worst_stage": worst["stage_label"],
             "constraint": constraint, "constraint_util": cu,
             "table": waits[["stage_label", "n", "mean_wait", "lost_hours"]].head(6).to_dict("records")}
