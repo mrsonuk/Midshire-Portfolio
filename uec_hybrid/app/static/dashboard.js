@@ -57,6 +57,21 @@ function renderScorecard(cards){
     box.append(d);}
 }
 function showDiag(d){$("#diagnosis").innerHTML='<div class="dh">Bottleneck diagnosis</div><p>'+d.headline+'</p><p>'+d.recommendation+'</p>';}
+function showFmInfo(n){
+  const box=$("#fmInfo");box.style.display="block";let txt;
+  if(n.kind==="process"){
+    const busy=n.utilisation>=85?"saturated":n.utilisation>=60?"busy":"comfortable";
+    const q=n.mean_wait>=60?"a long queue":n.mean_wait>=15?"a moderate queue":"little queueing";
+    txt="<b>"+n.label+"</b> — "+n.volume.toLocaleString()+" patients through this stage. Mean wait "+
+      n.mean_wait.toFixed(0)+" min ("+q+"); the resource here is "+n.utilisation.toFixed(0)+"% used ("+busy+")."+
+      (n.is_bottleneck?" <b style='color:var(--red)'>This is the pinch point</b> — it loses the most patient-hours, so relieve it first.":
+       n.utilisation>=85?" High utilisation makes this a likely constraint.":" Not the binding constraint.");
+  }else{
+    const lbl=n.kind==="admitted"?"admitted to a bed":n.kind==="discharged"?"discharged":n.kind==="source"?"arrivals into the department":"pathway endpoint";
+    txt="<b>"+n.label+"</b> — "+n.volume.toLocaleString()+" patients ("+lbl+").";
+  }
+  box.innerHTML='<div class="dh">Block detail</div><p>'+txt+'</p>';
+}
 
 async function runSim(){
   if(busy)return;
@@ -65,6 +80,9 @@ async function runSim(){
     renderScorecard(d.scorecard);showDiag(d.diagnosis);renderFlowMap(d.flow_model);
     await plot("utilisation",d.figures.utilisation);await plot("waits",d.figures.waits);
     await plot("sd_stocks",d.figures.sd_stocks);await plot("sd_feedback",d.figures.sd_feedback);
+    const si=d.sd_interpretation||{},sb=$("#sdInterp");
+    if(si.stocks){sb.style.display="block";sb.innerHTML='<div class="dh">What the System Dynamics plots show</div>'+
+      '<p><b>Stocks (left):</b> '+si.stocks+'</p><p><b>Feedback (right):</b> '+si.feedback+'</p>';}
     if(d.figures.sankey)await plot("sankey",d.figures.sankey);
     if(d.figures.heatmap)await plot("heatmap",d.figures.heatmap);
     renderValSummary(d.conformance,null);
@@ -109,7 +127,7 @@ function renderFlowMap(data){
     let h='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
     if(n.kind==="process")h+='<div class="wt">wait '+n.mean_wait.toFixed(0)+"m, "+n.utilisation.toFixed(0)+'% busy</div>';
     if(n.is_bottleneck)h+='<div class="flag">BOTTLENECK</div>';
-    c.innerHTML=h;host.append(c);}
+    c.innerHTML=h;c.style.cursor="pointer";c.onclick=()=>showFmInfo(n);host.append(c);}
   let last=performance.now();
   (function frame(now){const dt=(now-last)/1000;last=now;
     for(const L of li)for(const d of L.dots){d.ph=(d.ph+dt*L.sp)%1;const p=L.path.getPointAtLength(d.ph*L.len);d.el.setAttribute("cx",p.x);d.el.setAttribute("cy",p.y);}
@@ -168,6 +186,8 @@ async function runScenarios(){
     const d=await post("/api/scenarios",cfg({scenarios:collectScenarios(),replications:8}));
     await plot("scn_four",d.four_hour);await plot("scn_twelve",d.twelve);
     if(d.tornado)await plot("scn_tornado",d.tornado);else $("#scn_tornado").innerHTML="";
+    const ci=$("#scnInterp");if(d.interpretation){ci.style.display="block";
+      ci.innerHTML='<div class="dh">What this comparison says</div><p>'+d.interpretation+'</p>';}
     renderScnTable(d.rows);setBusy(false,"Comparison complete","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
 }
@@ -196,9 +216,26 @@ function renderValSummary(conf,variants){
     for(const v of variants)t+="<tr><td>"+v.count.toLocaleString()+"</td><td>"+v.variant+"</td></tr>";
     $("#variants").innerHTML=t+"</table>";}
 }
+function renderStageTiming(st){
+  const box=$("#stageTiming");
+  if(!st||!st.stages||!st.stages.length){box.innerHTML="No timing to show.";return;}
+  let h='<p style="font-size:12.5px;color:var(--grey)">Based on <b>'+st.n_patients.toLocaleString()+
+    '</b> completed patients. "Time in stage" is mean queue + treatment; stages branch and overlap, '+
+    'so the true end-to-end total is the mean length of stay in the final row (not the column sum, '+st.sum_stage_time.toFixed(0)+' min).</p>';
+  h+='<table><tr><th>Stage</th><th style="text-align:right">Patients</th><th style="text-align:right">Wait</th>'+
+    '<th style="text-align:right">Treatment</th><th style="text-align:right">Time in stage (min)</th></tr>';
+  st.stages.forEach(s=>{h+='<tr><td>'+s.stage+'</td><td style="text-align:right">'+s.n.toLocaleString()+
+    '</td><td style="text-align:right">'+s.mean_wait.toFixed(0)+'</td><td style="text-align:right">'+s.mean_service.toFixed(0)+
+    '</td><td style="text-align:right;font-weight:700">'+s.mean_in_stage.toFixed(0)+'</td></tr>';});
+  h+='<tr style="font-weight:800"><td>Total pathway (mean length of stay)</td><td style="text-align:right">'+
+    st.n_patients.toLocaleString()+'</td><td></td><td></td><td style="text-align:right;border-top:2px solid var(--dark)">'+
+    st.mean_los.toFixed(0)+'</td></tr></table>';
+  box.innerHTML=h;
+}
 async function loadValidation(){
   try{setBusy(true,"Validating pathway...");
     const d=await post("/api/validate",cfg());renderValSummary(d.conformance,d.variants);
+    renderStageTiming(d.stage_timing);
     setBusy(false,d.conformance.passed?"Validation passed":"Validation found issues","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
 }

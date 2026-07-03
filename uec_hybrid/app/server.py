@@ -19,9 +19,10 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 
 from ..des.pathway import Pathway
 from ..coupling.cosim import run_cosim
-from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, scorecard_defaults, diagnose)
+from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, scorecard_defaults, diagnose,
+                                sd_interpretation, stage_timing)
 from ..analysis.montecarlo import monte_carlo
-from ..analysis.scenarios import compare_scenarios, tornado
+from ..analysis.scenarios import compare_scenarios, tornado, interpret as scenario_interpret
 from ..validation.conformance import check as conformance_check
 from ..validation.process_map import variants
 from ..viz import figures as fig
@@ -599,6 +600,7 @@ def api_simulate():
         conf = conformance_check(res, p)
         return {
             "kpis": m, "scorecard": uec_scorecard(m, targets), "diagnosis": diagnose(res, p),
+            "sd_interpretation": sd_interpretation(res),
             "flow_model": flow_model_data(res, p),
             "conformance": {k: conf[k] for k in ("conformance_rate", "n_violations", "passed", "by_type")},
             "figures": {
@@ -647,7 +649,7 @@ def api_scenarios():
     def compute():
         cmp = compare_scenarios(p, scenarios, replications=reps, feedback=fb)
         tor = tornado(p, scenarios, replications=max(6, reps // 2)) if scenarios else {"bars": []}
-        return {"rows": cmp["rows"],
+        return {"rows": cmp["rows"], "interpretation": scenario_interpret(cmp["rows"], tor),
                 "four_hour": J(fig.scenario_figure(cmp, "four_hour", "4-hour compliance (%)")),
                 "twelve": J(fig.scenario_figure(cmp, "twelve_hour", "12-hour waits (%)", higher_better=False)),
                 "tornado": J(fig.tornado_figure(tor)) if tor["bars"] else None}
@@ -662,7 +664,7 @@ def api_validate():
     res = run_cosim(p, seed=int(body.get("seed", 0)), feedback=fb, sd_overrides=sd_over)
     conf = conformance_check(res, p)
     v = variants(res).to_dict("records")
-    return jsonify({"conformance": conf, "variants": v})
+    return jsonify({"conformance": conf, "variants": v, "stage_timing": stage_timing(res, p)})
 
 
 @app.route("/api/sample-data")

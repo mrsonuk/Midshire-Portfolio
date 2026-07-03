@@ -420,6 +420,23 @@ def main():
     print(f"Service-time tuning OK: {len(srows)} stages editable; x1.5 slower cuts 4-hour "
           f"{fh_base:.0f}%->{fh_slow:.0f}%; workbook ServiceTimes tab parses.")
 
+    # --- analyst interpretations: SD read, per-stage timing, scenario impact ---
+    from ..analysis.metrics import sd_interpretation, stage_timing
+    from ..analysis.scenarios import interpret as scn_interpret
+    _res = run_cosim(p_base, seed=2)
+    sdi = sd_interpretation(_res)
+    assert sdi["stocks"] and "occupancy" in sdi["stocks"].lower() and sdi["feedback"]
+    stt = stage_timing(_res, p_base)
+    assert stt["n_patients"] > 100 and len(stt["stages"]) > 5 and stt["mean_los"] > 0
+    assert all({"mean_wait", "mean_service", "mean_in_stage"} <= set(s) for s in stt["stages"])
+    txt = scn_interpret([{"scenario": "Baseline", "four_hour": 72, "twelve_hour": 5},
+                         {"scenario": "+40 beds", "four_hour": 78, "twelve_hour": 3}],
+                        {"metric": "four_hour", "bars": [{"lever": "+40 beds", "delta": 6}]})
+    assert "+40 beds" in txt and "baseline" in txt.lower()
+    assert "baseline" in scn_interpret([]).lower()          # graceful with no scenarios
+    print(f"Analyst interpretations OK: SD read; stage timing ({len(stt['stages'])} stages, "
+          f"LOS {stt['mean_los']:.0f}m); scenario-impact text.")
+
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
     raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)
@@ -501,6 +518,14 @@ def main():
     client.post("/api/pathway-params", json={})               # reset
     assert client.get("/api/pathway-params").get_json()["params"] == {}
     print("Pathway params OK: service-time assumptions editable via API and reset.")
+
+    # --- analyst endpoints carry the new interpretation payloads ---
+    sim = client.post("/api/simulate", json={"pathway": "model_ed", "seed": 1}).get_json()
+    assert sim["sd_interpretation"]["stocks"], "simulate should return an SD interpretation"
+    vv = client.post("/api/validate", json={"pathway": "model_ed", "seed": 1}).get_json()
+    assert vv["stage_timing"]["n_patients"] > 0 and vv["stage_timing"]["stages"], vv.get("stage_timing")
+    print("Analyst endpoints OK: /api/simulate carries SD interpretation; "
+          "/api/validate carries per-stage timing + total.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report

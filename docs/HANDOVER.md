@@ -1,11 +1,13 @@
 # Model ED Optimiser - Engineering Handover
 
 **Audience:** the next engineer or team taking this on.
-**State:** Phases 0-2 of the rebuild plan complete, Phase 3 opened
-(benchmarking + intraday prediction). All work on branch
-`claude/ed-system-codebase-o9qerj`. Companion documents:
-`docs/PRODUCT_REBUILD_PLAN.md` (strategy and roadmap), `README.md` (product
-overview).
+**State:** Phases 0-3 of the rebuild plan complete (benchmarking + intraday
+prediction), plus a **data-input layer** so a department is configured with no
+code/JSON: pick-your-trust from an open-data snapshot, Excel/CSV workbook import,
+and editable-as-data costs, scorecard targets and service-time assumptions; the
+analyst surfaces now carry interpretations, clickable flow blocks and per-stage
+timing. Companion documents: `docs/PRODUCT_REBUILD_PLAN.md` (strategy and
+roadmap), `README.md` (product overview + full tab-by-tab guide).
 
 ---
 
@@ -65,16 +67,20 @@ templates (product/planner/exec/analyst) + static JS     web/ (React+TS at /app)
    | report.py  (board PDF)                 |
    +--------------------+-------------------+
                         |
+   ingest/: pick-your-trust (data/nhs_trust_snapshot.csv) + Excel/CSV workbook import
+                        |
         department/ builder: Department config -> runnable pathway raw
+        model_params.py: editable service-time overlay (global scale / per-stage means)
                         |
    simulation kernel: des/ (SimPy engine) <-> sd/ (hospital stocks)
                       coupled by coupling/ (CoSimulator, SystemState)
                       validated by validation/ (conformance vs reference map)
                         |
         demand/: streams, population determinants, ECDS calibration seam
-        pathways/model_ed.json: THE data definition of the Model ED
+        pathways/model_ed.json: THE data definition of the Model ED (structure only)
                         |
-        platform/store.py: SQLite/Postgres persistence + run cache
+        platform/store.py: SQLite/Postgres persistence + run cache + settings
+                          (cost book, role rates, scorecard targets, service-time params)
 ```
 
 ### 3.1 The kernel (do not casually rewrite)
@@ -134,6 +140,39 @@ ED nurses on shift x ratio). ENPs and porters are real engine resources;
 HCA/reception are cost-only (`SUPPORT_RESOURCES`); ED nursing is
 ratio-constrained (`RATIO_RESOURCES`).
 
+### 3.3a Data input (no code/JSON to configure a department)
+
+Four routes in, all landing on a saved `Department` (and, where relevant, a
+calibration patch / settings):
+
+- **Pick your trust** - `ingest/trust_profile.py` loads a registry from
+  `data/nhs_trust_snapshot.csv` (keyed by ODS code), so trusts are *data rows*,
+  not Python. `to_department` maps published INPUTS (attendances/day, bed
+  occupancy, beds) onto a `Department`; observed OUTCOMES (4-hour/12-hour %) are
+  kept for validation only. Missing fields fall back to the template default,
+  flagged in `notes`/`provenance`. `ingest/nhs_open_data.fetch_trust(ods)` is the
+  automatic API-pull seam (reads the snapshot; documented live adapter).
+- **Import a workbook** - `ingest/workbook.py`: `write_template()` builds a blank
+  `.xlsx` (Overview / Areas / Rota / optional Arrivals / AcuityMix / Costs /
+  ServiceTimes); `read_workbook()` returns a `Department` + optional calibration
+  patch + cost book + role rates + service params. CSV Overview also accepted.
+- **Set up by hand** - the product's *Set up my ED* form + rota editor.
+- **Calibrate** - the ECDS seam (3.5), replacing synthetic arrivals/case-mix/
+  admission rates with a real extract.
+
+Three parameter groups are **editable as data** (stored settings, no code), each
+applied at the right layer so every surface reflects them and the cache
+invalidates:
+
+- **Costs** - `finance/costbook.py` (cost book) + `workforce/roles.role_rates()`
+  (per-role hourly rates as a stored override over defaults).
+- **Standards** - `analysis/metrics.uec_scorecard(m, overrides)`; overrides via
+  `/api/scorecard-targets`.
+- **Service times** - `model_params.py` overlays a global scale / per-stage means
+  onto the pathway raw in `_dept_raw()` and `_build()`; via `/api/pathway-params`
+  or the workbook's ServiceTimes tab. Only the pathway *structure* stays in
+  `model_ed.json`.
+
 ### 3.4 Platform (persistence + caching)
 
 `platform/store.py` (SQLAlchemy): versioned department rows, calibrations,
@@ -146,7 +185,8 @@ cache-invalidation mechanism.
 
 ### 3.5 Demand seams (order matters)
 
-For "your department": `build(dept)` -> apply ECDS calibration patch ->
+For "your department": `build(dept)` -> apply ECDS calibration patch -> apply
+service-time overrides (`model_params.apply_params`) ->
 (analyst-only: population determinants, overrides, arrival scaling) ->
 `Pathway.from_dict`. Rules that keep streams truthful:
 
@@ -162,15 +202,21 @@ For "your department": `build(dept)` -> apply ECDS calibration patch ->
 `finance/costbook.py`: trust-editable assumptions with flagged indicative
 defaults (never presented as benchmarks). `finance/business_case.py` prices
 ONLY what the simulation showed (breaches/admissions avoided) and returns the
-assumptions with every case. Role hourly rates live in `workforce/roles.py`.
+assumptions with every case. Role hourly rates default in `workforce/roles.py`
+but are **editable via `role_rates()`** (a stored override merged over the
+defaults); `rota.weekly_cost`/`cost_breakdown` read it, so an edited rate moves
+the pay-bill everywhere. Cost book + role rates are also settable from the
+workbook's Costs tab.
 
 ### 3.7 Decision support
 
 - `analysis/metrics.py` - KPIs incl. LWBS, measured handover + vehicle-hours,
-  per-stream stats; RAG `uec_scorecard`; `diagnose` (pinch point + binding
-  resource).
+  per-stream stats; RAG `uec_scorecard` (editable targets); `diagnose` (pinch
+  point + binding resource); `sd_interpretation` (plain read of the SD plots);
+  `stage_timing` (per-stage wait/treatment/time-in-stage + end-to-end LOS).
 - `analysis/montecarlo.py` - parallel replications, 95% CIs.
-- `analysis/scenarios.py` - declarative what-ifs + tornado sensitivity.
+- `analysis/scenarios.py` - declarative what-ifs + tornado sensitivity +
+  `interpret` (which lever helps/hurts, top sensitivity).
 - `analysis/benchmark.py` - percentile position vs a peer CSV (synthetic
   flagged sample until real data uploaded).
 - `planning/forecast.py` - covariate regression (trend, weekday, seasonality,
@@ -180,6 +226,40 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 - `planning/surge.py` - stress templates + greedy inverse staffing solver.
 - `optimise/recommend.py` - candidates from the department's own weak points,
   paired-seed Monte-Carlo, Student-t CI gate: silence over noise.
+
+### 3.8 Surfaces & tabs (what each does, and the endpoint behind it)
+
+**Control tower `/`** (`product.html` + `product.js`):
+- *Control tower* - live flow map of the saved department, time-of-day slider,
+  clickable blocks, pinch point + when it bites, headline standards
+  typical/good/tough. `POST /api/control-tower`.
+- *Workforce* - staffing vs demand by hour, under-staffed windows, weekly
+  pay-bill; live rota editor (`/api/rota-preview`, no sim) + Apply & re-run.
+  `POST /api/workforce`.
+- *Model ED gaps* - have vs missing elements + costed business case.
+  `POST /api/gap`.
+- *Set up my ED* - **Start from your trust** (`/api/trusts`, `/api/trust/select`)
+  or **import Excel** (`/api/trust/template`, `/api/trust/import`), or the form +
+  areas/hours. Saves via `POST /api/department`.
+
+**Executive brief `/exec`** (`exec.html`): one composed screen; `GET /api/exec`,
+board PDF `GET /api/report`.
+
+**Plan ahead `/planner`** (`planner.html`): winter plan `POST /api/plan`, intraday
+`POST /api/plan-today`, surge `GET/POST /api/surge`, forecast upload
+`POST /api/forecast-data`.
+
+**Analyst view `/analyst`** (`dashboard.html` + `dashboard.js`), tabs:
+- *Live simulation* - scorecard + diagnosis + flow model (clickable blocks) +
+  utilisation/waits/Sankey/heatmap. `POST /api/simulate` (returns
+  `sd_interpretation` used on the SD tab).
+- *System Dynamics* - stock + feedback plots with a computed interpretation.
+- *Monte-Carlo* - CI distributions. `POST /api/montecarlo`.
+- *Scenarios & sensitivity* - comparison + tornado + `interpretation`.
+  `POST /api/scenarios`.
+- *Validation* - conformance + variants + **per-stage timing table** (`stage_timing`).
+  `POST /api/validate`.
+- *Data & calibration* - ECDS upload. `POST /api/calibrate[/reset]`.
 
 ## 4. API reference (all JSON unless noted)
 
@@ -210,20 +290,26 @@ assumptions with every case. Role hourly rates live in `workforce/roles.py`.
 
 ## 5. Testing
 
-`python -m uec_hybrid.tests.run` - 29 end-to-end assertions covering engine
+`python -m uec_hybrid.tests.run` - the end-to-end suite covering engine
 safety (capacity never exceeded), physics (exit-block emergence, LWBS under
 starvation, nurse-ratio capping, acuity priority), validation (clean run 100%
 conformant, injected errors caught), every seam (streams x calibration x
-population x scenarios), platform (persistence, cache), finance maths,
-forecast component recovery, surge, recommender CI gate, and all surfaces
-serving via the Flask test client. **Add a check for every new behaviour**;
+population x scenarios), the data-input layer (trust snapshot, workbook
+round-trip, editable costs/standards/service-times), analyst interpretations
+(SD read, stage timing, scenario impact), platform (persistence, cache), finance
+maths, forecast component recovery, surge, recommender CI gate, and all surfaces
++ endpoints via the Flask test client. **Add a check for every new behaviour**;
 the suite is the contract. Style: plain asserts + one printed line per area.
 
 ## 6. Known limitations and honest assumptions
 
 - **Synthetic until calibrated**: service times, patience (lognormal, mean
   180 min), nurse ratio (1:4), surge template magnitudes, cost-book defaults
-  and the benchmark sample are flagged planning assumptions, all editable.
+  and the benchmark sample are flagged planning assumptions. Costs, scorecard
+  targets and service-time means are now editable as **data** (settings /
+  workbook); the pathway *structure* (`model_ed.json`) and the remaining Python
+  constants (population coefficients, surge templates, forecast seasonality) are
+  still code — edited only to change what the model *is*, not to configure a trust.
 - **Single tenant, no auth**: one department, no users/RBAC yet; Flask dev
   server (put gunicorn + a reverse proxy in front for anything shared).
 - **HCA/reception are cost-only**; nursing constrains via ratio, not tasks.
@@ -248,6 +334,6 @@ the suite is the contract. Style: plain asserts + one printed line per area.
 
 `uec_hybrid/des/engine.py` · `uec_hybrid/pathways/model_ed.json` ·
 `uec_hybrid/coupling/cosim.py` · `uec_hybrid/department/builder.py` ·
+`uec_hybrid/ingest/` (trust_profile, workbook) · `uec_hybrid/model_params.py` ·
 `uec_hybrid/platform/store.py` · `uec_hybrid/app/server.py` ·
-`uec_hybrid/analysis/metrics.py` · `uec_hybrid/optimise/recommend.py` ·
-`uec_hybrid/tests/run.py` · `docs/PRODUCT_REBUILD_PLAN.md`
+`uec_hybrid/analysis/metrics.py` · `uec_hybrid/tests/run.py`
