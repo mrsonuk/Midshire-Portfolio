@@ -114,7 +114,7 @@ numbers line up with the control tower. Its tabs:
 | **System Dynamics** | Bed/MH occupancy, ED-crowding index and the feedback signals over time — **with a plain-language interpretation** of what the stocks and feedback plots actually mean (occupancy vs the 92% exit-block line, the bed-wait multiplier, community pull). Turn feedback off in the sidebar for the counterfactual. |
 | **Monte-Carlo** | Distributions with 95% confidence intervals over many simulated weeks, and what the spread means for planning. |
 | **Scenarios & sensitivity** | Compare what-if scenarios against baseline (each Monte-Carlo'd) with a tornado sensitivity — **and a written impact read-out**: which lever helps 4-hour most, which is the biggest risk, and the top sensitivity. |
-| **Validation** | Process-map conformance (every simulated journey checked against the Model ED graph), the observed pathway variants, and a **per-stage timing table**: patient count, wait + treatment + time-in-stage for each stage, and the true end-to-end total (mean length of stay). |
+| **Validation** | Process-map conformance (every simulated journey checked against the Model ED graph); a **per-stage timing table** (patient count, wait + treatment + time-in-stage per stage, and the true end-to-end total); and the **observed pathway variants — each route annotated with the mean time at every stage and the average total time (length of stay) for patients on that path**. Within a route the stage times reconcile to the total. |
 | **Data & calibration** | Upload an ECDS-style extract to replace synthetic arrivals/case-mix/admission rates with your real data; reset to synthetic. |
 
 The analyst sidebar exposes the model levers: whole-system feedback on/off,

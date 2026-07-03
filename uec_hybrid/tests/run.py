@@ -434,8 +434,16 @@ def main():
                         {"metric": "four_hour", "bars": [{"lever": "+40 beds", "delta": 6}]})
     assert "+40 beds" in txt and "baseline" in txt.lower()
     assert "baseline" in scn_interpret([]).lower()          # graceful with no scenarios
+    # per-variant timing: each observed route carries per-stage time + a total,
+    # and within a (linear) variant the stage times reconcile to the total LOS
+    from ..validation.process_map import variant_timing
+    vts = variant_timing(_res, top=5)
+    assert vts and vts[0]["stages"] and vts[0]["total_min"] > 0 and vts[0]["disposition"]
+    _sum = sum(s["mean_min"] for s in vts[0]["stages"])
+    assert abs(_sum - vts[0]["total_min"]) < 2, (_sum, vts[0]["total_min"])
     print(f"Analyst interpretations OK: SD read; stage timing ({len(stt['stages'])} stages, "
-          f"LOS {stt['mean_los']:.0f}m); scenario-impact text.")
+          f"LOS {stt['mean_los']:.0f}m); per-variant timing (top route {vts[0]['total_min']:.0f}m); "
+          f"scenario-impact text.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
@@ -524,6 +532,7 @@ def main():
     assert sim["sd_interpretation"]["stocks"], "simulate should return an SD interpretation"
     vv = client.post("/api/validate", json={"pathway": "model_ed", "seed": 1}).get_json()
     assert vv["stage_timing"]["n_patients"] > 0 and vv["stage_timing"]["stages"], vv.get("stage_timing")
+    assert vv["variants"] and vv["variants"][0]["stages"] and "total_min" in vv["variants"][0], vv.get("variants")
     print("Analyst endpoints OK: /api/simulate carries SD interpretation; "
           "/api/validate carries per-stage timing + total.")
 

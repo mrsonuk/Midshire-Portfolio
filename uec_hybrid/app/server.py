@@ -24,7 +24,7 @@ from ..analysis.metrics import (kpis, uec_metrics, uec_scorecard, scorecard_defa
 from ..analysis.montecarlo import monte_carlo
 from ..analysis.scenarios import compare_scenarios, tornado, interpret as scenario_interpret
 from ..validation.conformance import check as conformance_check
-from ..validation.process_map import variants
+from ..validation.process_map import variant_timing
 from ..viz import figures as fig
 from ..viz.flow_model import flow_model_data
 from ..demand.population import apply_population
@@ -663,8 +663,8 @@ def api_validate():
     p, sd_over, fb, _raw = _build(body)
     res = run_cosim(p, seed=int(body.get("seed", 0)), feedback=fb, sd_overrides=sd_over)
     conf = conformance_check(res, p)
-    v = variants(res).to_dict("records")
-    return jsonify({"conformance": conf, "variants": v, "stage_timing": stage_timing(res, p)})
+    return jsonify({"conformance": conf, "variants": variant_timing(res),
+                    "stage_timing": stage_timing(res, p)})
 
 
 @app.route("/api/sample-data")
