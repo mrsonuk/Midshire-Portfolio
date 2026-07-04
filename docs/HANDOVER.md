@@ -257,8 +257,9 @@ board PDF `GET /api/report`.
 - *Monte-Carlo* - CI distributions. `POST /api/montecarlo`.
 - *Scenarios & sensitivity* - comparison + tornado + `interpretation`.
   `POST /api/scenarios`.
-- *Validation* - conformance + variants + **per-stage timing table** (`stage_timing`).
-  `POST /api/validate`.
+- *Validation* - conformance + **per-stage timing table** (`stage_timing`) +
+  **per-variant timing** (`process_map.variant_timing`: each observed route with
+  mean time per stage + total LOS). `POST /api/validate`.
 - *Data & calibration* - ECDS upload. `POST /api/calibrate[/reset]`.
 
 ## 4. API reference (all JSON unless noted)

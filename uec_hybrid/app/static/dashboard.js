@@ -212,9 +212,26 @@ function renderValSummary(conf,variants){
      "ISSUES - "+conf.n_violations+" violations")+'</p><p>Conformance rate: '+conf.conformance_rate.toFixed(1)+"% of patients.</p>";
   if(conf.by_type&&Object.keys(conf.by_type).length)h+="<p>By type: "+JSON.stringify(conf.by_type)+"</p>";
   $("#valSummary").innerHTML=h;
-  if(variants){let t="<table><tr><th>Count</th><th>Variant</th></tr>";
-    for(const v of variants)t+="<tr><td>"+v.count.toLocaleString()+"</td><td>"+v.variant+"</td></tr>";
-    $("#variants").innerHTML=t+"</table>";}
+  if(variants)renderVariants(variants);
+}
+function renderVariants(variants){
+  if(!variants||!variants.length){$("#variants").innerHTML="No variants observed.";return;}
+  let t='<p style="font-size:12px;color:var(--grey)">Each route with its mean time per stage '+
+    '(queue + treatment) and the average total time (length of stay) for patients on that path. '+
+    'Stage names like "Clinical decision (4h)" are the 0–4h core-ED decision stage — the "(4h)" is the band, not a time.</p>'+
+    '<table><tr><th>Count</th><th>Pathway — mean time per stage</th><th style="text-align:right">Total (min)</th></tr>';
+  for(const v of variants){
+    const legacy=v.variant&&!v.stages;                 // tolerate old payloads
+    let path;
+    if(legacy){path=v.variant;}
+    else{
+      path=(v.stages||[]).map(s=>s.stage+' <b>('+s.mean_min.toFixed(0)+'m)</b>').join(" → ");
+      if(v.disposition)path+=' → <span style="color:var(--grey)">'+v.disposition+'</span>';
+    }
+    t+='<tr><td>'+v.count.toLocaleString()+'</td><td>'+path+'</td><td style="text-align:right;font-weight:700">'+
+      (v.total_min!=null?Math.round(v.total_min):"")+'</td></tr>';
+  }
+  $("#variants").innerHTML=t+"</table>";
 }
 function renderStageTiming(st){
   const box=$("#stageTiming");
