@@ -14,11 +14,14 @@ def sd_stocks_figure(result, pathway) -> go.Figure:
     if hist:
         hours = [t / 60.0 for t, _ in hist]
         fig.add_trace(go.Scatter(x=hours, y=[s["bed_occupancy"] * 100 for _, s in hist],
-                                 name="Inpatient bed occupancy %", line=dict(color=P.NHS_BLUE, width=2)))
+                                 name="Inpatient bed occupancy %", line=dict(color=P.NHS_BLUE, width=2),
+                                 hovertemplate="Hour %{x:.0f}<br>Inpatient beds: %{y:.1f}%<extra></extra>"))
         fig.add_trace(go.Scatter(x=hours, y=[s["mh_occupancy"] * 100 for _, s in hist],
-                                 name="MH bed occupancy %", line=dict(color=P.NHS_AQUA, width=2)))
+                                 name="MH bed occupancy %", line=dict(color=P.NHS_AQUA, width=2),
+                                 hovertemplate="Hour %{x:.0f}<br>MH beds: %{y:.1f}%<extra></extra>"))
         fig.add_trace(go.Scatter(x=hours, y=[s["crowding"] * 100 for _, s in hist],
-                                 name="ED crowding index %", line=dict(color=P.NHS_ORANGE, width=2, dash="dot")))
+                                 name="ED crowding index %", line=dict(color=P.NHS_ORANGE, width=2, dash="dot"),
+                                 hovertemplate="Hour %{x:.0f}<br>ED crowding: %{y:.1f}%<extra></extra>"))
         fig.add_hline(y=92, line=dict(color=P.NHS_RED, width=1, dash="dash"),
                       annotation_text="92% exit-block threshold")
     fig.update_layout(P.LAYOUT, height=360, title="System Dynamics - stocks over time",
@@ -33,9 +36,11 @@ def sd_feedback_figure(result) -> go.Figure:
     if hist:
         hours = [t / 60.0 for t, _ in hist]
         fig.add_trace(go.Scatter(x=hours, y=[s["bed_wait_multiplier"] for _, s in hist],
-                                 name="Bed-wait multiplier (exit-block)", line=dict(color=P.NHS_RED, width=2)))
+                                 name="Bed-wait multiplier (exit-block)", line=dict(color=P.NHS_RED, width=2),
+                                 hovertemplate="Hour %{x:.0f}<br>Bed-wait multiplier: %{y:.2f}×<extra></extra>"))
         fig.add_trace(go.Scatter(x=hours, y=[1 + s["community_pull"] * 5 for _, s in hist],
-                                 name="Community pull (rel.)", line=dict(color=P.NHS_GREEN, width=2)))
+                                 name="Community pull (rel.)", line=dict(color=P.NHS_GREEN, width=2),
+                                 hovertemplate="Hour %{x:.0f}<br>Community pull: %{y:.2f} (rel.)<extra></extra>"))
     fig.update_layout(P.LAYOUT, height=300, title="Feedback signals (SD → DES)",
                       xaxis_title="hours", yaxis_title="× / relative",
                       legend=dict(orientation="h", y=-0.25))
@@ -48,7 +53,8 @@ def utilisation_figure(result, pathway) -> go.Figure:
                for v in u["utilisation"]]
     fig = go.Figure(go.Bar(x=u["utilisation"], y=[r.replace("_", " ") for r in u["resource"]],
                            orientation="h", marker_color=colours,
-                           text=[f"{v:.0f}%" for v in u["utilisation"]], textposition="outside"))
+                           text=[f"{v:.0f}%" for v in u["utilisation"]], textposition="outside",
+                           hovertemplate="%{y}<br>%{x:.0f}% of capacity<extra></extra>"))
     fig.update_layout(P.LAYOUT, height=380, title="Resource utilisation - bottlenecks in red",
                       xaxis_title="% of capacity in use", xaxis_range=[0, 105])
     return fig
@@ -58,7 +64,8 @@ def waits_figure(result) -> go.Figure:
     w = stage_waits(result).head(10).iloc[::-1]
     fig = go.Figure(go.Bar(x=w["mean_wait"], y=w["stage_label"], orientation="h",
                            marker_color=P.NHS_BRIGHT,
-                           text=[f"{v:.0f}" for v in w["mean_wait"]], textposition="outside"))
+                           text=[f"{v:.0f}" for v in w["mean_wait"]], textposition="outside",
+                           hovertemplate="%{y}<br>Mean queue wait: %{x:.0f} min<extra></extra>"))
     fig.update_layout(P.LAYOUT, height=380, title="Where patients wait - mean queue (min)",
                       xaxis_title="minutes")
     return fig
@@ -70,7 +77,8 @@ def montecarlo_figure(mc, metric="four_hour", label="4-hour compliance (%)") -> 
     if s:
         vals = mc["table"][metric].dropna().to_numpy()
         fig.add_trace(go.Histogram(x=vals, nbinsx=14, marker_color=P.NHS_LIGHT,
-                                   marker_line=dict(color="white", width=1)))
+                                   marker_line=dict(color="white", width=1),
+                                   hovertemplate="%{x:.1f}%<br>%{y} simulated weeks<extra></extra>"))
         fig.add_vline(x=s["mean"], line=dict(color=P.NHS_DARK, width=2),
                       annotation_text=f"mean {s['mean']:.1f}")
         fig.add_vrect(x0=s["ci_low"], x1=s["ci_high"], fillcolor=P.NHS_BLUE, opacity=0.12,
@@ -93,7 +101,8 @@ def occupancy_band_figure(mc) -> go.Figure:
                                  fill="toself", fillcolor="rgba(0,94,184,0.15)",
                                  line=dict(width=0), name="95% CI", hoverinfo="skip"))
         fig.add_trace(go.Scatter(x=hours, y=mean, line=dict(color=P.NHS_BLUE, width=2),
-                                 name="mean occupancy"))
+                                 name="mean occupancy",
+                                 hovertemplate="Hour %{x}<br>Occupancy: %{y:.1f}%<extra></extra>"))
         fig.add_hline(y=92, line=dict(color=P.NHS_RED, width=1, dash="dash"))
     fig.update_layout(P.LAYOUT, height=340, title="Bed occupancy across replications",
                       xaxis_title="hours", yaxis_title="occupancy %")
@@ -115,7 +124,8 @@ def scenario_figure(cmp, metric="four_hour", label="4-hour compliance (%)",
                    arrayminus=[r[metric] - r[f"{metric}_lo"] for r in rows],
                    color=P.NHS_GREY, thickness=1.2, width=4)
     fig = go.Figure(go.Bar(x=names, y=vals, marker_color=colours, error_y=err,
-                           text=[f"{v:.0f}" for v in vals], textposition="outside"))
+                           text=[f"{v:.0f}" for v in vals], textposition="outside",
+                           hovertemplate="%{x}<br>%{y:.0f}%<extra></extra>"))
     fig.add_hline(y=base, line=dict(color=P.NHS_GREY, width=1, dash="dash"), opacity=0.6)
     fig.update_layout(P.LAYOUT, height=380, title=f"Scenario comparison - {label}",
                       yaxis_title=label)
@@ -127,7 +137,8 @@ def tornado_figure(tor) -> go.Figure:
     colours = [P.NHS_GREEN if b["delta"] >= 0 else P.NHS_RED for b in bars]
     fig = go.Figure(go.Bar(x=[b["delta"] for b in bars], y=[b["lever"] for b in bars],
                            orientation="h", marker_color=colours,
-                           text=[f"{b['delta']:+.1f}" for b in bars], textposition="outside"))
+                           text=[f"{b['delta']:+.1f}" for b in bars], textposition="outside",
+                           hovertemplate="%{y}<br>Change: %{x:+.1f} percentage points<extra></extra>"))
     fig.update_layout(P.LAYOUT, height=360,
                       title=f"Sensitivity - change in {tor['metric'].replace('_',' ')} vs baseline",
                       xaxis_title="percentage-point change")
@@ -151,7 +162,9 @@ def sankey_figure(result, pathway) -> go.Figure:
             link=dict(source=[idx[s] for s in edges["source"]],
                       target=[idx[t] for t in edges["target"]],
                       value=list(edges["value"]),
-                      color="rgba(0,94,184,.18)")))
+                      color="rgba(0,94,184,.18)",
+                      hovertemplate="%{source.label} → %{target.label}<br>"
+                                    "%{value:.0f} patients/week<extra></extra>")))
     fig.update_layout(P.LAYOUT, height=460, title="Patient flow (weekly volumes)")
     return fig
 
@@ -175,7 +188,8 @@ def occupancy_heatmap_figure(result, pathway) -> go.Figure:
     fig = go.Figure(go.Heatmap(
         z=rows, x=[f"{h:02d}:00" for h in range(24)], y=names,
         colorscale=[[0, "#F0F4F7"], [0.5, "#41B6E6"], [1, P.NHS_DARK]],
-        colorbar=dict(title="patients")))
+        colorbar=dict(title="patients"),
+        hovertemplate="%{y}<br>%{x}<br>%{z:.0f} patients (average)<extra></extra>"))
     fig.update_layout(P.LAYOUT, height=max(340, 26 * len(names) + 100),
                       title="Who is where, by hour of day (average patients in area)",
                       margin=dict(l=180))
