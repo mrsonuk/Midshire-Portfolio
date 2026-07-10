@@ -540,7 +540,7 @@ def main():
 
     # --- bug fixes: rostered resources, cache upsert, API guards ------------ #
     from ..analysis.scenarios import apply_scenario as _apply_scenario
-    from ..app.server import _apply_resource_override, _build
+    from ..app.server import _build
     p_dept = Pathway.from_dict(build_dept(Department.default()))
     pdiv, _ = _apply_scenario(p_dept, {"name": "+doctors", "resources": {"ed_doctor": "+2"}})
     assert isinstance(pdiv.raw["resources"]["ed_doctor"], list), "scenario must keep roster shape"
@@ -554,6 +554,18 @@ def main():
     client.post("/api/calibrate/reset", json={})
     assert store.get_calibration("your_department") is None, "reset must default to your_department"
     print("Bug fixes OK: roster scenarios/overrides; cache upsert; API guards.")
+
+    # --- control tower: pinch moves with the hour-of-day slider ------------ #
+    from ..viz.flow_model import control_tower as _control_tower
+    ct = _control_tower(run_cosim(p, seed=1), p)
+    assert len(ct["pinch_by_hour"]) == 24
+    active = [x for x in ct["pinch_by_hour"] if x]
+    assert active, "pinch_by_hour should identify at least one hourly pinch"
+    assert len(set(active)) > 1, f"pinch should move through the day, got: {set(active)}"
+    assert sum(ct["arrivals_by_hour"]) > 100
+    assert ct["exits_by_hour"].get("Discharged") and sum(ct["exits_by_hour"]["Discharged"]) > 50
+    print(f"Hourly pinch OK: moves through {len(set(active))} areas across the day "
+          f"(day-wide pinch: {ct['bottleneck']}); outcomes update by hour.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report

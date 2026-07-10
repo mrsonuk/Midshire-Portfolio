@@ -7,6 +7,8 @@ arrow back into the ED. Rendered client-side as animated SVG.
 """
 from __future__ import annotations
 
+import numpy as np
+
 from ..des.pathway import Pathway, BANDS
 from ..analysis.metrics import (flow_counts, stage_waits, resource_utilisation, diagnose)
 
@@ -16,6 +18,31 @@ BAND_LABEL = {
     "emergency_4_12h": "Emergency / specialist (4-12h)",
     "admission_12h_plus": "Admission (>12h)",
 }
+
+# Plain captions so the flow map distinguishes process steps from final outcomes.
+NODE_CAPTION = {
+    "Discharge": "In ED — final checks",
+    "Discharged": "Went home",
+    "Discharged to community": "To community / virtual ward",
+    "Admitted": "To inpatient ward",
+    "Admitted (MH)": "To MH bed",
+    "Left without being seen": "Walked out before seen",
+    "Arrival": "Incoming",
+}
+
+
+def _hourly_counts(times, warmup, duration) -> list[int]:
+    """Bin timestamps into 24 hour-of-day counts (post-warmup)."""
+    out = [0] * 24
+    if len(times) == 0:
+        return out
+    t = times[(times >= warmup) & (times < duration)]
+    if len(t) == 0:
+        return out
+    hod = (t / 60 % 24).astype(int)
+    for h in range(24):
+        out[h] = int((hod == h).sum())
+    return out
 
 
 def flow_model_data(result: dict, pathway: Pathway) -> dict:
@@ -73,6 +100,7 @@ def flow_model_data(result: dict, pathway: Pathway) -> dict:
             status = "green" if w < 15 else ("amber" if w < 60 else "red")
             nodes.append({
                 "id": n, "label": n,
+                "caption": NODE_CAPTION.get(n),
                 "x": (col + 1) / (max_col + 2),
                 "y": 0.5 if k == 1 else 0.06 + 0.88 * (i / (k - 1)),
                 "volume": inflow[n], "mean_wait": round(w),
@@ -140,6 +168,8 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
     # Operational bottleneck: the busiest pinch-point across the WORKING DAY
     # (08:00-22:00, when ops teams act), not an overnight low-volume artefact.
     peak_hours, op_bottleneck = [], data.get("bottleneck")
+    id_to_label = {nid: n.get("label", nid) for nid, n in pathway.nodes.items()}
+    pinch_by_hour = [None] * 24
     if not events.empty:
         ev = events.copy()
         ev["hod"] = (ev["service_start"] / 60 % 24).astype(int)
@@ -147,13 +177,21 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
         lost = day.groupby("stage")["wait"].sum()
         if len(lost) and lost.max() > 0:
             sid = lost.idxmax()
-            id_to_label = {nid: n.get("label", nid) for nid, n in pathway.nodes.items()}
             op_bottleneck = id_to_label.get(sid, op_bottleneck)
             for n in data["nodes"]:
                 n["is_bottleneck"] = (n["label"] == op_bottleneck)
             bs = day[day["stage"] == sid]
             lh = bs.groupby("hod")["wait"].sum()
             peak_hours = sorted(int(h) for h in lh[lh >= lh.max() * 0.6].index)
+        # pinch moves through the day: the stage losing the most patient-wait
+        # at each hour (so the time slider can retarget the PINCH flag).
+        for h in range(24):
+            sub = ev[ev["hod"] == h]
+            if sub.empty:
+                continue
+            lh = sub.groupby("stage")["wait"].sum()
+            if len(lh) and lh.max() > 0:
+                pinch_by_hour[h] = id_to_label.get(lh.idxmax())
 
     # what serves each area (spaces + staff) so the drill-down can explain WHO
     # and WHAT a patient is waiting for there, and who is on at a given hour
@@ -173,10 +211,22 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
                     "capacity": pathway.resources.get(r),   # int, or 24-hour roster list
                 }
 
+    # hourly arrivals and departures (outcome sinks never appear as event stages,
+    # so area_by_hour alone leaves their numbers stuck on the weekly total).
+    arrivals_by_hour = [0] * 24
+    exits_by_hour: dict[str, list[int]] = {}
+    if not patients.empty:
+        arrivals_by_hour = _hourly_counts(patients["arrival"].to_numpy(), w, dur)
+        for disp, sub in patients.groupby("disposition"):
+            exits_by_hour[str(disp)] = _hourly_counts(sub["exit"].to_numpy(), w, dur)
+
     data["bottleneck"] = op_bottleneck
     data["census_by_hour"] = census
     data["area_by_hour"] = by_hour
+    data["arrivals_by_hour"] = arrivals_by_hour
+    data["exits_by_hour"] = exits_by_hour
     data["bottleneck_peak_hours"] = peak_hours
+    data["pinch_by_hour"] = pinch_by_hour
     data["area_resources"] = area_resources
     data["resource_meta"] = resource_meta
     return data

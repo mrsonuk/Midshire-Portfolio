@@ -120,11 +120,13 @@ function renderTower(d){
    <button id="recBtn" class="sec" style="margin-top:10px">What should we change? Search staffing, capacity and hours</button>
    <div class="status" id="recStatus"></div><div id="recOut"></div></div>
   <div class="card"><h2>Live flow through your department</h2>
-   <p class="sub">Each box is an area; the number is how many patients are in it right now. Click any area
+   <p class="sub">Each box is an area; the number is how many patients are in it right now (or
+    how many left/arrived that hour for the outcome boxes on the right). Click any area
     for its full picture: waits, staffing, and where its patients come from and go to.
     <span class="legend"><i class="g"></i>flowing<i class="a"></i>busy<i class="r"></i>stuck</span></p>
    <div class="ctrl"><span class="when" id="whenLbl"></span>
-    <input type="range" id="hour" min="0" max="23" value="12"><span class="census" id="censusLbl"></span></div>
+    <input type="range" id="hour" min="0" max="23" value="12"><span class="census" id="censusLbl"></span>
+    <span class="hint" id="hourPinch" style="margin-left:8px"></span></div>
    <div id="flow"></div><div class="drill" id="drill"></div></div>`;
  $('#hour').oninput=e=>{curHour=+e.target.value;updateHour();};
  renderFlow(d);curHour=12;updateHour();
@@ -177,14 +179,17 @@ function renderFlow(data){
   p.setAttribute('d',`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
   p.setAttribute('fill','none');p.setAttribute('stroke','#cfd8dc');p.setAttribute('stroke-width',1+5*Math.sqrt(l.value/maxV));p.setAttribute('opacity',.7);svg.append(p);
   const nd=Math.max(1,Math.round(5*l.value/maxV)),dots=[];
-  for(let i=0;i<nd;i++){const c=document.createElementNS(SVGNS,'circle');c.setAttribute('r',2.6);c.setAttribute('fill',b.is_bottleneck?'#DA291C':'#0072CE');svg.append(c);dots.push({el:c,ph:Math.random()});}
+  for(let i=0;i<nd;i++){const c=document.createElementNS(SVGNS,'circle');c.setAttribute('r',2.6);c.setAttribute('fill','#0072CE');svg.append(c);dots.push({el:c,ph:Math.random()});}
   LINKS.push({path:p,len:p.getTotalLength(),dots,sp:.09+.05*Math.random(),source:l.source,target:l.target,value:l.value});}
  for(const n of data.nodes){
   const kind=(n.kind==='source'||n.kind==='admitted'||n.kind==='discharged')?n.kind:n.status;
-  const c=el('div','fmnode '+kind);if(n.is_bottleneck)c.classList.add('bottleneck');
+  const c=el('div','fmnode '+kind);
   c.style.left=px(n)+'px';c.style.top=py(n)+'px';c.dataset.label=n.label;c.dataset.id=n.id;
-  c.innerHTML=`<div class="nm">${n.label}</div><div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
-    (n.kind==='process'?`<div class="wt">wait ${Math.round(n.mean_wait)}m</div>`:'')+(n.is_bottleneck?'<div class="flag">PINCH</div>':'');
+  c.dataset.kind=n.kind||'process';
+  c.innerHTML=`<div class="nm">${n.label}</div>`+
+    (n.caption?`<div class="cap">${n.caption}</div>`:'')+
+    `<div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
+    (n.kind==='process'?`<div class="wt">wait ${Math.round(n.mean_wait)}m</div>`:'');
   c.onclick=()=>{SEL=n;markSelected();drill(n);};
   c.onmouseenter=()=>highlight(n.id,true);
   c.onmouseleave=()=>highlight(null,false);
@@ -202,19 +207,59 @@ function highlight(id,on){
 function markSelected(){
  $$('#flow .fmnode').forEach(nd=>nd.classList.toggle('selected',SEL&&nd.dataset.id===SEL.id));
 }
+function pinchAt(h){
+ const ph=(TOWER.pinch_by_hour||[])[h];
+ return ph||TOWER.bottleneck||null;
+}
+function applyPinch(h){
+ const pinch=pinchAt(h);
+ $$('#flow .fmnode').forEach(node=>{
+  const on=pinch&&node.dataset.label===pinch;
+  node.classList.toggle('bottleneck',!!on);
+  let flag=node.querySelector('.flag');
+  if(on&&!flag){
+   flag=el('div','flag');flag.textContent='PINCH';node.append(flag);
+  }else if(!on&&flag){flag.remove();}
+ });
+ for(const L of LINKS){
+  const hot=pinch&&L.target===pinch;
+  for(const d of L.dots){d.el.setAttribute('fill',hot?'#DA291C':'#0072CE');}
+ }
+ const hp=$('#hourPinch');
+ if(hp){
+  hp.textContent=pinch?`Pinch at ${HH(h)}: ${pinch}`:'';
+ }
+}
+function hourlySeries(label){
+ const by=(TOWER.area_by_hour||{})[label];
+ if(by&&by.length) return {data:by, mode:'occupancy'};
+ const ex=(TOWER.exits_by_hour||{})[label];
+ if(ex&&ex.length) return {data:ex, mode:'exits'};
+ if(label==='Arrival'&&(TOWER.arrivals_by_hour||[]).length){
+  return {data:TOWER.arrivals_by_hour, mode:'arrivals'};
+ }
+ return {data:[], mode:null};
+}
+function hourStatLabel(mode,h){
+ if(mode==='exits') return 'Left ED at '+HH(h);
+ if(mode==='arrivals') return 'Arrivals at '+HH(h);
+ return 'In area at '+HH(h);
+}
 function updateHour(){
  const H=curHour;$('#whenLbl').textContent='Your department at '+HH(H);
  const cen=(TOWER.census_by_hour||[])[H]||0;$('#censusLbl').textContent='about '+Math.round(cen)+' patients in the department';
- const by=TOWER.area_by_hour||{};
  $$('#flow .fmnode').forEach(node=>{
-  const lab=node.dataset.label, arr=by[lab];
-  if(!arr){return;}
+  const lab=node.dataset.label;
+  const series=hourlySeries(lab);
+  const arr=series.data;
+  if(!arr.length){return;}
   const now=arr[H], peak=Math.max(...arr,1);
   const v=node.querySelector('[data-vol]');if(v)v.textContent=Math.round(now).toLocaleString();
   if(node.classList.contains('source')||node.classList.contains('admitted')||node.classList.contains('discharged'))return;
   const r=now/peak;node.classList.remove('green','amber','red');
   node.classList.add(r>=0.8?'red':r>=0.45?'amber':'green');
  });
+ applyPinch(H);
  if(SEL)drill(SEL);
 }
 
@@ -243,26 +288,30 @@ function flowsFor(id,dir){
  }).join('')||'<span class="chip">none</span>';
 }
 function drill(n){
- const by=(TOWER.area_by_hour||{})[n.label]||[];
+ const series=hourlySeries(n.label);
+ const by=series.data;
  const now=by.length?Math.round(by[curHour]):null;
  const peak=by.length?by.indexOf(Math.max(...by)):null;
+ const barHint=series.mode==='exits'?' departures':series.mode==='arrivals'?' arrivals':' in area';
  let bars='';
  if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>
-  `<div style="flex:1"><div class="b ${h===curHour?'now':''}" style="height:${Math.max(2,Math.round(80*v/mx))}px" title="${HH(h)}: ${Math.round(v)} in area"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
+  `<div style="flex:1"><div class="b ${h===curHour?'now':''}" style="height:${Math.max(2,Math.round(80*v/mx))}px" title="${HH(h)}: ${Math.round(v)}${barHint}"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
  const stats=[
-  now!=null?`<div class="dstat"><div class="k">In area at ${HH(curHour)}</div><div class="v">${now}</div></div>`:'',
+  now!=null&&series.mode?`<div class="dstat"><div class="k">${hourStatLabel(series.mode,curHour)}</div><div class="v">${now}</div></div>`:'',
+  n.caption?`<div class="dstat"><div class="k">What this means</div><div class="v" style="font-size:13px;font-weight:600">${n.caption}</div></div>`:'',
   n.kind==='process'?`<div class="dstat"><div class="k">Average wait</div><div class="v">${Math.round(n.mean_wait)}<small> min</small></div></div>`:'',
   n.kind==='process'?`<div class="dstat"><div class="k">How busy</div><div class="v">${Math.round(n.utilisation)}<small>% of capacity</small></div></div>`:'',
   `<div class="dstat"><div class="k">Patients this week</div><div class="v">${Math.round(n.volume).toLocaleString()}</div></div>`,
   peak!=null?`<div class="dstat"><div class="k">Busiest hour</div><div class="v">${HH(peak)}</div></div>`:'',
  ].join('');
+ const pinch=pinchAt(curHour);
  const served=servedBy(n.label);
  $('#drill').style.display='block';
  $('#drill').innerHTML=`
-  <div class="dhead"><span class="t">${n.label}${n.is_bottleneck?' &nbsp;<span class="pill High" style="background:var(--red)">PINCH-POINT</span>':''}</span>
+  <div class="dhead"><span class="t">${n.label}${pinch&&n.label===pinch?' &nbsp;<span class="pill High" style="background:var(--red)">PINCH at '+HH(curHour)+'</span>':''}</span>
    <button class="close" id="drillClose">Close</button></div>
   <div class="dstats">${stats}</div>
-  ${by.length?'<div class="dsec">Patients in this area through the day (dark bar = the hour on the slider)</div>'+bars:''}
+  ${by.length?'<div class="dsec">Through the day (dark bar = the hour on the slider)</div>'+bars:''}
   ${served?'<div class="dsec">Served by</div><div class="chips">'+served+'</div>':''}
   <div class="dsec">Patients arrive from</div><div class="chips">${flowsFor(n.id,'in')}</div>
   <div class="dsec">And go on to</div><div class="chips">${flowsFor(n.id,'out')}</div>`;
