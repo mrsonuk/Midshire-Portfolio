@@ -140,6 +140,8 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
     # Operational bottleneck: the busiest pinch-point across the WORKING DAY
     # (08:00-22:00, when ops teams act), not an overnight low-volume artefact.
     peak_hours, op_bottleneck = [], data.get("bottleneck")
+    id_to_label = {nid: n.get("label", nid) for nid, n in pathway.nodes.items()}
+    pinch_by_hour = [None] * 24
     if not events.empty:
         ev = events.copy()
         ev["hod"] = (ev["service_start"] / 60 % 24).astype(int)
@@ -147,13 +149,21 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
         lost = day.groupby("stage")["wait"].sum()
         if len(lost) and lost.max() > 0:
             sid = lost.idxmax()
-            id_to_label = {nid: n.get("label", nid) for nid, n in pathway.nodes.items()}
             op_bottleneck = id_to_label.get(sid, op_bottleneck)
             for n in data["nodes"]:
                 n["is_bottleneck"] = (n["label"] == op_bottleneck)
             bs = day[day["stage"] == sid]
             lh = bs.groupby("hod")["wait"].sum()
             peak_hours = sorted(int(h) for h in lh[lh >= lh.max() * 0.6].index)
+        # pinch moves through the day: the stage losing the most patient-wait
+        # at each hour (so the time slider can retarget the PINCH flag).
+        for h in range(24):
+            sub = ev[ev["hod"] == h]
+            if sub.empty:
+                continue
+            lh = sub.groupby("stage")["wait"].sum()
+            if len(lh) and lh.max() > 0:
+                pinch_by_hour[h] = id_to_label.get(lh.idxmax())
 
     # what serves each area (spaces + staff) so the drill-down can explain WHO
     # and WHAT a patient is waiting for there, and who is on at a given hour
@@ -177,6 +187,7 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
     data["census_by_hour"] = census
     data["area_by_hour"] = by_hour
     data["bottleneck_peak_hours"] = peak_hours
+    data["pinch_by_hour"] = pinch_by_hour
     data["area_resources"] = area_resources
     data["resource_meta"] = resource_meta
     return data

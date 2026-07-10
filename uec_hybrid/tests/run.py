@@ -536,6 +536,16 @@ def main():
     print("Analyst endpoints OK: /api/simulate carries SD interpretation; "
           "/api/validate carries per-stage timing + total.")
 
+    # --- control tower: pinch moves with the hour-of-day slider ------------ #
+    from ..viz.flow_model import control_tower as _control_tower
+    ct = _control_tower(run_cosim(p, seed=1), p)
+    assert len(ct["pinch_by_hour"]) == 24
+    active = [x for x in ct["pinch_by_hour"] if x]
+    assert active, "pinch_by_hour should identify at least one hourly pinch"
+    assert len(set(active)) > 1, f"pinch should move through the day, got: {set(active)}"
+    print(f"Hourly pinch OK: moves through {len(set(active))} areas across the day "
+          f"(day-wide pinch: {ct['bottleneck']}).")
+
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report
     fake_invest = {"baseline_four_hour": 70, "have": 4, "total": 9, "missing": [
