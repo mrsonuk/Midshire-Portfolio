@@ -183,10 +183,15 @@ def remember(kind: str, key_obj, payload) -> dict:
     clean = to_jsonable(payload)
     h = config_hash(kind, key_obj)
     with _session() as s:
-        if not s.query(RunRow).filter_by(config_hash=h).first():
+        row = s.query(RunRow).filter_by(config_hash=h).first()
+        if row:
+            row.payload = json.dumps(clean)
+            row.engine_version = ENGINE_VERSION
+            row.created_at = _now()
+        else:
             s.add(RunRow(config_hash=h, kind=kind, engine_version=ENGINE_VERSION,
                          payload=json.dumps(clean), created_at=_now()))
-            s.commit()
+        s.commit()
     return clean
 
 

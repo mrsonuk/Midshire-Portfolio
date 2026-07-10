@@ -56,6 +56,17 @@ def list_pathways():
     return out
 
 
+def _apply_resource_override(cap, value):
+    """Apply an analyst override without collapsing a by-hour roster to a scalar."""
+    if isinstance(value, str):
+        from ..planning.planner import _scale_cap
+        return _scale_cap(cap, value)
+    val = max(0, int(value))
+    if isinstance(cap, (list, tuple)):
+        return [val] * len(cap)
+    return val
+
+
 def _build(body):
     key = body["pathway"]
     if key == "your_department":
@@ -76,7 +87,7 @@ def _build(body):
             float(pop.get("imd_decile", 5.0)), float(pop.get("paediatric_fraction", 0.22)))
     for r, v in (body.get("overrides") or {}).items():
         if r in raw.get("resources", {}):
-            raw["resources"][r] = max(0, int(v))
+            raw["resources"][r] = _apply_resource_override(raw["resources"][r], v)
     scale = float(body.get("arrivals_scale", 1.0)) * demand_mult
     if scale != 1.0 and "hourly_profile" in raw.get("arrivals", {}):
         raw["arrivals"]["hourly_profile"] = [h * scale for h in raw["arrivals"]["hourly_profile"]]
@@ -191,12 +202,14 @@ CURRENT = {"dept": None}
 def _dept() -> Department:
     """The saved department - one department shared by every surface, persisted
     across restarts (control tower, workforce, gaps, planner and analyst all
-    model the same ED)."""
-    if CURRENT["dept"] is None:
-        saved = store.load_department()
-        CURRENT["dept"] = Department.from_dict(saved) if saved else Department.default()
-        if saved is None:
-            store.save_department(CURRENT["dept"].to_dict())
+    model the same ED). Reloads from the store when present so multi-worker
+    deployments never serve a stale in-memory copy."""
+    saved = store.load_department()
+    if saved:
+        CURRENT["dept"] = Department.from_dict(saved)
+    elif CURRENT["dept"] is None:
+        CURRENT["dept"] = Department.default()
+        store.save_department(CURRENT["dept"].to_dict())
     return CURRENT["dept"]
 
 
@@ -382,7 +395,8 @@ def _control_tower_payload(seed=2):
 
 @app.route("/api/control-tower", methods=["POST"])
 def api_control_tower():
-    seed = int(request.get_json(silent=True, force=True).get("seed", 2) if request.data else 2)
+    body = request.get_json(silent=True) or {}
+    seed = int(body.get("seed", 2))
     return jsonify(_control_tower_payload(seed))
 
 
@@ -699,7 +713,9 @@ def api_calibrate():
 
 @app.route("/api/calibrate/reset", methods=["POST"])
 def api_calibrate_reset():
-    store.clear_calibration(request.get_json(force=True).get("pathway"))
+    body = request.get_json(silent=True) or {}
+    scope = body.get("pathway") or "your_department"
+    store.clear_calibration(scope)
     return jsonify({"summary": ["Reset to synthetic baseline."], "calibrated": False})
 
 

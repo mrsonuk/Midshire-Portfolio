@@ -19,6 +19,9 @@ from .montecarlo import monte_carlo
 
 
 def _cap(current, change):
+    if isinstance(current, (list, tuple)):
+        # by-hour staffing roster: apply the change to every hour
+        return [_cap(x, change) for x in current]
     if isinstance(change, str):
         change = change.strip()
         if change[0] == "+":
@@ -35,7 +38,11 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
     raw = copy.deepcopy(pathway.raw)
     for r, ch in scenario.get("resources", {}).items():
         if r in raw.get("resources", {}):
-            raw["resources"][r] = max(0, _cap(raw["resources"][r], ch))
+            cap = _cap(raw["resources"][r], ch)
+            if isinstance(cap, list):
+                raw["resources"][r] = [max(0, c) for c in cap]
+            else:
+                raw["resources"][r] = max(0, cap)
 
     arrivals = raw.get("arrivals", {})
     scale = scenario.get("arrivals_scale")
