@@ -1,5 +1,5 @@
 "use strict";
-let PATHWAYS={}, KEYS=[], current="", busy=false, fmRAF=null, lastFlow=null;
+let PATHWAYS={}, KEYS=[], current="", busy=false, fmRAF=null, lastFlow=null, FLOW_LINKS=[], flowSel=null, rotaCaps={};
 const $=s=>document.querySelector(s);
 const el=(t,c,h)=>{const e=document.createElement(t);if(c)e.className=c;if(h!=null)e.innerHTML=h;return e;};
 const SVGNS="http://www.w3.org/2000/svg";
@@ -23,19 +23,36 @@ function renderPathway(){
   const p=PATHWAYS[current]; $("#pdesc").textContent=p.description;
   if(p.sd&&p.sd.inpatient_beds)$("#sd_beds").value=p.sd.inpatient_beds;
   if(p.sd&&p.sd.community_capacity)$("#sd_comm").value=p.sd.community_capacity;
-  const box=$("#resources"); box.innerHTML="";
+  const box=$("#resources"); box.innerHTML=""; rotaCaps={};
   for(const[n,c] of Object.entries(p.resources)){
     const r=el("div","row"); r.append(el("span",null,n.replace(/_/g," ")));
+    const i=el("input"); i.type="number"; i.min=0; i.dataset.res=n;
     if(Array.isArray(c)){
-      // a by-hour staffing rota (set in the product) - show its peak, keep the rota
-      r.append(el("span",null,"rota, peak "+Math.max.apply(null,c)));
+      // by-hour rota from the product workforce — peak is editable; scales the whole day
+      rotaCaps[n]=c.slice();
+      i.value=Math.max.apply(null,c);
+      i.dataset.rota="1";
+      i.title="Peak headcount; changing this scales staffing across all 24 hours (shape kept)";
     }else{
-      const i=el("input");i.type="number";i.min=0;i.value=c;i.dataset.res=n;r.append(i);
+      i.value=c;
     }
+    r.append(i);
     box.append(r);
   }
 }
-function overrides(){const o={};document.querySelectorAll("#resources input").forEach(i=>o[i.dataset.res]=+i.value);return o;}
+function overrides(){
+  const o={};
+  document.querySelectorAll("#resources input").forEach(i=>{
+    const name=i.dataset.res, v=Math.max(0,+i.value);
+    if(i.dataset.rota==="1"&&rotaCaps[name]){
+      const base=rotaCaps[name], oldPeak=Math.max.apply(null,base)||1;
+      o[name]=base.map(x=>Math.max(0,Math.round(x*v/oldPeak)));
+    }else{
+      o[name]=v;
+    }
+  });
+  return o;
+}
 function cfg(extra){return Object.assign({pathway:current,overrides:overrides(),
   arrivals_scale:+$("#demand").value,feedback:$("#feedback").value==="1",
   population:{older_fraction:+$("#older").value/100,imd_decile:+$("#imd").value,paediatric_fraction:+$("#paed").value/100},
@@ -57,7 +74,34 @@ function renderScorecard(cards){
     box.append(d);}
 }
 function showDiag(d){$("#diagnosis").innerHTML='<div class="dh">Bottleneck diagnosis</div><p>'+d.headline+'</p><p>'+d.recommendation+'</p>';}
+function flowsFor(id,dir){
+  const arr=FLOW_LINKS.filter(l=>dir==="in"?l.target===id:l.source===id)
+    .sort((a,b)=>b.value-a.value);
+  const byId={};(lastFlow&&lastFlow.nodes||[]).forEach(n=>byId[n.id]=n);
+  if(!arr.length)return '<span class="chip">none</span>';
+  return arr.map(l=>{
+    const other=byId[dir==="in"?l.source:l.target];
+    const pct=Math.round(100*l.value/(dir==="in"?inTotal(id):outTotal(id)));
+    return '<span class="chip"><b>'+(other?other.label:"?")+'</b>: '+l.value.toLocaleString()+'/wk'+
+      (pct?(' ('+pct+'%)'):'')+'</span>';
+  }).join("");
+}
+function inTotal(id){return FLOW_LINKS.filter(l=>l.target===id).reduce((s,l)=>s+l.value,0)||1;}
+function outTotal(id){return FLOW_LINKS.filter(l=>l.source===id).reduce((s,l)=>s+l.value,0)||1;}
+function highlightFlowLinks(id,on){
+  for(const L of FLOW_LINKS){
+    const touch=on&&(L.source===id||L.target===id);
+    L.path.setAttribute("stroke",touch?"#005EB8":"#cfd8dc");
+    L.path.setAttribute("opacity",on?(touch?0.95:0.18):0.7);
+  }
+}
+function markFlowSelected(){
+  document.querySelectorAll("#flowmap .fmnode").forEach(nd=>{
+    nd.classList.toggle("selected",flowSel&&nd.dataset.id===flowSel.id);
+  });
+}
 function showFmInfo(n){
+  flowSel=n;markFlowSelected();highlightFlowLinks(n.id,true);
   const box=$("#fmInfo");box.style.display="block";let txt;
   if(n.kind==="process"){
     const busy=n.utilisation>=85?"saturated":n.utilisation>=60?"busy":"comfortable";
@@ -70,14 +114,18 @@ function showFmInfo(n){
     const lbl=n.kind==="admitted"?"admitted to a bed":n.kind==="discharged"?"discharged":n.kind==="source"?"arrivals into the department":"pathway endpoint";
     txt="<b>"+n.label+"</b> — "+n.volume.toLocaleString()+" patients ("+lbl+").";
   }
-  box.innerHTML='<div class="dh">Block detail</div><p>'+txt+'</p>';
+  box.innerHTML='<div class="dh">Block detail — '+n.label+(n.is_bottleneck?' <span style="color:var(--red)">(bottleneck)</span>':"")+'</div>'+
+    '<p>'+txt+'</p>'+
+    '<div class="dsec">Patients arrive from</div><div class="chips">'+flowsFor(n.id,"in")+'</div>'+
+    '<div class="dsec">And go on to</div><div class="chips">'+flowsFor(n.id,"out")+'</div>';
 }
 
 async function runSim(){
   if(busy)return;
   try{setBusy(true,"Simulating (SD+DES)...");loading("utilisation");loading("waits");loading("sd_stocks");loading("sd_feedback");
     const d=await post("/api/simulate",cfg());
-    renderScorecard(d.scorecard);showDiag(d.diagnosis);renderFlowMap(d.flow_model);
+    flowSel=null;renderScorecard(d.scorecard);showDiag(d.diagnosis);renderFlowMap(d.flow_model);
+    $("#fmInfo").style.display="none";
     await plot("utilisation",d.figures.utilisation);await plot("waits",d.figures.waits);
     await plot("sd_stocks",d.figures.sd_stocks);await plot("sd_feedback",d.figures.sd_feedback);
     const si=d.sd_interpretation||{},sb=$("#sdInterp");
@@ -109,13 +157,14 @@ function renderFlowMap(data){
   const maxV=Math.max(...data.links.map(l=>l.value),1);
   const svg=document.createElementNS(SVGNS,"svg");svg.setAttribute("width",W);svg.setAttribute("height",H);
   svg.style.position="absolute";svg.style.left=0;svg.style.top=0;host.append(svg);
-  const li=[];
+  FLOW_LINKS=[];const li=[];
   for(const l of data.links){const s=byId[l.source],t=byId[l.target];if(!s||!t)continue;
     const x1=px(s)+46,y1=py(s),x2=px(t)-46,y2=py(t),mx=(x1+x2)/2;
     const path=document.createElementNS(SVGNS,"path");
     path.setAttribute("d",`M ${x1} ${y1} C ${mx} ${y1}, ${mx} ${y2}, ${x2} ${y2}`);
     path.setAttribute("fill","none");path.setAttribute("stroke","#cfd8dc");
     path.setAttribute("stroke-width",1+5*Math.sqrt(l.value/maxV));path.setAttribute("opacity",.7);svg.append(path);
+    FLOW_LINKS.push({path,source:l.source,target:l.target,value:l.value});
     const nd=Math.max(1,Math.round(5*l.value/maxV)),dots=[];
     for(let i=0;i<nd;i++){const c=document.createElementNS(SVGNS,"circle");c.setAttribute("r",2.6);
       c.setAttribute("fill",t.is_bottleneck?"#DA291C":"#0072CE");svg.append(c);dots.push({el:c,ph:Math.random()});}
@@ -123,11 +172,19 @@ function renderFlowMap(data){
   for(const n of data.nodes){
     const kind=(n.kind==="source"||n.kind==="admitted"||n.kind==="discharged")?n.kind:n.status;
     const c=el("div","fmnode "+kind);if(n.is_bottleneck)c.classList.add("bottleneck");
-    c.style.left=px(n)+"px";c.style.top=py(n)+"px";
+    c.style.left=px(n)+"px";c.style.top=py(n)+"px";c.dataset.id=n.id;
     let h='<div class="nm">'+n.label+'</div><div class="vol">'+n.volume.toLocaleString()+'</div>';
     if(n.kind==="process")h+='<div class="wt">wait '+n.mean_wait.toFixed(0)+"m, "+n.utilisation.toFixed(0)+'% busy</div>';
     if(n.is_bottleneck)h+='<div class="flag">BOTTLENECK</div>';
-    c.innerHTML=h;c.style.cursor="pointer";c.onclick=()=>showFmInfo(n);host.append(c);}
+    c.innerHTML=h;c.style.cursor="pointer";
+    c.onclick=()=>showFmInfo(n);
+    c.onmouseenter=()=>{if(!flowSel)highlightFlowLinks(n.id,true);};
+    c.onmouseleave=()=>{if(!flowSel)highlightFlowLinks(null,false);};
+    host.append(c);}
+  if(flowSel){
+    const still=data.nodes.find(x=>x.id===flowSel.id);
+    if(still)showFmInfo(still);else flowSel=null;
+  }
   let last=performance.now();
   (function frame(now){const dt=(now-last)/1000;last=now;
     for(const L of li)for(const d of L.dots){d.ph=(d.ph+dt*L.sp)%1;const p=L.path.getPointAtLength(d.ph*L.len);d.el.setAttribute("cx",p.x);d.el.setAttribute("cy",p.y);}

@@ -61,6 +61,8 @@ def _apply_resource_override(cap, value):
     if isinstance(value, str):
         from ..planning.planner import _scale_cap
         return _scale_cap(cap, value)
+    if isinstance(value, list):
+        return [max(0, int(x)) for x in value]
     val = max(0, int(value))
     if isinstance(cap, (list, tuple)):
         return [val] * len(cap)

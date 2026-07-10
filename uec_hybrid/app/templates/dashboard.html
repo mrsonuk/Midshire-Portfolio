@@ -61,7 +61,12 @@
  .fmnode .nm{font-size:10.5px;font-weight:800;color:var(--dark);line-height:1.1}
  .fmnode .vol{font-size:15px;font-weight:800;color:var(--blue);margin:1px 0}.fmnode .wt{font-size:9.5px;color:var(--grey)}
  .fmnode.bottleneck{border:2px solid var(--red);animation:pulse 1.6s infinite}
+ .fmnode.selected{outline:3px solid var(--aqua);outline-offset:1px;z-index:6}
  .fmnode .flag{position:absolute;top:-9px;right:-7px;background:var(--red);color:#fff;font-size:8.5px;font-weight:800;padding:1px 5px;border-radius:8px}
+ .dsec{font-size:11.5px;font-weight:800;color:var(--grey);text-transform:uppercase;margin:10px 0 4px;letter-spacing:.3px}
+ .chips{display:flex;flex-wrap:wrap;gap:6px}
+ .chip{background:#f7fafc;border:1px solid var(--lightgrey);border-radius:14px;padding:4px 11px;font-size:12px}
+ .chip b{color:var(--dark)}
  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(218,41,28,.45)}70%{box-shadow:0 0 0 9px rgba(218,41,28,0)}100%{box-shadow:0 0 0 0 rgba(218,41,28,0)}}
  .stocks{display:flex;gap:10px;margin-top:8px;flex-wrap:wrap}
  .stock{flex:1;min-width:150px;background:#fff;border:1px solid var(--lightgrey);border-radius:8px;padding:9px 11px}
@@ -99,7 +104,8 @@
   <div class="head" style="margin-top:12px">System Dynamics levers</div>
   <div class="row"><span>Inpatient beds</span><input type="number" id="sd_beds" value="320"></div>
   <div class="row"><span>Community capacity</span><input type="number" id="sd_comm" value="60"></div>
-  <label style="margin-top:10px">ED resource capacities</label><div id="resources"></div>
+  <label style="margin-top:10px">ED resource capacities</label>
+  <p class="desc">Spaces and equipment are fixed counts. Staff and cubicles show <b>peak</b> headcount from your rota — edit the peak here to scale that resource across the whole day for what-if runs (edit shifts themselves in Control tower → Workforce).</p><div id="resources"></div>
   <button id="runBtn">Run simulation</button>
   <button id="mcBtn" class="sec">Monte-Carlo (24 weeks)</button>
   <div id="status" class="status"></div>
@@ -121,7 +127,7 @@
    <div id="diagnosis" class="callout"></div>
    <div class="chart full">
     <div class="fmhead">Flow model - Model ED pathway (acuity × time) with System-Dynamics stocks
-     <span class="fmlegend">click a block for detail<i class="g"></i>&lt;15 min<i class="a"></i>15-60<i class="r"></i>&gt;60 (bottleneck)</span></div>
+     <span class="fmlegend">click a block for upstream/downstream flow<i class="g"></i>&lt;15 min<i class="a"></i>15-60<i class="r"></i>&gt;60 (bottleneck)</span></div>
     <div id="flowmap"></div>
     <div id="fmInfo" class="callout" style="display:none;margin:10px 8px 0;border-left-color:var(--aqua)"></div>
     <div class="stocks" id="stocks"></div>

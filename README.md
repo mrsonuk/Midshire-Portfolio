@@ -1,227 +1,233 @@
 # Model ED Optimiser
 
-A product to help any NHS trust **implement the Model Emergency Department** — design,
-staff and run a high-performing ED. It is flow-first and plain-language; a hybrid
-simulation (Discrete-Event Simulation + System Dynamics + Monte-Carlo) is the hidden
-engine and none of its vocabulary appears on the product surface.
+**Help your trust design, staff and run a high-performing Emergency Department — using the NHS Model ED blueprint.**
+
+---
+
+## Objective
+
+Every acute trust is being asked to move its Emergency Department toward the NHS England **Model Emergency Department** — a blueprint for how patients should flow through the department, which areas to provide, and how the ED connects to the rest of the hospital.
+
+**This tool lets you model *your* department before you change anything in real life.**
+
+You can:
+
+- See where patients get stuck and **when in the day** pressure builds
+- Check whether your **rota matches demand**
+- Test “what if we added beds / staff / a UTC?” and see the effect on **4-hour performance**
+- Build a **costed case** for investment
+- Produce a **board-ready summary** in one click
+
+You do **not** need to be a data scientist or simulation expert. The product speaks in plain language: flow, pinch-points, standards, and costs — not model jargon.
+
+> **What sits underneath:** a detailed computer model of patient flow through an ED, coupled to ward beds and community services. That engine is hidden; you interact through simple screens.
+
+---
+
+## Who this is for
+
+| Role | What you would use it for |
+|---|---|
+| **ED matron / operational manager** | Daily flow, staffing gaps, where the pinch-point is |
+| **ED consultant / clinical lead** | Whether the department layout and areas match Model ED |
+| **COO / divisional director** | Risk level, standards, investment priorities, board paper |
+| **ICB / winter planner** | Demand forecast, stress tests (flu, strike, ward closures), options |
+| **Analyst / informatics** | Deeper simulation, calibration from real data, validation |
+
+---
+
+## Getting started
+
+### 1. Install and open the product
 
 ```bash
 pip install -r requirements.txt
-python -m uec_hybrid.app.server     # product at http://127.0.0.1:5000
-python -m uec_hybrid.tests.run      # end-to-end checks
+python -m uec_hybrid.app.server
 ```
 
-Open `/` for the product (control tower). The other surfaces are `/exec`,
-`/planner` and `/analyst`.
+Open your browser at **http://127.0.0.1:5000**
+
+### 2. Set up your department (do this first)
+
+Go to **Set up my ED** and tell the tool about your trust. Choose whichever route is easiest:
+
+| Route | Best if you… | What it fills in |
+|---|---|---|
+| **Pick your trust** | Want a quick start from published NHS data | Attendances per day, bed numbers, occupancy |
+| **Import a workbook** | Already have a spreadsheet of your department | Areas, hours, rota, costs — everything |
+| **Fill in the form by hand** | Prefer to configure step by step | Areas on/off, opening hours, beds, rota |
+
+Click **Save & re-run**. Everything else in the product uses this one saved department.
+
+### 3. Read the Control tower
+
+Open the **Control tower** tab. You will see:
+
+- **How your department is running** — 4-hour standard, walk-outs, ambulance handover, etc., shown as good / typical / tough week
+- **Your busiest pinch-point** — the area costing you the most time, and roughly when in the day it bites
+- **Live flow map** — boxes for each area; patients moving between them. Use the **time slider** to see the department at different hours. **Click any box** to see where patients come from, where they go next, and who is on shift
+
+### 4. Check your rota
+
+Open **Workforce**. The chart compares **demand by hour** with **staff on by hour**. Red windows mean you are likely under-staffed for the curve. You can edit shifts in the rota editor and see cost update instantly. **Apply & re-run** feeds changes back into the flow map.
+
+### 5. See what you are missing from Model ED
+
+Open **Model ED gaps**. Each missing element (e.g. RAT, SDEC, frailty pathway) shows what it would add to performance and a rough cost band.
+
+### 6. Plan for winter or a bad day
+
+Open **Plan ahead** (`/planner`):
+
+- **Winter plan** — expected demand, whether you meet the 4-hour standard, ranked options (more beds, community capacity, UTC, etc.)
+- **Stress tests** — named scenarios (flu, norovirus ward closures, medical strike). Each shows how much performance drops vs a normal week (e.g. “−9 points on 4-hour” means nine percentage points worse)
+- **Today** — intraday view: given arrivals so far and how full the hospital is, what helps this afternoon
+
+### 7. Executive summary and board paper
+
+Open **Executive brief** (`/exec`) for a one-page view: risk level, standards, pinch-point, pay-bill, top investment case. Download a PDF for the board.
+
+### 8. Analyst view (optional, for deeper work)
+
+Open **Analyst view** (`/analyst`) if you need more detail: uncertainty ranges, scenario comparison, pathway validation, or calibration from a real attendance file (ECDS-style CSV).
 
 ---
 
-## 1. Purpose
+## The four main screens
 
-Every acute trust is being asked to move its ED toward the NHS England **Model
-Emergency Department** blueprint. This product lets a trust **model its own ED**,
-see where flow breaks, test what would fix it, and build the costed case — without
-needing a modeller. Under the surface it runs a faithful patient-level simulation
-of the Model ED pathway coupled to the whole hospital around it, so the answers
-reflect real ED physics (crowding, exit-block, time-of-day staffing) rather than
-spreadsheet averages.
+```
+  Set up my ED  ──►  Control tower  ──►  Workforce / Gaps
+         │                    │
+         │                    └──►  Executive brief (PDF)
+         │
+         └──►  Plan ahead (winter / stress tests / today)
+                        │
+                        └──►  Analyst view (technical depth)
+```
 
-## 2. Outcomes — what you get out of it
+### Control tower — `/`
 
-- **A performance scorecard** RAG-rated against Model ED / UEC Plan standards:
-  4-hour (toward 95%), initial assessment ≤15 min, 12-hour waits, ambulance
-  handover ≤45 min, MH liaison ≤1h, MH >24h, children's 4-hour, EEMAC
-  conversion-to-admission, bed occupancy.
-- **The pinch point** — the single stage costing you the most, *and when in the
-  day it bites* — with a recommendation.
-- **A staffing answer** — are you staffed for the demand curve, hour by hour, and
-  what the weekly pay-bill is.
-- **The investment case** — which Model ED elements you're missing, what each would
-  add, and a costed business case (annual benefit, ROI, payback) with every
-  assumption printed.
-- **A board-ready decision report (PDF)** in one click.
-- **Honest uncertainty** — Monte-Carlo confidence intervals, scenario comparison,
-  and a validation that the simulation faithfully reproduces the Model ED design.
+Your day-to-day operational home.
 
-## 3. Data input — how your ED gets into the model
-
-You should **never need to edit code or JSON** to configure a department. There are
-four ways in, in increasing order of effort/precision:
-
-| Route | What it sets | Where |
-|---|---|---|
-| **Pick your trust** | Attendances/day, bed occupancy, beds (from published NHS open data, by ODS code) | *Set up my ED → Start from your trust* |
-| **Import an Excel workbook** | Everything: department, areas, opening hours, rota, costs, and optional arrivals/acuity/service-times | *Set up my ED → import*, template at `/api/trust/template` |
-| **Set up by hand** | Areas on/off, opening hours, beds, community, rota | *Set up my ED* form + rota editor |
-| **Calibrate from real activity** | Real arrivals-by-hour, acuity mix, cohort prevalence, admission rates | *Analyst → Data & calibration* (ECDS CSV) |
-
-Three things are also editable **as data** (no code), for when the defaults need to
-change:
-
-- **Costs** — the cost book (£ per admission/breach avoided, agency premium) and
-  per-role hourly rates: cost book UI, or the workbook's **Costs** tab.
-- **Standards** — the RAG targets (e.g. move 4-hour from 78% toward 95%):
-  `GET/POST /api/scorecard-targets`.
-- **Service-time assumptions** — the model's core "physics": a global scale or
-  per-stage means, via `GET/POST /api/pathway-params` or the workbook's
-  **ServiceTimes** tab.
-
-**The one thing still in code:** the *shape* of the Model ED pathway itself
-(`uec_hybrid/pathways/model_ed.json` — which nodes exist and how they connect).
-That defines what "the Model ED" is and stays version-controlled so it always
-passes clinical conformance. Service-time *values* are editable as data (above);
-only the graph *structure* is code.
-
-Everything is connected through **one saved department**: set-up, rota,
-calibration, costs and assumptions persist across restarts (SQLite by default;
-`DATABASE_URL` for Postgres), a change updates every surface at once, and repeat
-runs of an identical configuration are answered instantly from the run cache.
-
-## 4. The surfaces — how to navigate, and what each does
-
-The product has four top-level surfaces. The first three are the plain-language
-product; the analyst view is the technical model behind them.
-
-### Control tower — `/` (tabs across the top)
-
-| Tab | What it does |
+| Tab | In plain terms |
 |---|---|
-| **Control tower** | A live flow map of *your* department: patients moving through your areas, queue colours (green <15 min, amber 15–60, red >60), and the pinch point flagged. A **time-of-day slider** shows the department at any hour; **click any block** to drill into it. The four headline standards show as a typical / good / tough week. |
-| **Workforce** | "Are you staffed for the demand curve?" — staffing by role and hour against the demand shape, under-staffed windows in red, the weekly pay-bill and where it goes. A **live rota editor** updates the staffing curve and cost instantly; **Apply & re-run** feeds it back into the control tower. |
-| **Model ED gaps** | Which Model ED elements you have vs are missing, and what each missing one would add (front-door areas judged on the 4-hour standard; same-day/assessment areas on the admissions they avoid), each with a cost band and a **costed business case**. |
-| **Set up my ED** | The configuration surface. **Start from your trust** (dropdown) or **import an Excel workbook**, or set it by hand: switch areas on/off (UTC, RAT, fit-to-sit, PAU, EEMAC, SDEC, CDU, frailty, MH), set each area's **opening hours**, and set attendances, beds and community capacity. Save & re-run. |
+| **Control tower** | Where are patients? Where is it stuck? What does a typical week look like on the standards? |
+| **Workforce** | Are we staffed for when patients actually arrive? What does the rota cost? |
+| **Model ED gaps** | Which Model ED building blocks do we lack, and what would each one be worth? |
+| **Set up my ED** | Configure the department — areas, hours, beds, rota |
 
 ### Executive brief — `/exec`
 
-One screen for the COO / ED director: OPEL-style risk, the four headline standards
-as typical/good/tough, the pinch point and what to do, the weekly pay-bill, the
-biggest investment case, and a **one-click board-ready PDF** (`/api/report`).
+One screen for senior leaders: risk, standards, bottleneck, money, and a downloadable report.
 
 ### Plan ahead — `/planner`
 
-The winter & "today" demand/capacity planner. Plans model *your department exactly
-as set up* (areas, opening hours, rota, beds), not a generic template. Includes an
-intraday "today" projection from arrivals-so-far and surge stress tests.
+For winter and surge planning. Uses **your** configured department (not a generic template). Stress-test tiles compare a scenario to a normal week:
+
+- **Points on 4-hour** = difference in the percentage of patients seen within 4 hours
+- **Long bed-waits per day** = how many more patients per day wait over 12 hours for a ward bed
 
 ### Analyst view — `/analyst`
 
-The full technical model, defaulting to the same configured department so its
-numbers line up with the control tower. Its tabs:
-
-| Tab | What it shows |
-|---|---|
-| **Live simulation** | The UEC scorecard, the bottleneck diagnosis, and the flow model ("Figure 1") by acuity×time band with the SD stocks. **Click any block** for its volume, wait, utilisation and whether it's the binding constraint. Plus resource utilisation, stage waits, Sankey and occupancy heatmap. |
-| **System Dynamics** | Bed/MH occupancy, ED-crowding index and the feedback signals over time — **with a plain-language interpretation** of what the stocks and feedback plots actually mean (occupancy vs the 92% exit-block line, the bed-wait multiplier, community pull). Turn feedback off in the sidebar for the counterfactual. |
-| **Monte-Carlo** | Distributions with 95% confidence intervals over many simulated weeks, and what the spread means for planning. |
-| **Scenarios & sensitivity** | Compare what-if scenarios against baseline (each Monte-Carlo'd) with a tornado sensitivity — **and a written impact read-out**: which lever helps 4-hour most, which is the biggest risk, and the top sensitivity. |
-| **Validation** | Process-map conformance (every simulated journey checked against the Model ED graph); a **per-stage timing table** (patient count, wait + treatment + time-in-stage per stage, and the true end-to-end total); and the **observed pathway variants — each route annotated with the mean time at every stage and the average total time (length of stay) for patients on that path**. Within a route the stage times reconcile to the total. |
-| **Data & calibration** | Upload an ECDS-style extract to replace synthetic arrivals/case-mix/admission rates with your real data; reset to synthetic. |
-
-The analyst sidebar exposes the model levers: whole-system feedback on/off,
-population determinants (older %, IMD, paediatric %), demand scale, SD levers
-(beds, community) and per-resource capacities.
+The full model for analysts and informatics. Same department as the control tower, plus levers to change demand, beds, and capacity for what-if runs. Includes charts for uncertainty, scenarios, and a check that simulated patient journeys match the intended Model ED pathway.
 
 ---
 
-## 5. The engine — System Dynamics + Discrete-Event Simulation
+## Understanding the main outputs
 
-A principled, evidence-based model of NHS Urgent & Emergency Care that **couples a
-patient-level Discrete-Event Simulation (DES) with a whole-system System-Dynamics
-(SD) model**, grounded in two NHS design documents:
+### The 4-hour standard
 
-- **NHS England, "The Model Emergency Department: high-performing UEC pathways"
-  (Feb 2026)** — the ED operational pathway, structured as **acuity × time**.
-- **Sussex, "Urgent and Emergency Care Model" (Aug 2025)** — the whole-system
-  context (navigation, community, downstream beds, mental health).
+The share of patients **admitted, transferred or discharged within 4 hours**. Shown as a percentage. The product also shows a **good week** and **tough week** range so you can see natural variation.
 
-![Flow model](docs/flow_model.png)
+### The pinch-point
 
-### Why a hybrid, and how the two solvers couple
+The single stage where patients lose the most time — often triage, majors, or waiting for a bed. On the control tower this is flagged on the flow map and linked to **time of day** (e.g. worst around 14:00–18:00).
 
-A pure DES cannot represent the dominant cause of ED crowding — **exit-block**, where
-a near-full hospital cannot accept admissions, so patients board in the ED. That is a
-*system* behaviour: a stock (occupied inpatient beds) with feedback. The hybrid:
+### Flow map colours
 
-- **DES (patient level):** every patient flows through the Model ED pathway
-  contending for limited spaces and clinicians, with **acuity priority queues**
-  (sickest first), span-held beds, variable durations by acuity and time-of-day
-  demand, reneging (LWBS) and time-varying staffing.
-- **SD (whole system):** homeostatic stocks for inpatient beds, MH beds and
-  community capacity. High bed occupancy raises a **bed-wait multiplier** that slows
-  ED admissions (exit-block); community headroom **pulls** patients out and
-  accelerates discharge.
-- **Coupling:** a `CoSimulator` runs an **hourly zero-order-hold co-simulation** —
-  each simulated hour the DES flows (admissions, diversions, ED census) are drained
-  into the SD model, the SD integrates, and the new signals are published back for
-  the DES to read. Zero-order hold + smooth bounded feedback + first-order smoothing
-  keep the loop stable (verified by a self-test).
+| Colour | Meaning (control tower) |
+|---|---|
+| Green | Flowing — low occupancy for that hour |
+| Amber | Busy |
+| Red | Stuck — area near its peak load |
 
-**Verified behaviour:** with the bed feedback on, admitted length of stay rises from
-~270 to ~595 minutes — exit-block *emerges from the bed stock*, not from a static
-fudge factor. Turning feedback off recovers the naïve DES.
+On the analyst view, colours reflect **wait time** instead (<15 min / 15–60 min / >60 min).
 
-## 6. Architecture
+### Model ED gaps
 
-```
-uec_hybrid/
-├── des/         DES engine (priority queues, span beds, dynamic SD-coupled params,
-│                band/time enforcement, reneging), distributions, pathway (+ schema)
-├── sd/          stocks, model (homeostatic bed/MH/community stocks + integrator),
-│                feedback (smooth bounded transfer functions + smoothing)
-├── coupling/    system_state (held signals + accumulators, zero-order hold),
-│                cosim (hourly master clock), adapters (channel map)
-├── pathways/    model_ed.json  — THE data definition of the Model ED (structure)
-├── model_params.py             — editable service-time overlay (scale / per-stage)
-├── department/  config (Department + AREAS catalogue), builder (Department -> raw),
-│                model_ed_gap (gap analysis)
-├── ingest/      trust_profile (pick your trust, from data/nhs_trust_snapshot.csv),
-│                nhs_open_data (fetch-by-ODS seam), workbook (Excel/CSV import + template)
-├── data/        nhs_trust_snapshot.csv (trust registry), sample_ecds.csv
-├── demand/      population (age/IMD/paediatric -> case-mix), ecds_seam (calibration),
-│                streams (arrival streams)
-├── analysis/    metrics (KPIs -> standards, RAG scorecard, bottleneck, SD & stage
-│                interpretations), montecarlo, scenarios (+ tornado + interpretation)
-├── validation/  reference_map, conformance (process-map check), process_map (variants)
-├── viz/         flow_model ("Figure 1" + control-tower detail), figures (Plotly), palette
-├── workforce/   roles (+ editable rates), rota, defaults, view
-├── finance/     cost book (trust-editable) + business-case maths (benefit, ROI, payback)
-├── planning/    forecast, planner, operational (today), surge
-├── optimise/    recommend (CI-gated recommendation engine)
-├── platform/    store (SQLite/Postgres: saved department, calibrations, run cache
-│                keyed by config hash, settings — costs, standards, service-times)
-├── report.py    board-ready decision PDF
-├── app/         server (Flask, JSON APIs), templates (product/exec/planner/dashboard),
-│                static (product.js, dashboard.js, vendored Plotly)
-└── tests/       run.py — end-to-end suite (engine, SD, coupling, conformance, every
-                 data seam, endpoints)
-../web/          React + TypeScript shell (Vite) at /app; dist/ committed (vendored)
-```
+Compares your configured areas against the Model ED blueprint. Missing items show an estimated benefit (e.g. points on 4-hour or admissions avoided) and a cost band (Low / Moderate / High).
 
-Data flow for "your department":
-`Department` (saved) → `builder.build` → apply ECDS calibration patch → apply
-service-time overrides (`model_params`) → `Pathway` → `run_cosim` (DES↔SD) → metrics
-→ surfaces. Costs and scorecard targets are applied at the finance/scorecard layer.
+### Business case figures
 
-## 7. Run it programmatically
+Costs and benefits use a **cost book** you can edit (hourly rates, value of avoiding a breach). Treat all £ figures as **indicative planning numbers** — validate locally before committing.
+
+---
+
+## Adding your own data (optional)
+
+The product runs out of the box on **typical NHS patterns**. To make it more like your trust:
+
+1. **Pick your trust** or **import a workbook** — fastest way to set attendances, beds, and rota
+2. **Analyst → Data & calibration** — upload an ECDS-style CSV to calibrate arrivals by hour, acuity mix, and admission rates from real activity
+3. **Edit costs and targets** — adjust hourly rates and RAG targets if your trust uses different assumptions
+
+**Important:** Service times (how long triage or a scan takes) are modelled defaults unless you provide stage-level timestamps. Always **validate against local data** before operational decisions.
+
+---
+
+## What you do not need to do
+
+- Edit code or JSON files to configure a department
+- Understand simulation terminology on the product screens
+- Stay online — the product runs fully offline (no external websites at runtime)
+
+The **shape** of the Model ED pathway (which stages exist and how they connect) is fixed to the NHS blueprint and checked automatically. You configure **your** sizes, areas, hours, rota, and data — not the clinical design itself.
+
+---
+
+## Quick reference — web addresses
+
+| Address | Screen |
+|---|---|
+| http://127.0.0.1:5000/ | Control tower (main product) |
+| http://127.0.0.1:5000/exec | Executive brief |
+| http://127.0.0.1:5000/planner | Plan ahead |
+| http://127.0.0.1:5000/analyst | Analyst view |
+
+Workbook template: `/api/trust/template` (download from Set up my ED)
+
+---
+
+## Limitations — read before you decide
+
+- Results are **modelled**, not predictions. They show direction and trade-offs, not exact next Tuesday.
+- Synthetic defaults are clearly flagged; calibrate where you can.
+- Small changes in stress tests (±1–2 points) may be within simulation noise.
+- One saved department drives all screens — change set-up once, everything updates together.
+
+---
+
+## For developers and technical staff
+
+Technical architecture, API details, engine design (DES + System Dynamics coupling), test suite, and deployment notes are in:
+
+- **[docs/HANDOVER.md](docs/HANDOVER.md)** — engineering handover
+- **[docs/PRODUCT_REBUILD_PLAN.md](docs/PRODUCT_REBUILD_PLAN.md)** — product roadmap
+
+Quick technical start:
 
 ```bash
-python - <<'PY'
-from uec_hybrid import Pathway, run_cosim, kpis, uec_scorecard, conformance_check
-p = Pathway.load("uec_hybrid/pathways/model_ed.json")
-res = run_cosim(p, seed=0)                 # coupled SD+DES
-print(uec_scorecard({**kpis(res, p)}))
-print("pathway validated:", conformance_check(res, p)["passed"])
-PY
+pip install -r requirements.txt
+python -m uec_hybrid.app.server      # product at http://127.0.0.1:5000
+python -m uec_hybrid.tests.run       # end-to-end checks (~8 min)
+python -m uec_hybrid.report          # standalone decision-report PDF
 ```
 
-## 8. A note on data and faithfulness
+SQLite database `uec_platform.sqlite3` is created on first run. Set `DATABASE_URL` for Postgres in shared deployments.
 
-The model ships on **synthetic** parameters. Structure is taken from the NHS design
-documents; service-time distributions are modelled/expert-set and clearly flagged as
-such (they are not identifiable from attendance data). The bundled trust snapshot
-carries published, cited figures; observed 4-hour/12-hour percentages are used only
-to *validate* the model, never as inputs. Calibrate arrivals, case-mix, cohort
-prevalence and admission rates from a real ECDS extract, and validate against local
-data before any operational use. Colours follow the official NHS identity palette.
+---
 
-Everything is offline-capable by design: no CDNs, no external calls at runtime.
+## Further reading
+
+- NHS England, *The Model Emergency Department: high-performing UEC pathways* (Feb 2026) — the pathway this tool implements
+- Product pitch deck: [docs/pitch/index.html](docs/pitch/index.html)
