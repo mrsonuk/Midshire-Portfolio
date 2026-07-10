@@ -120,7 +120,8 @@ function renderTower(d){
    <button id="recBtn" class="sec" style="margin-top:10px">What should we change? Search staffing, capacity and hours</button>
    <div class="status" id="recStatus"></div><div id="recOut"></div></div>
   <div class="card"><h2>Live flow through your department</h2>
-   <p class="sub">Each box is an area; the number is how many patients are in it right now. Click any area
+   <p class="sub">Each box is an area; the number is how many patients are in it right now (or
+    how many left/arrived that hour for the outcome boxes on the right). Click any area
     for its full picture: waits, staffing, and where its patients come from and go to.
     <span class="legend"><i class="g"></i>flowing<i class="a"></i>busy<i class="r"></i>stuck</span></p>
    <div class="ctrl"><span class="when" id="whenLbl"></span>
@@ -184,7 +185,10 @@ function renderFlow(data){
   const kind=(n.kind==='source'||n.kind==='admitted'||n.kind==='discharged')?n.kind:n.status;
   const c=el('div','fmnode '+kind);
   c.style.left=px(n)+'px';c.style.top=py(n)+'px';c.dataset.label=n.label;c.dataset.id=n.id;
-  c.innerHTML=`<div class="nm">${n.label}</div><div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
+  c.dataset.kind=n.kind||'process';
+  c.innerHTML=`<div class="nm">${n.label}</div>`+
+    (n.caption?`<div class="cap">${n.caption}</div>`:'')+
+    `<div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
     (n.kind==='process'?`<div class="wt">wait ${Math.round(n.mean_wait)}m</div>`:'');
   c.onclick=()=>{SEL=n;markSelected();drill(n);};
   c.onmouseenter=()=>highlight(n.id,true);
@@ -226,13 +230,29 @@ function applyPinch(h){
   hp.textContent=pinch?`Pinch at ${HH(h)}: ${pinch}`:'';
  }
 }
+function hourlySeries(label){
+ const by=(TOWER.area_by_hour||{})[label];
+ if(by&&by.length) return {data:by, mode:'occupancy'};
+ const ex=(TOWER.exits_by_hour||{})[label];
+ if(ex&&ex.length) return {data:ex, mode:'exits'};
+ if(label==='Arrival'&&(TOWER.arrivals_by_hour||[]).length){
+  return {data:TOWER.arrivals_by_hour, mode:'arrivals'};
+ }
+ return {data:[], mode:null};
+}
+function hourStatLabel(mode,h){
+ if(mode==='exits') return 'Left ED at '+HH(h);
+ if(mode==='arrivals') return 'Arrivals at '+HH(h);
+ return 'In area at '+HH(h);
+}
 function updateHour(){
  const H=curHour;$('#whenLbl').textContent='Your department at '+HH(H);
  const cen=(TOWER.census_by_hour||[])[H]||0;$('#censusLbl').textContent='about '+Math.round(cen)+' patients in the department';
- const by=TOWER.area_by_hour||{};
  $$('#flow .fmnode').forEach(node=>{
-  const lab=node.dataset.label, arr=by[lab];
-  if(!arr){return;}
+  const lab=node.dataset.label;
+  const series=hourlySeries(lab);
+  const arr=series.data;
+  if(!arr.length){return;}
   const now=arr[H], peak=Math.max(...arr,1);
   const v=node.querySelector('[data-vol]');if(v)v.textContent=Math.round(now).toLocaleString();
   if(node.classList.contains('source')||node.classList.contains('admitted')||node.classList.contains('discharged'))return;
@@ -268,14 +288,17 @@ function flowsFor(id,dir){
  }).join('')||'<span class="chip">none</span>';
 }
 function drill(n){
- const by=(TOWER.area_by_hour||{})[n.label]||[];
+ const series=hourlySeries(n.label);
+ const by=series.data;
  const now=by.length?Math.round(by[curHour]):null;
  const peak=by.length?by.indexOf(Math.max(...by)):null;
+ const barHint=series.mode==='exits'?' departures':series.mode==='arrivals'?' arrivals':' in area';
  let bars='';
  if(by.length){const mx=Math.max(...by,1);bars='<div class="hours">'+by.map((v,h)=>
-  `<div style="flex:1"><div class="b ${h===curHour?'now':''}" style="height:${Math.max(2,Math.round(80*v/mx))}px" title="${HH(h)}: ${Math.round(v)} in area"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
+  `<div style="flex:1"><div class="b ${h===curHour?'now':''}" style="height:${Math.max(2,Math.round(80*v/mx))}px" title="${HH(h)}: ${Math.round(v)}${barHint}"></div><div class="lab">${h%6===0?h:''}</div></div>`).join('')+'</div>';}
  const stats=[
-  now!=null?`<div class="dstat"><div class="k">In area at ${HH(curHour)}</div><div class="v">${now}</div></div>`:'',
+  now!=null&&series.mode?`<div class="dstat"><div class="k">${hourStatLabel(series.mode,curHour)}</div><div class="v">${now}</div></div>`:'',
+  n.caption?`<div class="dstat"><div class="k">What this means</div><div class="v" style="font-size:13px;font-weight:600">${n.caption}</div></div>`:'',
   n.kind==='process'?`<div class="dstat"><div class="k">Average wait</div><div class="v">${Math.round(n.mean_wait)}<small> min</small></div></div>`:'',
   n.kind==='process'?`<div class="dstat"><div class="k">How busy</div><div class="v">${Math.round(n.utilisation)}<small>% of capacity</small></div></div>`:'',
   `<div class="dstat"><div class="k">Patients this week</div><div class="v">${Math.round(n.volume).toLocaleString()}</div></div>`,
@@ -288,7 +311,7 @@ function drill(n){
   <div class="dhead"><span class="t">${n.label}${pinch&&n.label===pinch?' &nbsp;<span class="pill High" style="background:var(--red)">PINCH at '+HH(curHour)+'</span>':''}</span>
    <button class="close" id="drillClose">Close</button></div>
   <div class="dstats">${stats}</div>
-  ${by.length?'<div class="dsec">Patients in this area through the day (dark bar = the hour on the slider)</div>'+bars:''}
+  ${by.length?'<div class="dsec">Through the day (dark bar = the hour on the slider)</div>'+bars:''}
   ${served?'<div class="dsec">Served by</div><div class="chips">'+served+'</div>':''}
   <div class="dsec">Patients arrive from</div><div class="chips">${flowsFor(n.id,'in')}</div>
   <div class="dsec">And go on to</div><div class="chips">${flowsFor(n.id,'out')}</div>`;
