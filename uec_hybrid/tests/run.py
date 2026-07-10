@@ -294,6 +294,8 @@ def main():
     payload = store.remember("simulate", {"raw": {"x": 1}}, {"kpi": 42.0})
     assert store.cached("simulate", {"raw": {"x": 1}}) == payload
     assert store.cached("simulate", {"raw": {"x": 2}}) is None
+    updated = store.remember("simulate", {"raw": {"x": 1}}, {"kpi": 99.0})
+    assert updated["kpi"] == 99.0 and store.cached("simulate", {"raw": {"x": 1}})["kpi"] == 99.0
     store.save_calibration("your_department", {"arrivals": {}}, ["ok"])
     assert store.get_calibration("your_department")["summary"] == ["ok"]
     store.clear_calibration("your_department")
@@ -535,6 +537,23 @@ def main():
     assert vv["variants"] and vv["variants"][0]["stages"] and "total_min" in vv["variants"][0], vv.get("variants")
     print("Analyst endpoints OK: /api/simulate carries SD interpretation; "
           "/api/validate carries per-stage timing + total.")
+
+    # --- bug fixes: rostered resources, cache upsert, API guards ------------ #
+    from ..analysis.scenarios import apply_scenario as _apply_scenario
+    from ..app.server import _apply_resource_override, _build
+    p_dept = Pathway.from_dict(build_dept(Department.default()))
+    pdiv, _ = _apply_scenario(p_dept, {"name": "+doctors", "resources": {"ed_doctor": "+2"}})
+    assert isinstance(pdiv.raw["resources"]["ed_doctor"], list), "scenario must keep roster shape"
+    assert pdiv.raw["resources"]["ed_doctor"][12] == p_dept.raw["resources"]["ed_doctor"][12] + 2
+    raw_ov = _build({"pathway": "your_department", "overrides": {"ed_doctor": 20}})[3]
+    assert isinstance(raw_ov["resources"]["ed_doctor"], list)
+    assert raw_ov["resources"]["ed_doctor"] == [20] * 24
+    bad_ct = client.post("/api/control-tower", data="not json", content_type="application/json")
+    assert bad_ct.status_code == 200, "malformed control-tower body should fall back to default seed"
+    store.save_calibration("your_department", {"arrivals": {}}, ["ok"])
+    client.post("/api/calibrate/reset", json={})
+    assert store.get_calibration("your_department") is None, "reset must default to your_department"
+    print("Bug fixes OK: roster scenarios/overrides; cache upsert; API guards.")
 
     # --- one-click decision report from a department build, incl. investment page ---
     from ..report import build_report
