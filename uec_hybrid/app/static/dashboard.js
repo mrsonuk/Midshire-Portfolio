@@ -15,6 +15,7 @@ function initDashboard(pathways){
   $("#runBtn").onclick=runSim; $("#mcBtn").onclick=runMC;
   $("#scnAdd").onclick=()=>addScenarioRow(); $("#scnRun").onclick=runScenarios;
   $("#calibBtn").onclick=runCalibrate; $("#resetBtn").onclick=resetCalib;
+  if($("#acBtn"))$("#acBtn").onclick=runAutoCal;
   let rT;addEventListener("resize",()=>{clearTimeout(rT);rT=setTimeout(()=>{if(lastFlow)renderFlowMap(lastFlow);},250);});
   renderPathway(); buildScenarioPresets(); runSim();
 }
@@ -324,6 +325,23 @@ async function runCalibrate(){
     const b=$("#calibSummary");b.style.display="block";
     b.innerHTML='<div class="dh">Calibration applied</div><ul>'+d.summary.map(s=>"<li>"+s+"</li>").join("")+"</ul>";
     setCalib(true);await runSim();setBusy(false,"Calibrated from data","ok");
+  }catch(e){setBusy(false,"Error: "+e.message,"err");}
+}
+async function runAutoCal(){
+  if(busy)return;
+  const obs=+$("#acObs").value;
+  if(!obs||obs<20||obs>100){setBusy(false,"Enter your observed 4-hour % first","err");return;}
+  try{setBusy(true,"Auto-tuning service times to match "+obs+"% (a few simulated weeks)...");
+    const d=await post("/api/auto-calibrate",{observed_four_hour:obs});
+    const box=$("#acOut");box.style.display="block";
+    box.style.borderLeftColor=d.within_tolerance?"var(--green)":"var(--orange)";
+    box.innerHTML='<div class="dh">Auto-calibration result</div><p>'+d.note+'</p>'+
+      '<p style="font-size:12.5px;color:var(--grey)">Search path: '+
+      (d.history||[]).map(h=>"x"+h.scale.toFixed(2)+" → "+h.modelled.toFixed(1)+"%").join(" · ")+
+      '</p><p style="font-size:12.5px">Saved as the service-time override — every surface now uses it. '+
+      'Undo by clearing pathway params (POST /api/pathway-params {}).</p>';
+    await runSim();
+    setBusy(false,d.within_tolerance?"Model tuned to your observed 4-hour":"Tuned as far as the band allows","ok");
   }catch(e){setBusy(false,"Error: "+e.message,"err");}
 }
 async function resetCalib(){

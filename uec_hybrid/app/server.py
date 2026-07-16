@@ -13,6 +13,7 @@ import glob
 import io
 import json
 import os
+import re
 from pathlib import Path
 
 from flask import Flask, jsonify, render_template, request, send_file, send_from_directory
@@ -196,6 +197,9 @@ from ..workforce.view import workforce_view
 from ..ingest import trust_profile as trusts
 from ..ingest import workbook as trust_workbook
 from .. import model_params
+from ..assist import run_what_if, auto_calibrate
+from ..assist.nl import parse_question, EXAMPLES as ASK_EXAMPLES
+from ..assist import llm as assist_llm
 from ..viz.flow_model import control_tower
 
 CURRENT = {"dept": None}
@@ -375,6 +379,63 @@ def api_pathway_params():
         return jsonify({"ok": True, "params": saved})
     return jsonify({"stages": model_params.service_params(BASE_RAW),
                     "params": model_params.load_params()})
+
+
+# --- AI assist ----------------------------------------------------------------- #
+@app.route("/api/ask", methods=["POST"])
+def api_ask():
+    """Ask a what-if in plain English. The question is translated into a scenario
+    (rule-based; Claude fallback when configured), simulated against the saved
+    department (paired Monte-Carlo vs baseline) and answered in plain language.
+    Every number in the answer comes from the engine."""
+    body = request.get_json(force=True) or {}
+    question = str(body.get("question", "")).strip()
+    if not question:
+        return jsonify({"error": "no question given", "supported": ASK_EXAMPLES}), 400
+    reps = max(2, min(24, int(body.get("replications", 6))))
+    raw = _dept_raw()
+    scenario, _notes = parse_question(question, raw)
+    if scenario is None and not assist_llm.available():
+        return jsonify({"error": "I couldn't turn that into a change I can simulate. "
+                                 "Try phrasings like these:", "supported": ASK_EXAMPLES}), 400
+    key = {"raw": raw, "q": question.lower(), "reps": reps, "llm": assist_llm.available()}
+    out = store.cached_or_compute("ask", key, lambda: run_what_if(question, raw, reps=reps))
+    if out.get("error"):
+        return jsonify(out), 400
+    return jsonify(out)
+
+
+@app.route("/api/auto-calibrate", methods=["POST"])
+def api_auto_calibrate():
+    """AI-assisted calibration: search the service-time scale until the modelled
+    4-hour matches the trust's observed figure, then save it as the same
+    data-driven override /api/pathway-params exposes (clear there to undo)."""
+    body = request.get_json(force=True) or {}
+    d = _dept()
+    obs = body.get("observed_four_hour")
+    if obs is None:
+        m = re.search(r"\(([A-Z0-9]{3})\)", d.name or "")
+        if m:
+            try:
+                obs = trusts.get_profile(m.group(1)).observed_four_hour_pct
+            except KeyError:
+                obs = None
+    if obs is None:
+        return jsonify({"error": "provide observed_four_hour (%), or pick a trust "
+                                 "with a published 4-hour figure first"}), 400
+    raw = build_dept(d)
+    patch = _calibration_patch("your_department")
+    if patch:
+        raw = apply_patch(raw, patch)
+    existing = model_params.load_params()
+    keep = existing.get("service_mean") or None
+    seeds = tuple(int(s) for s in (body.get("seeds") or (2, 3)))[:4] or (2,)
+    res = auto_calibrate(raw, float(obs), seeds=seeds,
+                         max_iter=max(1, min(10, int(body.get("max_iter", 6)))),
+                         keep_means=keep)
+    res["saved_params"] = model_params.save_params(
+        {"service_scale": res["scale"], "service_mean": keep or {}})
+    return jsonify(res)
 
 
 def _control_tower_payload(seed=2):

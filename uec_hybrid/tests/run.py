@@ -447,6 +447,38 @@ def main():
           f"LOS {stt['mean_los']:.0f}m); per-variant timing (top route {vts[0]['total_min']:.0f}m); "
           f"scenario-impact text.")
 
+    # --- AI assist: plain-English what-if -> scenario -> engine -> answer ---
+    from ..assist.nl import parse_question, run_what_if
+    from ..assist import llm as assist_llm
+    _braw = build_dept(Department.default())
+    sc, nts = parse_question("What if we add 2 doctors and 40 more ward beds?", _braw)
+    assert sc["resources"]["ed_doctor"] == "+2"
+    assert sc["sd"]["inpatient_beds"] == _braw["sd"]["inpatient_beds"] + 40
+    assert parse_question("10% more attendances", _braw)[0]["arrivals_scale"] == 1.1
+    assert parse_question("divert 20% of minors", _braw)[0]["divert"]["fraction"] == 0.2
+    assert parse_question("double the cubicles", _braw)[0]["resources"]["cubicle"] == "*2"
+    assert parse_question("what's the meaning of life", _braw)[0] is None
+    # a phrase matching an area the department doesn't have is skipped, not invented
+    lean_raw2 = build_dept(lean)                       # lean has no paeds
+    sc2, nts2 = parse_question("add 2 paeds doctors", lean_raw2)
+    assert sc2 is None and any("doesn't have" in n for n in nts2), (sc2, nts2)
+    # end-to-end: numbers come from the engine, offline (no LLM key in CI)
+    assert not assist_llm.available() or True          # available() must never raise
+    wf = run_what_if("add 2 doctors", lean_raw2, reps=2, use_llm=False)
+    assert wf["answer"] and wf["deltas"]["four_hour"]["scenario"] >= 0
+    assert wf["rows"][0]["scenario"] == "Baseline" and not wf["llm_used"]
+    print(f"AI assist (ask) OK: 6 phrasings parsed, missing areas skipped honestly; "
+          f"what-if 4-hour {wf['deltas']['four_hour']['base']}%→{wf['deltas']['four_hour']['scenario']}%.")
+
+    # --- AI assist: auto-calibration converges toward the observed figure ---
+    from ..assist.autocal import auto_calibrate
+    ac = auto_calibrate(lean_raw2, observed_four_hour=45.0, seeds=(1,), max_iter=3, tol=2.0)
+    assert ac["scale"] > 1.0, ac                        # observed worse than model -> slower service
+    assert abs(ac["modelled"] - 45) <= abs(ac["baseline_modelled"] - 45), ac
+    assert ac["history"] and ac["note"]
+    print(f"AI assist (auto-cal) OK: baseline {ac['baseline_modelled']}% -> x{ac['scale']} "
+          f"gives {ac['modelled']}% vs observed 45% ({len(ac['history'])} evaluations).")
+
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
     raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)
@@ -537,6 +569,21 @@ def main():
     assert vv["variants"] and vv["variants"][0]["stages"] and "total_min" in vv["variants"][0], vv.get("variants")
     print("Analyst endpoints OK: /api/simulate carries SD interpretation; "
           "/api/validate carries per-stage timing + total.")
+
+    # --- AI assist endpoints: /api/ask answers, junk 400s; /api/auto-calibrate saves ---
+    ak = client.post("/api/ask", json={"question": "add 2 doctors", "replications": 2})
+    akd = ak.get_json()
+    assert ak.status_code == 200 and akd["answer"] and akd["deltas"]["four_hour"], akd
+    assert client.post("/api/ask", json={"question": "make everything perfect"}).status_code == 400
+    assert client.post("/api/ask", json={}).status_code == 400
+    acr = client.post("/api/auto-calibrate",
+                      json={"observed_four_hour": 50, "seeds": [1], "max_iter": 2})
+    acd = acr.get_json()
+    assert acr.status_code == 200 and "scale" in acd and acd["history"] and "saved_params" in acd, acd
+    assert client.post("/api/auto-calibrate", json={}).status_code == 400  # no observed figure
+    client.post("/api/pathway-params", json={})            # reset any saved tuning
+    print("AI assist endpoints OK: /api/ask grounded answer + graceful 400s; "
+          "/api/auto-calibrate tunes and saves via pathway params.")
 
     # --- bug fixes: rostered resources, cache upsert, API guards ------------ #
     from ..analysis.scenarios import apply_scenario as _apply_scenario

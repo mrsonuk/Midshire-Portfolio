@@ -132,6 +132,14 @@
 
  <section class="panel active" id="panel-tower">
   <div id="towerBody"><div class="loading"><span class="spin"></span> Running your department...</div></div>
+  <div class="card"><h2>Ask a what-if</h2>
+   <p class="sub">Type a change in plain English and the model will run it against your department —
+    e.g. “add 2 doctors”, “10% more attendances”, “40 more ward beds”, “divert 20% of minors”.</p>
+   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="What if we add 2 doctors overnight?">
+   <button id="askBtn" class="sec" style="margin-top:8px">Run what-if</button>
+   <div class="status" id="askStatus"></div>
+   <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
+  </div>
  </section>
 
  <section class="panel" id="panel-workforce">

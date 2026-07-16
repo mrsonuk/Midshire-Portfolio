@@ -22,7 +22,7 @@ import numpy as np
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-ENGINE_VERSION = "0.3.6"
+ENGINE_VERSION = "0.3.7"
 
 _DEFAULT_PATH = Path(__file__).resolve().parent.parent.parent / "uec_platform.sqlite3"
 
