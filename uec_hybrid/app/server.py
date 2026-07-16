@@ -110,6 +110,19 @@ def home():
     return render_template("product.html")
 
 
+_FAVICON = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+            "<rect width='64' height='64' rx='12' fill='#005EB8'/>"
+            "<text x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='26' "
+            "font-weight='bold' fill='#fff' text-anchor='middle'>ED</text></svg>")
+
+
+@app.route("/favicon.ico")
+def favicon():
+    # browsers request this on every page; without it each load logs a 404
+    return app.response_class(_FAVICON, mimetype="image/svg+xml",
+                              headers={"Cache-Control": "public, max-age=86400"})
+
+
 @app.route("/planner")
 def planner_page():
     return render_template("planner.html")
