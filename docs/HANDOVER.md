@@ -262,6 +262,38 @@ board PDF `GET /api/report`.
   mean time per stage + total LOS). `POST /api/validate`.
 - *Data & calibration* - ECDS upload. `POST /api/calibrate[/reset]`.
 
+### 3.9 AI assist (`assist/`)
+
+Two AI features, chosen so neither can ever invent a number:
+
+- **Ask a what-if** (`assist/nl.py`) - plain English -> scenario (rule-based
+  parser, fully offline) -> `compare_scenarios` (paired Monte-Carlo vs
+  baseline) -> plain-language answer + before/after table. If `anthropic` is
+  installed and `ANTHROPIC_API_KEY` is set (`assist/llm.py`), Claude becomes a
+  fallback parser for free-form phrasing (schema-constrained, validated
+  against the department's real resources) and a better narrator (prompted to
+  use only the computed numbers; the computed table is always shown). No key
+  -> identical numbers, templated wording. Neither `anthropic` nor a key ships
+  in requirements - locked-down NHS installs never make an outbound call.
+- **Chatbot** (`assist/chat.py`, the floating "Ask your ED" widget) - answers
+  operational questions any time ("where is demand", "where should I deploy",
+  "what's the pinch point", standards, gaps, glossary, what-ifs). A rule-based
+  intent router formats answers from a ``provider`` of the product's own
+  computed feeds (server `_chat_provider`) - a chat answer can never disagree
+  with a screen. With Claude configured, free-form questions are answered from
+  a compact JSON context of the same computed numbers, and change-questions
+  are handed back to the real engine via a `WHATIF:` handshake.
+- **Auto-calibration** (`assist/autocal.py`) - monotonic search over the
+  global service-time scale until modelled 4-hour matches the trust's
+  observed figure; saves through `model_params` (same override as the
+  workbook ServiceTimes tab; clear `/api/pathway-params` to undo). Every
+  evaluation is returned in `history`; clamping to the plausible band is
+  reported honestly.
+
+Rejected on purpose: LLM-written board narratives (hallucination risk in a
+clinical/financial document - computed interpretations already exist) and an
+ML forecaster (the regression forecaster with a backtest already covers it).
+
 ## 4. API reference (all JSON unless noted)
 
 | Route | Method | Purpose |
@@ -285,6 +317,9 @@ board PDF `GET /api/report`.
 | `/api/costbook` | GET/POST | Trust-editable finance assumptions |
 | `/api/scorecard-targets` | GET/POST | Editable RAG standard targets (data-driven, admin-level) |
 | `/api/pathway-params` | GET/POST | Editable service-time assumptions (global scale + per-stage means) |
+| `/api/ask` | POST | Plain-English what-if (`{question}`) -> scenario -> engine -> grounded answer (cached) |
+| `/api/auto-calibrate` | POST | AI-assisted calibration: tune service-time scale to the observed 4-hour % |
+| `/api/chat` | POST | Product chatbot (`{message, history}`): demand/deploy/pinch/standards/gaps/glossary/what-ifs |
 | `/api/simulate` `/api/montecarlo` `/api/scenarios` `/api/validate` | POST | Analyst engine (cached) |
 | `/api/calibrate` `/api/calibrate/reset` | POST | ECDS calibration (scope: pathway key or `your_department`) |
 | `/api/sample-data` | GET | ECDS-shaped template CSV |

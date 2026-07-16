@@ -1,0 +1,275 @@
+"""
+The product chatbot: ask the department anything, any time.
+
+Grounding contract (same as the rest of assist/):
+- Every number in a reply comes from the product's own computed data, fetched
+  through a ``provider`` of named callables the server supplies (standards,
+  demand, staffing, pinch point, gaps, what-if). The chat layer formats; it
+  never computes.
+- A rule-based intent router answers the core operational questions fully
+  offline ("where is demand", "where should I deploy", "what's the pinch
+  point", "how are we doing", "what is SDEC", what-ifs).
+- With Claude configured (see ``llm``), free-form questions are answered from
+  a compact JSON context of the same computed data - the model is instructed
+  to use only those numbers, and questions that need a simulation are routed
+  back to the real engine via a WHATIF handshake.
+"""
+from __future__ import annotations
+
+import json
+import re
+
+GLOSSARY = {
+    "4-hour standard": "the % of patients admitted, transferred or discharged within 4 hours of arrival. Constitutional target 95%; interim national target 78%.",
+    "acuity": "how sick a patient is, graded 1 (life-threatening) to 5 (minor). The sickest are seen first.",
+    "exit-block": "when full inpatient wards stop the ED admitting - patients board in cubicles and everything backs up behind them.",
+    "boarding": "an admitted patient stuck in the ED waiting for a ward bed.",
+    "lwbs": "left without being seen - patients who gave up waiting and walked out. Hidden clinical risk.",
+    "handover": "transferring an ambulance patient into ED care; the standard is 45 minutes or less, and the crew is stuck until it happens.",
+    "rat": "Rapid Assessment & Treatment - a senior doctor at the front door making early decisions on the sickest arrivals.",
+    "utc": "Urgent Treatment Centre - the minor illness/injury stream alongside the ED.",
+    "sdec": "Same-Day Emergency Care - specialty assessment that sends patients home the same day instead of admitting them.",
+    "eemac": "extended emergency ambulatory care (up to 12 hours) for patients expected to go home.",
+    "cdu": "Clinical Decision Unit - short-stay observation beds that avoid a ward admission.",
+    "frailty unit": "early assessment for frail older patients (FAU), preventing unnecessary admissions.",
+    "fau": "the frailty assessment unit - early assessment for frail older patients, preventing unnecessary admissions.",
+    "mh liaison": "the mental-health team working in the ED; 1-hour response standard.",
+    "ecds": "the Emergency Care Data Set - the national record of every ED attendance; upload an extract to calibrate the model.",
+    "pinch point": "the stage of the pathway losing the most patient-hours right now - the first place to relieve.",
+    "bottleneck": "the stage of the pathway losing the most patient-hours right now - the first place to relieve.",
+    "digital twin": "a working computer copy of your department you can safely experiment on.",
+    "monte-carlo": "running the model over many simulated weeks to show the realistic spread (good / typical / tough), not one lucky number.",
+    "exit block": "when full inpatient wards stop the ED admitting - patients board in cubicles and everything backs up behind them.",
+    "opel": "the NHS operational pressure escalation levels - 1 (business as usual) to 4 (extreme pressure).",
+    "conformance": "the automated check that every simulated patient journey follows the intended Model ED pathway.",
+}
+
+HELP = ("I can answer questions about your department's model. Try: "
+        "“where is demand?” · “where should I deploy staff?” · "
+        "“what's the pinch point?” · “how are we doing against the standards?” · "
+        "“what are we missing from the Model ED?” · “how is my ED set up?” · "
+        "“what if we add 2 doctors?” · “what does SDEC mean?”")
+
+_TAGS = re.compile(r"<[^>]+>")
+
+
+def _clean(text):
+    return _TAGS.sub("", text or "")
+
+
+def _hh(h):
+    return f"{int(h) % 24:02d}:00"
+
+
+# ------------------------------------------------------------------------------
+# Intent handlers - each formats one provider's computed data into a reply
+# ------------------------------------------------------------------------------
+def _fmt_demand(provider):
+    d = provider["demand"]()
+    prof = d.get("hourly") or []
+    if not prof:
+        return "I don't have a demand profile yet - set up your department first."
+    per_day = d.get("per_day") or round(sum(prof))
+    top = sorted(range(24), key=lambda h: -prof[h])[:3]
+    lo = min(range(24), key=lambda h: prof[h])
+    span = f"{_hh(min(top))}-{_hh(max(top) + 1)}"
+    return (f"Your department expects about {per_day:.0f} attendances a day. Demand is heaviest "
+            f"around {span} (about {max(prof):.0f}/hour at the peak) and quietest around "
+            f"{_hh(lo)} (about {prof[lo]:.0f}/hour). The Workforce tab shows your staffing "
+            f"against this exact curve.")
+
+
+def _fmt_deploy(provider):
+    w = provider["staffing"]()
+    parts = [_clean(w.get("headline", ""))]
+    light = [a for a in w.get("areas", []) if a.get("understaffed_hours")]
+    light.sort(key=lambda a: -len(a["understaffed_hours"]))
+    for a in light[:3]:
+        hrs = a["understaffed_hours"]
+        parts.append(f"{a['label']}: light against demand {_hh(min(hrs))}-{_hh(max(hrs) + 1)}.")
+    if not light:
+        parts.append("No staff group looks under-strength against the demand curve.")
+    pinch = provider.get("pinch") and provider["pinch"]()
+    if pinch and pinch.get("bottleneck"):
+        when = pinch.get("peak_hours") or []
+        bite = f" (bites hardest {_hh(min(when))}-{_hh(max(when) + 1)})" if when else ""
+        parts.append(f"The pinch point is {pinch['bottleneck']}{bite} - extra hands help there first.")
+    parts.append(f"Weekly pay-bill at the current rota: £{w.get('weekly_cost', 0):,}.")
+    return " ".join(p for p in parts if p)
+
+
+def _fmt_pinch(provider):
+    p = provider["pinch"]()
+    if not p or not p.get("bottleneck"):
+        return "No pinch point stands out in the current run - open the Control tower for the live map."
+    when = p.get("peak_hours") or []
+    bite = f" It bites hardest {_hh(min(when))}-{_hh(max(when) + 1)}." if when else ""
+    rec = _clean(p.get("recommendation", ""))
+    return f"Your pinch point is {p['bottleneck']}.{bite} {rec}".strip()
+
+
+def _fmt_standards(provider):
+    s = provider["standards"]()
+    labels = [("four_hour", "4-hour standard"), ("initial_assessment", "15-min initial assessment"),
+              ("twelve_hour", "12-hour waits"), ("ambulance_handover", "handover ≤45 min"),
+              ("lwbs", "walk-outs")]
+    bits = [f"{label} typically {b['typical']}% (good week {b['good']}%, tough week {b['tough']}%)"
+            for key, label in labels if (b := s.get(key))]
+    if not bits:
+        return "No standards computed yet - open the Control tower to run your department."
+    return ("Across simulated weeks of your department as configured: " + "; ".join(bits) +
+            ". The Executive brief shows these as cards with the pinch point and pay-bill.")
+
+
+def _fmt_gaps(provider):
+    g = provider["gaps"]()
+    if not g:
+        return ("The Model ED gap analysis hasn't been run yet for this set-up - open the "
+                "“Model ED gaps” tab once (it takes a few minutes first time) and ask me again.")
+    missing = g.get("missing") or []
+    if not missing:
+        return "You have every Model ED element - nothing is missing."
+    tops = []
+    for item in missing[:3]:
+        fin = item.get("finance") or {}
+        val = f"{item.get('value', '')} {item.get('unit', '')}".strip()
+        money = f" (~£{fin['annual_benefit']:,.0f}/year)" if fin.get("annual_benefit") else ""
+        tops.append(f"{item.get('label', '?')} - {val}{money}")
+    return (f"You're missing {len(missing)} Model ED element(s). Biggest opportunities: "
+            + "; ".join(tops) + ". Each has a costed business case on the gaps tab.")
+
+
+def _fmt_department(provider):
+    d = provider["department"]()
+    areas = ", ".join(d.get("areas_on") or []) or "core only"
+    return (f"{d.get('name', 'Your ED')}: about {d.get('attendances_per_day', 0):.0f} attendances/day, "
+            f"{d.get('inpatient_beds', 0)} inpatient beds, community capacity "
+            f"{d.get('community_capacity', 0)}. Areas switched on: {areas}. "
+            f"Change any of this in “Set up my ED”.")
+
+
+def _fmt_glossary(message):
+    q = message.lower()
+    for term in sorted(GLOSSARY, key=len, reverse=True):
+        if term in q:
+            return f"{term.upper() if len(term) <= 5 else term.capitalize()}: {GLOSSARY[term]}"
+    return None
+
+
+def _fmt_what_if(provider, message):
+    out = provider["what_if"](message)
+    if out.get("error"):
+        return None
+    return out["answer"]
+
+
+INTENTS = [
+    (r"pinch|bottleneck|where.*(stuck|jam|queue)|biggest (delay|problem)", _fmt_pinch),
+    (r"deploy|where.*(staff|put people|extra hands)|understaff|rota.*(match|gap)|coverage", _fmt_deploy),
+    (r"demand|busiest|arrival|attendanc|when.*busy|peak", _fmt_demand),
+    (r"standard|4.?.?hour|four.?hour|12.?.?hour|twelve|performance|handover|breach|how are we doing", _fmt_standards),
+    (r"missing|gaps?\b|invest|business case|model ed element", _fmt_gaps),
+    (r"set.?up|configured|how is my ed|what areas|my department\b", _fmt_department),
+]
+
+_WHATIF_HINT = re.compile(r"what if|\badd\b|\bremove\b|\bextra\b|\bfewer\b|double|halve|divert|% (more|less)|winter")
+
+
+def answer(message: str, history: list | None, provider: dict) -> dict:
+    """Answer a chat message from the product's computed data. ``provider`` maps
+    names -> callables (see server._chat_provider). Offline-first; Claude (when
+    configured) handles anything the router can't."""
+    from . import llm
+    q = (message or "").strip()
+    if not q:
+        return {"reply": HELP, "intent": "help", "llm_used": False}
+    ql = q.lower()
+
+    # what-ifs go to the real engine first - a language model can't simulate
+    if _WHATIF_HINT.search(ql):
+        reply = _fmt_what_if(provider, q)
+        if reply:
+            return {"reply": reply, "intent": "what_if", "llm_used": False}
+
+    gl = _fmt_glossary(ql) if re.search(r"what (is|does|are)|mean(s|ing)?\b|explain|define", ql) else None
+    if gl:
+        return {"reply": gl, "intent": "glossary", "llm_used": False}
+
+    for pattern, handler in INTENTS:
+        if re.search(pattern, ql):
+            try:
+                return {"reply": handler(provider), "intent": handler.__name__[5:], "llm_used": False}
+            except Exception:
+                break                      # fall through to LLM / help
+
+    if llm.available():
+        out = _llm_answer(q, history or [], provider)
+        if out:
+            return out
+    gl = _fmt_glossary(ql)                 # last offline resort: a bare term
+    if gl:
+        return {"reply": gl, "intent": "glossary", "llm_used": False}
+    return {"reply": "I'm not sure how to answer that from the model. " + HELP,
+            "intent": "help", "llm_used": False}
+
+
+# ------------------------------------------------------------------------------
+# Claude tier: free-form questions over the same computed context
+# ------------------------------------------------------------------------------
+def _context(provider) -> dict:
+    """Compact JSON of everything already computed - a few KB, numbers only from
+    the engine. Anything unavailable is simply absent (never guessed)."""
+    ctx = {}
+    for key in ("department", "standards", "demand", "staffing", "pinch", "gaps"):
+        fn = provider.get(key)
+        if not fn:
+            continue
+        try:
+            val = fn()
+        except Exception:
+            continue
+        if key == "staffing" and val:      # trim the hour-by-hour arrays
+            val = {"headline": _clean(val.get("headline", "")),
+                   "weekly_cost": val.get("weekly_cost"),
+                   "understaffed": {a["label"]: a["understaffed_hours"]
+                                    for a in val.get("areas", []) if a.get("understaffed_hours")}}
+        if val:
+            ctx[key] = val
+    ctx["glossary"] = GLOSSARY
+    return ctx
+
+
+_SYSTEM = (
+    "You are the in-product assistant for the Model ED Optimiser, a simulation of an NHS "
+    "emergency department. Answer briefly (1-4 sentences), plain language, British English. "
+    "HARD RULES: use ONLY the numbers present in the CONTEXT JSON - never invent, estimate or "
+    "compute new figures; if the context doesn't contain what's needed, say which tab of the "
+    "product computes it. If (and only if) the user asks to test a CHANGE to the department "
+    "(more/fewer staff, beds, demand), reply with exactly 'WHATIF: ' followed by the change "
+    "restated in one short imperative sentence - the real simulation engine will run it.")
+
+
+def _llm_answer(message, history, provider):
+    from . import llm
+    try:
+        client = llm._client()
+        msgs = [{"role": h["role"], "content": str(h["content"])[:2000]}
+                for h in history[-8:] if h.get("role") in ("user", "assistant") and h.get("content")]
+        msgs.append({"role": "user",
+                     "content": f"CONTEXT:\n{json.dumps(_context(provider))}\n\nQUESTION: {message}"})
+        resp = client.messages.create(model=llm.MODEL, max_tokens=1024,
+                                      system=_SYSTEM, messages=msgs)
+        if resp.stop_reason == "refusal":
+            return None
+        text = next((b.text for b in resp.content if b.type == "text"), "").strip()
+        if not text:
+            return None
+        if text.upper().startswith("WHATIF:"):
+            reply = _fmt_what_if(provider, text[7:].strip())
+            if reply:
+                return {"reply": reply, "intent": "what_if", "llm_used": True}
+            return {"reply": "I understood that as a change to simulate, but couldn't set it up. " + HELP,
+                    "intent": "help", "llm_used": True}
+        return {"reply": text, "intent": "freeform", "llm_used": True}
+    except Exception:
+        return None

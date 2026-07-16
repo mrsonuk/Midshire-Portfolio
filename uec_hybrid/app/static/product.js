@@ -64,6 +64,84 @@ function afterDeptChanged(dept){
  $$('.panel').forEach(p=>p.classList.remove('active'));$('#panel-tower').classList.add('active');
  loadTower();
 }
+// ---- chatbot ----
+const CHAT={hist:[],busy:false};
+function chatAdd(role,text,tag){
+ const m=el('div','cmsg '+role,'');m.textContent=text;
+ if(tag&&role==='bot'){const t=el('span','tag',tag);m.appendChild(document.createElement('br'));m.appendChild(t);}
+ $('#chatMsgs').append(m);$('#chatMsgs').scrollTop=$('#chatMsgs').scrollHeight;
+ return m;
+}
+async function chatSend(){
+ if(CHAT.busy)return;
+ const q=($('#chatIn').value||'').trim();
+ if(!q)return;
+ $('#chatIn').value='';chatAdd('user',q);
+ CHAT.busy=true;
+ const wait=chatAdd('bot','Checking your model…');
+ try{
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({message:q,history:CHAT.hist})});
+  const d=await r.json();
+  wait.textContent=d.reply||'Sorry — something went wrong.';
+  if(d.intent&&d.intent!=='help'){
+   const t=el('span','tag',d.intent.replace(/_/g,' ')+(d.llm_used?' · AI wording':''));
+   wait.appendChild(document.createElement('br'));wait.appendChild(t);
+  }
+  CHAT.hist.push({role:'user',content:q},{role:'assistant',content:d.reply||''});
+  if(CHAT.hist.length>16)CHAT.hist=CHAT.hist.slice(-16);
+ }catch(e){wait.textContent='Error: '+e.message;}
+ CHAT.busy=false;$('#chatIn').focus();
+}
+$('#chatFab').onclick=()=>{
+ const p=$('#chatPanel');p.classList.toggle('open');
+ if(p.classList.contains('open')){
+  if(!$('#chatMsgs').children.length)
+   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 2 doctors?”');
+  $('#chatIn').focus();
+ }
+};
+$('#chatClose').onclick=()=>$('#chatPanel').classList.remove('open');
+$('#chatSend').onclick=chatSend;
+$('#chatIn').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
+
+// ---- ask a what-if ----
+async function runAsk(){
+ const q=($('#askQ').value||'').trim();
+ if(!q){$('#askStatus').textContent='Type a change first.';return;}
+ $('#askStatus').innerHTML='<span class="spin"></span> Simulating your what-if (scenario vs baseline)...';
+ $('#askOut').style.display='none';
+ try{
+  const r=await fetch('/api/ask',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({question:q})});
+  const d=await r.json();
+  if(!r.ok){
+   $('#askStatus').textContent='';
+   $('#askOut').style.display='block';
+   $('#askOut').innerHTML='<div class="h">I didn\'t understand that</div><p>'+(d.error||'')+'</p>'+
+    (d.supported?'<p class="hint">Try: '+d.supported.map(s=>'“'+s+'”').join(' · ')+'</p>':'');
+   return;
+  }
+  $('#askStatus').textContent='';
+  let rows='';
+  for(const k in (d.deltas||{})){
+   const x=d.deltas[k];
+   const good=x.higher_better?x.delta>0:x.delta<0;
+   const col=Math.abs(x.delta)<0.5?'var(--grey)':(good?'var(--green)':'var(--red)');
+   rows+='<tr><td>'+x.label+'</td><td style="text-align:right">'+x.base.toFixed(1)+x.unit+
+    '</td><td style="text-align:right">'+x.scenario.toFixed(1)+x.unit+
+    '</td><td style="text-align:right;font-weight:800;color:'+col+'">'+(x.delta>0?'+':'')+x.delta.toFixed(1)+'</td></tr>';
+  }
+  $('#askOut').style.display='block';
+  $('#askOut').innerHTML='<div class="h">What the model says'+(d.llm_used?' <span class="advis">AI-assisted wording</span>':'')+'</div>'+
+   '<p>'+d.answer+'</p>'+
+   '<table class="rota"><tr><th>Standard</th><th style="text-align:right">Now</th><th style="text-align:right">With change</th><th style="text-align:right">Δ points</th></tr>'+rows+'</table>'+
+   '<p class="hint">Every number comes from the simulation (scenario vs baseline over paired simulated weeks). This is a what-if — it does not change your saved department.</p>';
+ }catch(e){$('#askStatus').textContent='Error: '+e.message;}
+}
+$('#askBtn').onclick=runAsk;
+$('#askQ').addEventListener('keydown',e=>{if(e.key==='Enter')runAsk();});
+
 // ---- pick your trust ----
 $('#useTrust').onclick=async()=>{
  const ods=$('#trustPick').value;

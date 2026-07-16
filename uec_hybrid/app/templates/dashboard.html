@@ -177,6 +177,17 @@
     <button id="resetBtn" class="sec" style="width:auto;display:inline-block;margin-left:8px">Reset to synthetic</button>
     <div id="calibSummary" class="callout" style="display:none;margin-top:13px;border-left-color:var(--aqua)"></div>
    </div>
+   <div class="chart" style="padding:15px">
+    <div class="head">AI-assisted calibration — match the model to reality</div>
+    <p style="font-size:13px;color:var(--grey);margin:6px 0 10px">Service times are the model's main
+     assumption. Enter your department's real (observed) 4-hour performance and an automated search
+     tunes the global service-time scale until the modelled figure matches — the same override as
+     the ServiceTimes workbook tab, and reversible from /api/pathway-params. Takes a minute or two.</p>
+    <label style="display:inline-block;width:auto;margin-right:8px">Observed 4-hour %</label>
+    <input type="number" id="acObs" min="20" max="100" step="0.1" style="width:110px;display:inline-block">
+    <button id="acBtn" style="width:auto;display:inline-block;margin-left:8px">Auto-tune the model</button>
+    <div id="acOut" class="callout" style="display:none;margin-top:13px;border-left-color:var(--green)"></div>
+   </div>
   </section>
  </main>
 </div>

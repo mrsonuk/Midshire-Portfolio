@@ -112,6 +112,28 @@
  .status{font-weight:700;color:var(--blue);min-height:18px;margin-top:8px}
  .spin{display:inline-block;width:15px;height:15px;border:3px solid var(--line);border-top-color:var(--blue);border-radius:50%;animation:s 1s linear infinite;vertical-align:middle;margin-right:6px}@keyframes s{to{transform:rotate(360deg)}}
  .loading{text-align:center;padding:60px;color:var(--blue);font-weight:700}
+ /* chatbot */
+ #chatFab{position:fixed;right:22px;bottom:22px;z-index:60;background:var(--blue);color:#fff;
+  border:0;border-radius:26px;padding:13px 20px;font-weight:800;font-size:14.5px;cursor:pointer;
+  box-shadow:0 6px 20px rgba(16,37,62,.35);margin:0}
+ #chatFab:hover{background:var(--dark)}
+ #chatPanel{position:fixed;right:22px;bottom:78px;z-index:60;width:390px;max-width:calc(100vw - 44px);
+  height:520px;max-height:calc(100vh - 120px);background:#fff;border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 40px rgba(16,37,62,.3);display:none;flex-direction:column;overflow:hidden}
+ #chatPanel.open{display:flex}
+ #chatHead{background:linear-gradient(90deg,var(--dark),var(--blue));color:#fff;padding:11px 15px;
+  font-weight:800;font-size:14px;display:flex;justify-content:space-between;align-items:center}
+ #chatHead .x{cursor:pointer;font-size:17px;opacity:.85}
+ #chatMsgs{flex:1;overflow-y:auto;padding:13px;background:#f7fafc}
+ .cmsg{max-width:86%;margin-bottom:9px;padding:9px 12px;border-radius:11px;font-size:13.5px;line-height:1.5;white-space:pre-wrap}
+ .cmsg.user{background:var(--blue);color:#fff;margin-left:auto;border-bottom-right-radius:3px}
+ .cmsg.bot{background:#fff;border:1px solid var(--line);border-bottom-left-radius:3px}
+ .cmsg.bot .tag{display:inline-block;background:var(--page);color:var(--grey);font-size:10px;
+  font-weight:700;padding:1px 7px;border-radius:8px;margin-top:5px}
+ #chatBar{display:flex;gap:7px;padding:10px;border-top:1px solid var(--line);background:#fff}
+ #chatBar input{flex:1;width:auto;padding:9px 11px;font-size:13.5px}
+ #chatBar button{margin:0;padding:9px 15px}
+ #chatHint{font-size:10.5px;color:var(--grey);padding:0 12px 9px;background:#fff}
 </style>
 </head>
 <body>
@@ -132,6 +154,14 @@
 
  <section class="panel active" id="panel-tower">
   <div id="towerBody"><div class="loading"><span class="spin"></span> Running your department...</div></div>
+  <div class="card"><h2>Ask a what-if</h2>
+   <p class="sub">Type a change in plain English and the model will run it against your department —
+    e.g. “add 2 doctors”, “10% more attendances”, “40 more ward beds”, “divert 20% of minors”.</p>
+   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="What if we add 2 doctors overnight?">
+   <button id="askBtn" class="sec" style="margin-top:8px">Run what-if</button>
+   <div class="status" id="askStatus"></div>
+   <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
+  </div>
  </section>
 
  <section class="panel" id="panel-workforce">
@@ -201,6 +231,18 @@
  </section>
 
 </div>
+
+<button id="chatFab">💬 Ask your ED</button>
+<div id="chatPanel">
+ <div id="chatHead"><span>Ask your ED — answers from your model</span><span class="x" id="chatClose">✕</span></div>
+ <div id="chatMsgs"></div>
+ <div id="chatBar">
+  <input type="text" id="chatIn" placeholder="e.g. where is demand? where should I deploy?">
+  <button id="chatSend">Send</button>
+ </div>
+ <div id="chatHint">Every number comes from your department's simulation — nothing is invented.</div>
+</div>
+
 <script src="/static/product.js"></script>
 </body>
 </html>

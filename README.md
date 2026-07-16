@@ -175,6 +175,31 @@ The product runs out of the box on **typical NHS patterns**. To make it more lik
 
 ---
 
+## AI assist (optional)
+
+Two AI features are built in, designed so **no number is ever invented** — every
+figure always comes from the simulation:
+
+- **“Ask your ED” chatbot** (floating button, bottom-right) — ask anything about
+  your department at any time: “where is demand?”, “where should I deploy
+  staff?”, “what’s the pinch point?”, “how are we doing?”, “what does SDEC
+  mean?”, or a what-if. Answers are formatted from the product’s own computed
+  data, so the chat can never disagree with a screen.
+- **Ask a what-if** (Control tower) — type a change in plain English (“add 2
+  doctors”, “10% more attendances”, “40 more ward beds”) and the model runs it
+  against your department and reports the impact on the standards, with a
+  before/after table. Works fully offline via a built-in parser.
+- **Auto-calibration** (Analyst → Data & calibration) — enter your real observed
+  4-hour % and an automated search tunes the model’s service-time assumption
+  until the modelled figure matches. Reversible; the search path is shown.
+
+Optionally, installing the `anthropic` package and setting `ANTHROPIC_API_KEY`
+upgrades “Ask a what-if” with Claude: free-form phrasing and better-worded
+answers. Without a key the product behaves exactly as before and makes **no
+outbound calls** — the offline guarantee for NHS networks is unchanged.
+
+---
+
 ## What you do not need to do
 
 - Edit code or JSON files to configure a department
