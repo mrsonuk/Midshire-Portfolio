@@ -200,6 +200,7 @@ from .. import model_params
 from ..assist import run_what_if, auto_calibrate
 from ..assist.nl import parse_question, EXAMPLES as ASK_EXAMPLES
 from ..assist import llm as assist_llm
+from ..assist import chat as assist_chat
 from ..viz.flow_model import control_tower
 
 CURRENT = {"dept": None}
@@ -402,6 +403,48 @@ def api_ask():
     out = store.cached_or_compute("ask", key, lambda: run_what_if(question, raw, reps=reps))
     if out.get("error"):
         return jsonify(out), 400
+    return jsonify(out)
+
+
+def _chat_provider() -> dict:
+    """Named data feeds for the chatbot - each returns the product's own computed
+    (mostly cached) numbers, so a chat answer can never disagree with a screen."""
+    d = _dept()
+    raw = _dept_raw()
+
+    def pinch():
+        ct = _control_tower_payload()          # cached by config hash after first run
+        return {"bottleneck": ct.get("bottleneck"),
+                "peak_hours": ct.get("bottleneck_peak_hours"),
+                "headline": ct.get("headline_bottleneck"),
+                "recommendation": ct.get("recommendation")}
+
+    return {
+        "department": lambda: {
+            "name": d.name, "attendances_per_day": d.attendances_per_day,
+            "inpatient_beds": d.inpatient_beds, "community_capacity": d.community_capacity,
+            "areas_on": [AREAS[a]["label"] for a in d.enabled if a in AREAS]},
+        "standards": lambda: _standards(d),
+        "demand": lambda: {"per_day": round(sum(raw["arrivals"]["hourly_profile"]), 1),
+                           "hourly": [round(h, 1) for h in raw["arrivals"]["hourly_profile"]]},
+        "staffing": lambda: workforce_view(d),
+        "pinch": pinch,
+        "gaps": lambda: store.cached("gap", {"dept": d.to_dict(), "book": load_cost_book()}),
+        "what_if": lambda q: run_what_if(q, raw, reps=4),
+    }
+
+
+@app.route("/api/chat", methods=["POST"])
+def api_chat():
+    """The product chatbot: grounded answers about the configured department -
+    demand, deployment, pinch point, standards, gaps, glossary, what-ifs.
+    Offline router by default; Claude (when configured) for free-form questions."""
+    body = request.get_json(force=True) or {}
+    message = str(body.get("message", "")).strip()
+    history = body.get("history") or []
+    if not isinstance(history, list):
+        history = []
+    out = assist_chat.answer(message, history[-12:], _chat_provider())
     return jsonify(out)
 
 

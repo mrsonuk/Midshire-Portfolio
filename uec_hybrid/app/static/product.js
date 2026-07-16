@@ -64,6 +64,47 @@ function afterDeptChanged(dept){
  $$('.panel').forEach(p=>p.classList.remove('active'));$('#panel-tower').classList.add('active');
  loadTower();
 }
+// ---- chatbot ----
+const CHAT={hist:[],busy:false};
+function chatAdd(role,text,tag){
+ const m=el('div','cmsg '+role,'');m.textContent=text;
+ if(tag&&role==='bot'){const t=el('span','tag',tag);m.appendChild(document.createElement('br'));m.appendChild(t);}
+ $('#chatMsgs').append(m);$('#chatMsgs').scrollTop=$('#chatMsgs').scrollHeight;
+ return m;
+}
+async function chatSend(){
+ if(CHAT.busy)return;
+ const q=($('#chatIn').value||'').trim();
+ if(!q)return;
+ $('#chatIn').value='';chatAdd('user',q);
+ CHAT.busy=true;
+ const wait=chatAdd('bot','Checking your model…');
+ try{
+  const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+   body:JSON.stringify({message:q,history:CHAT.hist})});
+  const d=await r.json();
+  wait.textContent=d.reply||'Sorry — something went wrong.';
+  if(d.intent&&d.intent!=='help'){
+   const t=el('span','tag',d.intent.replace(/_/g,' ')+(d.llm_used?' · AI wording':''));
+   wait.appendChild(document.createElement('br'));wait.appendChild(t);
+  }
+  CHAT.hist.push({role:'user',content:q},{role:'assistant',content:d.reply||''});
+  if(CHAT.hist.length>16)CHAT.hist=CHAT.hist.slice(-16);
+ }catch(e){wait.textContent='Error: '+e.message;}
+ CHAT.busy=false;$('#chatIn').focus();
+}
+$('#chatFab').onclick=()=>{
+ const p=$('#chatPanel');p.classList.toggle('open');
+ if(p.classList.contains('open')){
+  if(!$('#chatMsgs').children.length)
+   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 2 doctors?”');
+  $('#chatIn').focus();
+ }
+};
+$('#chatClose').onclick=()=>$('#chatPanel').classList.remove('open');
+$('#chatSend').onclick=chatSend;
+$('#chatIn').addEventListener('keydown',e=>{if(e.key==='Enter')chatSend();});
+
 // ---- ask a what-if ----
 async function runAsk(){
  const q=($('#askQ').value||'').trim();

@@ -275,6 +275,14 @@ Two AI features, chosen so neither can ever invent a number:
   use only the computed numbers; the computed table is always shown). No key
   -> identical numbers, templated wording. Neither `anthropic` nor a key ships
   in requirements - locked-down NHS installs never make an outbound call.
+- **Chatbot** (`assist/chat.py`, the floating "Ask your ED" widget) - answers
+  operational questions any time ("where is demand", "where should I deploy",
+  "what's the pinch point", standards, gaps, glossary, what-ifs). A rule-based
+  intent router formats answers from a ``provider`` of the product's own
+  computed feeds (server `_chat_provider`) - a chat answer can never disagree
+  with a screen. With Claude configured, free-form questions are answered from
+  a compact JSON context of the same computed numbers, and change-questions
+  are handed back to the real engine via a `WHATIF:` handshake.
 - **Auto-calibration** (`assist/autocal.py`) - monotonic search over the
   global service-time scale until modelled 4-hour matches the trust's
   observed figure; saves through `model_params` (same override as the
@@ -311,6 +319,7 @@ ML forecaster (the regression forecaster with a backtest already covers it).
 | `/api/pathway-params` | GET/POST | Editable service-time assumptions (global scale + per-stage means) |
 | `/api/ask` | POST | Plain-English what-if (`{question}`) -> scenario -> engine -> grounded answer (cached) |
 | `/api/auto-calibrate` | POST | AI-assisted calibration: tune service-time scale to the observed 4-hour % |
+| `/api/chat` | POST | Product chatbot (`{message, history}`): demand/deploy/pinch/standards/gaps/glossary/what-ifs |
 | `/api/simulate` `/api/montecarlo` `/api/scenarios` `/api/validate` | POST | Analyst engine (cached) |
 | `/api/calibrate` `/api/calibrate/reset` | POST | ECDS calibration (scope: pathway key or `your_department`) |
 | `/api/sample-data` | GET | ECDS-shaped template CSV |

@@ -479,6 +479,37 @@ def main():
     print(f"AI assist (auto-cal) OK: baseline {ac['baseline_modelled']}% -> x{ac['scale']} "
           f"gives {ac['modelled']}% vs observed 45% ({len(ac['history'])} evaluations).")
 
+    # --- chatbot: grounded intent routing over the product's computed data ---
+    from ..assist import chat as _chat
+    _stub = {
+        "department": lambda: {"name": "Test ED", "attendances_per_day": 290,
+                               "inpatient_beds": 320, "community_capacity": 60,
+                               "areas_on": ["RAT", "SDEC"]},
+        "standards": lambda: {"four_hour": {"typical": 71, "good": 78, "tough": 64}},
+        "demand": lambda: {"per_day": 290, "hourly": [6, 4, 4, 3, 3, 4, 4, 6, 13, 20, 23, 25,
+                                                      25, 22, 21, 21, 21, 21, 20, 17, 16, 14, 10, 8]},
+        "staffing": lambda: {"headline": "ED nursing looks light 18:00-22:00.", "weekly_cost": 300000,
+                             "areas": [{"label": "ED nursing", "understaffed_hours": [18, 19, 20, 21]}]},
+        "pinch": lambda: {"bottleneck": "ED cubicles", "peak_hours": [14, 15, 16],
+                          "recommendation": "<b>cubicle</b> is the binding constraint."},
+        "gaps": lambda: None,
+        "what_if": lambda q: {"answer": f"simulated: {q}"},
+    }
+    cases = {"where is demand?": ("demand", "290"),
+             "where should I deploy staff?": ("deploy", "ED nursing"),
+             "what's the pinch point?": ("pinch", "ED cubicles"),
+             "how are we doing against the standards?": ("standards", "71"),
+             "what does sdec mean?": ("glossary", "Same-Day"),
+             "what if we add 2 doctors": ("what_if", "simulated"),
+             "tell me a joke": ("help", "where is demand")}
+    for msg, (intent, needle) in cases.items():
+        out = _chat.answer(msg, [], _stub)
+        assert out["intent"] == intent and needle in out["reply"], (msg, out)
+    assert "binding constraint" in _chat.answer("pinch point?", [], _stub)["reply"]  # html stripped
+    assert "<b>" not in _chat.answer("pinch point?", [], _stub)["reply"]
+    print(f"Chatbot OK: {len(cases)} intents route to grounded answers; HTML stripped; "
+          "junk falls back to help.")
+
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
     raw_dept, fc = build_department(winter_uplift_pct=10, department=lean)
@@ -582,8 +613,15 @@ def main():
     assert acr.status_code == 200 and "scale" in acd and acd["history"] and "saved_params" in acd, acd
     assert client.post("/api/auto-calibrate", json={}).status_code == 400  # no observed figure
     client.post("/api/pathway-params", json={})            # reset any saved tuning
+    ch = client.post("/api/chat", json={"message": "where is demand?"}).get_json()
+    assert ch["intent"] == "demand" and "attendances a day" in ch["reply"], ch
+    ch2 = client.post("/api/chat", json={"message": "where should I deploy staff?",
+                                         "history": [{"role": "user", "content": "hi"}]}).get_json()
+    assert ch2["intent"] == "deploy" and ch2["reply"], ch2
+    assert client.post("/api/chat", json={"message": "what is exit-block"}).get_json()["intent"] == "glossary"
+    assert client.post("/api/chat", json={"message": "zzz qqq"}).get_json()["intent"] == "help"
     print("AI assist endpoints OK: /api/ask grounded answer + graceful 400s; "
-          "/api/auto-calibrate tunes and saves via pathway params.")
+          "/api/auto-calibrate tunes and saves; /api/chat routes demand/deploy/glossary/help.")
 
     # --- bug fixes: rostered resources, cache upsert, API guards ------------ #
     from ..analysis.scenarios import apply_scenario as _apply_scenario
