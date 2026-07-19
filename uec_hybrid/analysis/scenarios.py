@@ -3,6 +3,11 @@ Scenario modelling and sensitivity analysis vs a baseline.
 
 A scenario is declarative; modifiers:
     resources       {name: "+4" | "-2" | "*1.2" | 26}      DES capacity changes
+                    a value may also be {"change": "+3", "hours": [13..20]} to
+                    apply the change only in a time window (24h clock)
+    nurses          {"change": "+3", "hours": [...] | None}  ED nursing change -
+                    recomputed through the nurse-to-cubicle ratio the builder
+                    applied (uses the roster/spaces it stashed in raw["uec"])
     arrivals_scale  float                                   demand surge
     divert          {"classes":[...]|"attribute":..., "fraction":f}  UTC/SDEC/community redirect
     sd              {sd_param: value}                       SD-layer change (beds, discharge, community)
@@ -33,16 +38,46 @@ def _cap(current, change):
     return int(round(float(change)))
 
 
+def _windowed(current, change, hours):
+    """Apply a change only inside a set of 24h-clock hours (roster-ifying a
+    scalar capacity if needed)."""
+    cur24 = list(current) if isinstance(current, (list, tuple)) else [current] * 24
+    return [max(0, _cap(c, change)) if h in hours else max(0, int(round(c)))
+            for h, c in enumerate(cur24)]
+
+
 def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
     """Return (modified pathway, sd_overrides) for the scenario."""
     raw = copy.deepcopy(pathway.raw)
     for r, ch in scenario.get("resources", {}).items():
-        if r in raw.get("resources", {}):
+        if r not in raw.get("resources", {}):
+            continue
+        if isinstance(ch, dict):           # time-windowed: {"change": "+3", "hours": [...]}
+            hours = set(ch.get("hours") or range(24))
+            raw["resources"][r] = _windowed(raw["resources"][r], ch["change"], hours)
+        else:
             cap = _cap(raw["resources"][r], ch)
             if isinstance(cap, list):
                 raw["resources"][r] = [max(0, c) for c in cap]
             else:
                 raw["resources"][r] = max(0, cap)
+
+    # ED nursing: nurses limit flow through the nurse-to-cubicle ratio the builder
+    # applied, so a nurse change is recomputed through that exact formula using the
+    # roster and physical spaces the builder stashed in raw["uec"].
+    nrs = scenario.get("nurses")
+    uec = raw.get("uec") or {}
+    if (nrs and uec.get("nurse_to_cubicle_ratio") and uec.get("ed_nurse_staffing")
+            and "cubicle" in raw.get("resources", {})):
+        ratio = int(uec["nurse_to_cubicle_ratio"])
+        hours = set(nrs.get("hours") or range(24))
+        n24 = [max(0, _cap(n, nrs["change"])) if h in hours else int(n)
+               for h, n in enumerate(uec["ed_nurse_staffing"])]
+        phys = uec.get("physical_cubicles") or raw["resources"]["cubicle"]
+        p24 = list(phys) if isinstance(phys, (list, tuple)) else [int(phys)] * 24
+        raw["resources"]["cubicle"] = [max(1, min(int(p), n * ratio))
+                                       for p, n in zip(p24, n24)]
+        uec["ed_nurse_staffing"] = n24     # keep raw self-consistent for chained use
 
     arrivals = raw.get("arrivals", {})
     scale = scenario.get("arrivals_scale")

@@ -462,13 +462,49 @@ def main():
     lean_raw2 = build_dept(lean)                       # lean has no paeds
     sc2, nts2 = parse_question("add 2 paeds doctors", lean_raw2)
     assert sc2 is None and any("doesn't have" in n for n in nts2), (sc2, nts2)
+    # nurses + time-of-day windows (the phrasing real users actually type)
+    sc3, nts3 = parse_question("What if I add 3 more nurses at 1 pm?", _braw)
+    assert sc3["nurses"]["change"] == "+3" and sc3["nurses"]["hours"] == list(range(13, 21)), sc3
+    assert len(nts3) == 2 and "1:4 nurse-to-cubicle ratio" in nts3[0], nts3   # deduped + honest
+    sc4, _ = parse_question("add 2 doctors from 8pm to 8am", _braw)
+    assert sc4["resources"]["ed_doctor"] == {"change": "+2",
+                                             "hours": [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7]}, sc4
+    sc5, _ = parse_question("remove a doctor overnight", _braw)
+    assert sc5["resources"]["ed_doctor"]["change"] == "-1" and 20 in sc5["resources"]["ed_doctor"]["hours"]
+    # scenario application: nurse change recomputed exactly through the builder's ratio
+    from ..analysis.scenarios import apply_scenario as _apply
+    _uec = _braw["uec"]
+    _pv, _ = _apply(Pathway.from_dict(_braw), {**sc3, "name": "n"})
+    _exp = [max(1, min(_uec["physical_cubicles"][h],
+                       (_uec["ed_nurse_staffing"][h] + (3 if 13 <= h < 21 else 0))
+                       * _uec["nurse_to_cubicle_ratio"])) for h in range(24)]
+    assert _pv.raw["resources"]["cubicle"] == _exp
+    # windowed resource change touches only the window's hours
+    _pv2, _ = _apply(Pathway.from_dict(_braw), {**sc4, "name": "n2"})
+    _doc0 = _braw["resources"]["ed_doctor"]
+    _d24 = list(_doc0) if isinstance(_doc0, list) else [_doc0] * 24
+    assert all(_pv2.raw["resources"]["ed_doctor"][h] == _d24[h] + (2 if (h >= 20 or h < 8) else 0)
+               for h in range(24))
     # end-to-end: numbers come from the engine, offline (no LLM key in CI)
     assert not assist_llm.available() or True          # available() must never raise
     wf = run_what_if("add 2 doctors", lean_raw2, reps=2, use_llm=False)
     assert wf["answer"] and wf["deltas"]["four_hour"]["scenario"] >= 0
     assert wf["rows"][0]["scenario"] == "Baseline" and not wf["llm_used"]
-    print(f"AI assist (ask) OK: 6 phrasings parsed, missing areas skipped honestly; "
-          f"what-if 4-hour {wf['deltas']['four_hour']['base']}%→{wf['deltas']['four_hour']['scenario']}%.")
+    wf2 = run_what_if("add 3 more nurses at 1 pm", _braw, reps=2, use_llm=False)
+    assert not wf2.get("error") and wf2["answer"], wf2   # the once-broken phrase now runs
+    print(f"AI assist (ask) OK: 9 phrasings parsed incl. nurses + time windows; missing areas "
+          f"skipped honestly; what-if 4-hour {wf['deltas']['four_hour']['base']}%→"
+          f"{wf['deltas']['four_hour']['scenario']}%.")
+
+    # --- AI assist: offline retrieval (RAG) over glossary + product guide + docs ---
+    from ..assist import retrieval as _rag
+    _hit = _rag.best("how do I import my data from excel")
+    assert _hit and "template" in _hit["text"].lower(), _hit
+    assert _rag.best("what is the methodology behind this")["title"] == "Methodology"
+    assert _rag.best("zzz qqq xyzzy") is None            # nonsense: no confident guess
+    assert _rag.search("calibrate from ecds", k=3)       # multi-hit search works
+    print("AI assist (RAG) OK: retrieval answers how-to/concept questions offline; "
+          "nonsense returns nothing rather than a guess.")
 
     # --- AI assist: auto-calibration converges toward the observed figure ---
     from ..assist.autocal import auto_calibrate
@@ -493,7 +529,9 @@ def main():
         "pinch": lambda: {"bottleneck": "ED cubicles", "peak_hours": [14, 15, 16],
                           "recommendation": "<b>cubicle</b> is the binding constraint."},
         "gaps": lambda: None,
-        "what_if": lambda q: {"answer": f"simulated: {q}"},
+        "what_if": lambda q: ({"error": "no", "notes": ["skipped 'unicorns'"],
+                               "supported": ["add 2 doctors"]} if "unicorn" in q
+                              else {"answer": f"simulated: {q}"}),
     }
     cases = {"where is demand?": ("demand", "290"),
              "where should I deploy staff?": ("deploy", "ED nursing"),
@@ -501,14 +539,19 @@ def main():
              "how are we doing against the standards?": ("standards", "71"),
              "what does sdec mean?": ("glossary", "Same-Day"),
              "what if we add 2 doctors": ("what_if", "simulated"),
+             "what if we add 3 nurses at 1pm?": ("what_if", "simulated"),
+             # a near-miss what-if explains itself instead of shrugging
+             "what if we add 2 unicorns?": ("what_if_help", "couldn't set it up"),
+             # how-to questions the router can't match come from retrieval (RAG)
+             "how do I import my data from excel?": ("knowledge", "template"),
              "tell me a joke": ("help", "where is demand")}
     for msg, (intent, needle) in cases.items():
         out = _chat.answer(msg, [], _stub)
         assert out["intent"] == intent and needle in out["reply"], (msg, out)
     assert "binding constraint" in _chat.answer("pinch point?", [], _stub)["reply"]  # html stripped
     assert "<b>" not in _chat.answer("pinch point?", [], _stub)["reply"]
-    print(f"Chatbot OK: {len(cases)} intents route to grounded answers; HTML stripped; "
-          "junk falls back to help.")
+    print(f"Chatbot OK: {len(cases)} intents route to grounded answers incl. what-if "
+          "near-miss help and RAG knowledge; HTML stripped; junk falls back to help.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department

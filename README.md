@@ -184,11 +184,19 @@ figure always comes from the simulation:
   your department at any time: “where is demand?”, “where should I deploy
   staff?”, “what’s the pinch point?”, “how are we doing?”, “what does SDEC
   mean?”, or a what-if. Answers are formatted from the product’s own computed
-  data, so the chat can never disagree with a screen.
+  data, so the chat can never disagree with a screen. How-to and concept
+  questions (“how do I import my data?”, “explain the methodology”) are answered
+  by built-in retrieval (RAG) over the glossary, a product guide and these docs —
+  still fully offline, and a question it can’t answer confidently gets the help
+  text, never a guess.
 - **Ask a what-if** (Control tower) — type a change in plain English (“add 2
-  doctors”, “10% more attendances”, “40 more ward beds”) and the model runs it
-  against your department and reports the impact on the standards, with a
-  before/after table. Works fully offline via a built-in parser.
+  doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more
+  attendances”, “40 more ward beds”) and the model runs it against your
+  department and reports the impact on the standards, with a before/after table.
+  Time windows (“at 1pm”, “from 8pm to 8am”, “overnight”) apply the change to
+  just those hours; nurse changes work through the nurse-to-cubicle ratio, and
+  the answer says so — including when extra nurses would open no extra cubicles.
+  Works fully offline via a built-in parser.
 - **Auto-calibration** (Analyst → Data & calibration) — enter your real observed
   4-hour % and an automated search tunes the model’s service-time assumption
   until the modelled figure matches. Reversible; the search path is shown.

@@ -97,7 +97,7 @@ $('#chatFab').onclick=()=>{
  const p=$('#chatPanel');p.classList.toggle('open');
  if(p.classList.contains('open')){
   if(!$('#chatMsgs').children.length)
-   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 2 doctors?”');
+   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, “what if we add 3 nurses at 1pm?”, or “how do I import my data?”');
   $('#chatIn').focus();
  }
 };

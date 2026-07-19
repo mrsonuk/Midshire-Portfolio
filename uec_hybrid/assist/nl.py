@@ -14,39 +14,91 @@ from __future__ import annotations
 import re
 
 from ..des.pathway import Pathway
-from ..analysis.scenarios import compare_scenarios
+from ..analysis.scenarios import compare_scenarios, _cap
 
 NUM_WORDS = {"a": 1, "an": 1, "one": 1, "two": 2, "three": 3, "four": 4, "five": 5,
              "six": 6, "seven": 7, "eight": 8, "nine": 9, "ten": 10}
 _NUM = r"(\d+|a|an|one|two|three|four|five|six|seven|eight|nine|ten)"
 
-# phrase pattern -> engine resource (only applied if the built raw has it)
+# phrase pattern -> engine resource (only applied if the built raw has it).
+# "ed_nurse" is special: nurses limit flow through the nurse-to-cubicle ratio,
+# not as an engine resource, so it is handled by add_resource below.
 RESOURCE_WORDS = [
     (r"rat\s+(?:clinician|consultant|doctor)s?|rapid\s+assessment", "rat_clinician"),
     (r"paed(?:iatric|s)?\s+doctors?", "paeds_doctor"),
     (r"sdec\s+doctors?|specialty\s+doctors?", "specialty_doctor"),
     (r"streaming(?:\s+nurses?)?|triage\s+nurses?", "streaming_nurse"),
     (r"enps?|nurse\s+practitioners?", "minors_enp"),
+    (r"(?:ed\s+|band\s*[56]\s+)?nurses?\b", "ed_nurse"),
     (r"porters?", "porter_pool"),
     (r"handover\s+bays?", "handover_bay"),
     (r"cubicles?", "cubicle"),
     (r"doctors?|consultants?|registrars?|shos?|medics?|clinicians?", "ed_doctor"),
 ]
 
-EXAMPLES = ["add 2 doctors", "remove a porter", "double the cubicles",
-            "10% more attendances", "40 more ward beds", "20 extra community places",
-            "divert 20% of minors to the UTC", "a winter surge"]
+EXAMPLES = ["add 2 doctors", "add 3 nurses at 1pm", "remove a doctor overnight",
+            "double the cubicles", "10% more attendances", "40 more ward beds",
+            "20 extra community places", "divert 20% of minors to the UTC",
+            "a winter surge"]
+
+# time-of-day words -> (start hour, end hour) on a 24h clock (end may wrap)
+DAYPARTS = {"overnight": (20, 8), "tonight": (20, 8), "at night": (20, 8),
+            "in the morning": (8, 14), "in the afternoon": (12, 20),
+            "in the evening": (16, 24), "over lunch": (12, 14)}
+_CLOCK = r"(\d{1,2})(?:[:.](\d{2}))?\s*(am|pm)?"
+_SHIFT_HOURS = 8                            # assumed length when only a start is given
 
 
 def _n(tok: str) -> int:
     return int(tok) if tok.isdigit() else NUM_WORDS[tok.lower()]
 
 
+def _hour(h, ap) -> int | None:
+    h = int(h)
+    if ap == "pm" and h != 12:
+        h += 12
+    elif ap == "am" and h == 12:
+        h = 0
+    return h if 0 <= h <= 23 else None
+
+
+def _span(s: int, e: int) -> list[int]:
+    e = e if e > s else e + 24              # wrap past midnight ("8pm to 8am")
+    return [h % 24 for h in range(s, e)]
+
+
+def parse_window(q: str):
+    """Find a time-of-day window in the question. Returns (hours, label, note)
+    or (None, "", None). Label goes into the understood-changes notes."""
+    m = re.search(rf"(?:from|between)\s+{_CLOCK}\s*(?:to|until|till|and|-)\s*{_CLOCK}", q)
+    if m:
+        s, e = _hour(m.group(1), m.group(3)), _hour(m.group(4), m.group(6))
+        if s is not None and e is not None and s != e:
+            return _span(s, e), f" {s:02d}:00-{e % 24:02d}:00", None
+    m = re.search(rf"\bat\s+{_CLOCK}(?=\W|$)", q)
+    if m and (m.group(2) or m.group(3) or int(m.group(1)) > 9):   # "at 1" alone: too ambiguous
+        s = _hour(m.group(1), m.group(3))
+        if s is not None:
+            e = (s + _SHIFT_HOURS) % 24
+            return (_span(s, s + _SHIFT_HOURS), f" {s:02d}:00-{e:02d}:00",
+                    f"assumed an {_SHIFT_HOURS}h shift from {s:02d}:00 - say "
+                    f"'from {s:02d}:00 to HH:00' to set the window")
+    for word, (s, e) in DAYPARTS.items():
+        if word in q:
+            return _span(s, e), f" {s:02d}:00-{e % 24:02d}:00", None
+    return None, "", None
+
+
 def _resource_for(phrase: str, raw: dict):
     for pat, res in RESOURCE_WORDS:
         if re.search(pat, phrase, re.I):
+            if res == "ed_nurse":           # ratio-based, never in raw resources
+                return res
             return res if res in raw.get("resources", {}) else (res, "missing")
     return None
+
+
+_STOP = r"(?=[,.?]| and | at | over| to | from | between |$)"
 
 
 def parse_question(question: str, raw: dict):
@@ -55,40 +107,82 @@ def parse_question(question: str, raw: dict):
     q = " " + question.lower().strip() + " "
     scenario: dict = {}
     notes: list[str] = []
+    hours, wlabel, wnote = parse_window(q)
+
+    def _nurse_ready():
+        uec = raw.get("uec") or {}
+        return (uec.get("nurse_to_cubicle_ratio") and uec.get("ed_nurse_staffing")
+                and "cubicle" in raw.get("resources", {}))
 
     def add_resource(res, change, label):
         if isinstance(res, tuple):        # matched a phrase but the ED doesn't have it
-            notes.append(f"skipped '{label.strip()}' - your department doesn't have that area/resource")
+            note = f"skipped '{label.strip()}' - your department doesn't have that area/resource"
+            if note not in notes:
+                notes.append(note)
             return
-        scenario.setdefault("resources", {})[res] = change
+        if res == "ed_nurse":             # via the nurse-to-cubicle ratio, not a resource
+            if not _nurse_ready():
+                note = ("skipped nurses - no nurse-to-cubicle ratio is configured, so "
+                        "nurses don't limit flow in this model (edit the rota on the "
+                        "Workforce tab instead)")
+                if note not in notes:
+                    notes.append(note)
+                return
+            if scenario.get("nurses") == {"change": change, "hours": hours}:
+                return                     # two phrasing patterns caught the same change
+            scenario["nurses"] = {"change": change, "hours": hours}
+            uec, ratio = raw["uec"], int(raw["uec"]["nurse_to_cubicle_ratio"])
+            note = (f"ED nurses: {change}{wlabel} - opens/closes cubicles through the "
+                    f"1:{ratio} nurse-to-cubicle ratio, where physical spaces allow")
+            # honesty check: at the current rota, does this nurse change actually
+            # move the cubicle roster in the window?
+            cur = raw["resources"]["cubicle"]
+            cur24 = list(cur) if isinstance(cur, (list, tuple)) else [cur] * 24
+            phys = uec.get("physical_cubicles") or cur24
+            p24 = list(phys) if isinstance(phys, (list, tuple)) else [int(phys)] * 24
+            win = set(hours or range(24))
+            moved = any(max(1, min(int(p24[h]), max(0, _cap(n, change)) * ratio)) != int(round(cur24[h]))
+                        for h, n in enumerate(uec["ed_nurse_staffing"]) if h in win)
+            if not moved:
+                note += (". Note: at your current rota every physical cubicle in that window "
+                         "is already nurse-covered, so this change adds no cubicle capacity - "
+                         "expect little movement")
+            notes.append(note)
+            return
+        val = {"change": change, "hours": hours} if hours else change
+        if scenario.get("resources", {}).get(res) == val:
+            return                         # two phrasing patterns caught the same change
+        scenario.setdefault("resources", {})[res] = val
         pretty = res.replace("_", " ")
-        notes.append(f"{pretty}: {change}")
+        notes.append(f"{pretty}: {change}{wlabel}")
 
     # --- staffing / spaces: add / remove / double / halve --------------------
-    for m in re.finditer(rf"(?:add|extra|another|hire|bring in|put on)\s+{_NUM}\s+(?:more\s+|extra\s+)?([a-z ]+?)(?=[,.?]| and | at | over| to |$)", q):
+    for m in re.finditer(rf"(?:add|extra|another|hire|bring in|put on)\s+{_NUM}\s+(?:more\s+|extra\s+)?([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(2), raw)
         if res is not None:
             add_resource(res, f"+{_n(m.group(1))}", m.group(2))
-    for m in re.finditer(rf"{_NUM}\s+(?:more|extra|additional)\s+([a-z ]+?)(?=[,.?]| and |$)", q):
+    for m in re.finditer(rf"{_NUM}\s+(?:more|extra|additional)\s+([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(2), raw)
         if res is not None:
             add_resource(res, f"+{_n(m.group(1))}", m.group(2))
-    for m in re.finditer(rf"(?:remove|cut|lose|drop|take away)\s+{_NUM}\s+([a-z ]+?)(?=[,.?]| and |$)", q):
+    for m in re.finditer(rf"(?:remove|cut|lose|drop|take away)\s+{_NUM}\s+([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(2), raw)
         if res is not None:
             add_resource(res, f"-{_n(m.group(1))}", m.group(2))
-    for m in re.finditer(rf"{_NUM}\s+fewer\s+([a-z ]+?)(?=[,.?]| and |$)", q):
+    for m in re.finditer(rf"{_NUM}\s+fewer\s+([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(2), raw)
         if res is not None:
             add_resource(res, f"-{_n(m.group(1))}", m.group(2))
-    for m in re.finditer(r"(?:double)\s+(?:the\s+)?([a-z ]+?)(?=[,.?]| and |$)", q):
+    for m in re.finditer(rf"(?:double)\s+(?:the\s+)?([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(1), raw)
         if res is not None:
             add_resource(res, "*2", m.group(1))
-    for m in re.finditer(r"(?:halve)\s+(?:the\s+)?([a-z ]+?)(?=[,.?]| and |$)", q):
+    for m in re.finditer(rf"(?:halve)\s+(?:the\s+)?([a-z ]+?){_STOP}", q):
         res = _resource_for(m.group(1), raw)
         if res is not None:
             add_resource(res, "*0.5", m.group(1))
+    if wnote and (scenario.get("resources") or scenario.get("nurses")):
+        notes.append(wnote)
 
     # --- whole-hospital levers: ward beds / community ------------------------
     sd_now = raw.get("sd", {})

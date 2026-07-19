@@ -268,21 +268,34 @@ Two AI features, chosen so neither can ever invent a number:
 
 - **Ask a what-if** (`assist/nl.py`) - plain English -> scenario (rule-based
   parser, fully offline) -> `compare_scenarios` (paired Monte-Carlo vs
-  baseline) -> plain-language answer + before/after table. If `anthropic` is
-  installed and `ANTHROPIC_API_KEY` is set (`assist/llm.py`), Claude becomes a
-  fallback parser for free-form phrasing (schema-constrained, validated
-  against the department's real resources) and a better narrator (prompted to
-  use only the computed numbers; the computed table is always shown). No key
-  -> identical numbers, templated wording. Neither `anthropic` nor a key ships
-  in requirements - locked-down NHS installs never make an outbound call.
+  baseline) -> plain-language answer + before/after table. The parser handles
+  staff/space changes, demand, ward beds, diverts, winter - plus **time
+  windows** ("at 1pm", "from 8pm to 8am", "overnight" -> hour-windowed
+  capacity via `scenarios._windowed`) and **nurses** ("add 3 nurses at 1pm"),
+  which work through the nurse-to-cubicle ratio: the builder stashes the
+  physical cubicle roster and nurse rota in `raw["uec"]` so the scenario layer
+  recomputes the cap exactly, and the answer says when extra nurses would open
+  no extra cubicles. If `anthropic` is installed and `ANTHROPIC_API_KEY` is
+  set (`assist/llm.py`), Claude becomes a fallback parser for free-form
+  phrasing (schema-constrained, validated against the department's real
+  resources) and a better narrator (prompted to use only the computed numbers;
+  the computed table is always shown). No key -> identical numbers, templated
+  wording. Neither `anthropic` nor a key ships in requirements - locked-down
+  NHS installs never make an outbound call.
 - **Chatbot** (`assist/chat.py`, the floating "Ask your ED" widget) - answers
   operational questions any time ("where is demand", "where should I deploy",
   "what's the pinch point", standards, gaps, glossary, what-ifs). A rule-based
   intent router formats answers from a ``provider`` of the product's own
   computed feeds (server `_chat_provider`) - a chat answer can never disagree
-  with a screen. With Claude configured, free-form questions are answered from
-  a compact JSON context of the same computed numbers, and change-questions
-  are handed back to the real engine via a `WHATIF:` handshake.
+  with a screen. How-to/concept questions the router can't match fall back to
+  **offline retrieval (RAG)** (`assist/retrieval.py`): IDF-weighted keyword
+  search (no dependencies, no network) over the glossary, a curated product
+  guide and the README/handover, answering only on a confident match - and a
+  what-if that almost parsed explains what it understood plus example
+  phrasings instead of shrugging. With Claude configured, free-form questions
+  are answered from a compact JSON context of the same computed numbers plus
+  the top retrieved passages, and change-questions are handed back to the real
+  engine via a `WHATIF:` handshake.
 - **Auto-calibration** (`assist/autocal.py`) - monotonic search over the
   global service-time scale until modelled 4-hour matches the trust's
   observed figure; saves through `model_params` (same override as the
