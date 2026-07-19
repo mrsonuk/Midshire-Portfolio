@@ -22,7 +22,7 @@ import numpy as np
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-ENGINE_VERSION = "0.3.8"
+ENGINE_VERSION = "0.4.0"
 
 _DEFAULT_PATH = Path(__file__).resolve().parent.parent.parent / "uec_platform.sqlite3"
 
@@ -65,6 +65,28 @@ class SettingRow(Base):
     key = Column(String(64), unique=True, index=True, nullable=False)
     value = Column(Text, nullable=False)
     updated_at = Column(DateTime, nullable=False)
+
+
+class AuditRow(Base):
+    """Append-only trail of every configuration change (settings, department,
+    calibration) - who-did-what governance for a shared deployment."""
+    __tablename__ = "audit"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime, nullable=False, index=True)
+    kind = Column(String(32), nullable=False)      # setting | department | calibration
+    key = Column(String(128), nullable=False)
+    detail = Column(Text, nullable=False)          # JSON summary of the change
+
+
+class ActionRow(Base):
+    """Append-only operational decision log: what the team decided and why,
+    stamped with the model state it was decided against. Never edited."""
+    __tablename__ = "actions"
+    id = Column(Integer, primary_key=True)
+    at = Column(DateTime, nullable=False, index=True)
+    author = Column(String(128), nullable=False, default="")
+    note = Column(Text, nullable=False)
+    context = Column(Text, nullable=False)         # JSON snapshot (dept version, source)
 
 
 def _json_default(o):
@@ -122,8 +144,21 @@ def save_department(config: dict, key: str = "default") -> int:
         version = (last.version + 1) if last else 1
         s.add(DepartmentRow(key=key, version=version, updated_at=_now(),
                             config=json.dumps(config, default=_json_default)))
+        s.add(AuditRow(at=_now(), kind="department", key=key,
+                       detail=json.dumps({"version": version,
+                                          "name": config.get("name")})))
         s.commit()
         return version
+
+
+def department_meta(key: str = "default") -> dict | None:
+    """Version and last-updated timestamp of the saved department."""
+    with _session() as s:
+        row = (s.query(DepartmentRow).filter_by(key=key)
+               .order_by(DepartmentRow.version.desc()).first())
+        if not row:
+            return None
+        return {"version": row.version, "updated_at": row.updated_at.isoformat()}
 
 
 # --- calibration ------------------------------------------------------------ #
@@ -132,7 +167,8 @@ def get_calibration(scope: str) -> dict | None:
         row = s.query(CalibrationRow).filter_by(scope=scope).first()
         if not row:
             return None
-        return {"patch": json.loads(row.patch), "summary": json.loads(row.summary)}
+        return {"patch": json.loads(row.patch), "summary": json.loads(row.summary),
+                "created_at": row.created_at.isoformat()}
 
 
 def save_calibration(scope: str, patch: dict, summary: list):
@@ -162,7 +198,46 @@ def save_setting(key: str, value):
         s.query(SettingRow).filter_by(key=key).delete()
         s.add(SettingRow(key=key, updated_at=_now(),
                          value=json.dumps(value, default=_json_default)))
+        detail = json.dumps(value, default=_json_default)
+        s.add(AuditRow(at=_now(), kind="setting", key=key,
+                       detail=detail[:2000]))     # summary, not a full dump
         s.commit()
+
+
+def setting_meta(key: str) -> dict | None:
+    """When a setting was last changed (None if never set)."""
+    with _session() as s:
+        row = s.query(SettingRow).filter_by(key=key).first()
+        return {"updated_at": row.updated_at.isoformat()} if row else None
+
+
+# --- governance: audit trail + operational decision log ----------------------- #
+def audit_trail(limit: int = 100) -> list[dict]:
+    """Most-recent-first log of configuration changes (append-only)."""
+    with _session() as s:
+        rows = s.query(AuditRow).order_by(AuditRow.at.desc(), AuditRow.id.desc()).limit(limit)
+        return [{"at": r.at.isoformat(), "kind": r.kind, "key": r.key,
+                 "detail": json.loads(r.detail) if r.detail.startswith(("{", "[")) else r.detail}
+                for r in rows]
+
+
+def log_action(note: str, author: str = "", context: dict | None = None) -> dict:
+    """Record an operational decision (append-only; there is no delete)."""
+    with _session() as s:
+        row = ActionRow(at=_now(), author=(author or "")[:128], note=note,
+                        context=json.dumps(context or {}, default=_json_default))
+        s.add(row)
+        s.commit()
+        return {"id": row.id, "at": row.at.isoformat(), "author": row.author,
+                "note": row.note, "context": context or {}}
+
+
+def list_actions(limit: int = 100) -> list[dict]:
+    """Most-recent-first operational decision log."""
+    with _session() as s:
+        rows = s.query(ActionRow).order_by(ActionRow.at.desc(), ActionRow.id.desc()).limit(limit)
+        return [{"id": r.id, "at": r.at.isoformat(), "author": r.author,
+                 "note": r.note, "context": json.loads(r.context)} for r in rows]
 
 
 # --- run cache --------------------------------------------------------------- #

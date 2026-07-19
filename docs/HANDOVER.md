@@ -215,6 +215,10 @@ workbook's Costs tab.
   point + binding resource); `sd_interpretation` (plain read of the SD plots);
   `stage_timing` (per-stage wait/treatment/time-in-stage + end-to-end LOS).
 - `analysis/montecarlo.py` - parallel replications, 95% CIs.
+- `docs/review/three-agent-review.md` - the full stakeholder-panel review,
+  evidence-based capability assessment, gap register, implemented fixes, live
+  scenario test results and the operational-readiness recommendation
+  (currently: suitable for controlled pilot only).
 - `analysis/scenarios.py` - declarative what-ifs + tornado sensitivity +
   `interpret` (which lever helps/hurts, top sensitivity).
 - `analysis/benchmark.py` - percentile position vs a peer CSV (synthetic
@@ -330,6 +334,9 @@ ML forecaster (the regression forecaster with a backtest already covers it).
 | `/api/costbook` | GET/POST | Trust-editable finance assumptions |
 | `/api/scorecard-targets` | GET/POST | Editable RAG standard targets (data-driven, admin-level) |
 | `/api/pathway-params` | GET/POST | Editable service-time assumptions (global scale + per-stage means) |
+| `/api/data-status` | GET | Data provenance: source (demo/trust/workbook/manual), dates, overrides, engine version, warnings |
+| `/api/actions` | GET/POST | Append-only operational decision log, stamped with the model state (no edit/delete) |
+| `/api/audit` | GET | Append-only audit trail of configuration changes (departments, targets, rates, params) |
 | `/api/ask` | POST | Plain-English what-if (`{question}`) -> scenario -> engine -> grounded answer (cached) |
 | `/api/auto-calibrate` | POST | AI-assisted calibration: tune service-time scale to the observed 4-hour % |
 | `/api/chat` | POST | Product chatbot (`{message, history}`): demand/deploy/pinch/standards/gaps/glossary/what-ifs |

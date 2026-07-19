@@ -191,7 +191,8 @@ figure always comes from the simulation:
   text, never a guess.
 - **Ask a what-if** (Control tower) — type a change in plain English (“add 2
   doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more
-  attendances”, “40 more ward beds”) and the model runs it against your
+  attendances”, “10% staff sickness”, “20% more attendances in the evening”,
+  “40 more ward beds”) and the model runs it against your
   department and reports the impact on the standards, with a before/after table.
   Time windows (“at 1pm”, “from 8pm to 8am”, “overnight”) apply the change to
   just those hours; nurse changes work through the nurse-to-cubicle ratio, and

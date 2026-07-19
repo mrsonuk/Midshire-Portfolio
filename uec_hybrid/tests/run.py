@@ -487,6 +487,20 @@ def main():
     _d24 = list(_doc0) if isinstance(_doc0, list) else [_doc0] * 24
     assert all(_pv2.raw["resources"]["ed_doctor"][h] == _d24[h] + (2 if (h >= 20 or h < 8) else 0)
                for h in range(24))
+    # staff sickness: every staff group scaled; deep sickness closes cubicles via the ratio
+    sc6, n6 = parse_question("what if we have 10% staff sickness?", _braw)
+    assert sc6["staff_scale"] == 0.9 and "nurse-to-cubicle" in n6[0]
+    _pv3, _ = _apply(Pathway.from_dict(_braw), {**sc6, "name": "sick"})
+    assert _pv3.raw["resources"]["ed_doctor"][12] == int(round(_d24[12] * 0.9))
+    _deep, _ = _apply(Pathway.from_dict(_braw), {"name": "deep", "staff_scale": 0.5})
+    assert sum(_deep.raw["resources"]["cubicle"]) < sum(_braw["resources"]["cubicle"]), \
+        "50% sickness must close cubicles through the nurse ratio"
+    # time-windowed demand surge (evening peak / local event)
+    sc7, n7 = parse_question("20% more attendances in the evening", _braw)
+    assert sc7["arrivals_scale"] == {"scale": 1.2, "hours": list(range(16, 24))}, sc7
+    _pv4, _ = _apply(Pathway.from_dict(_braw), {**sc7, "name": "eve"})
+    _prof0, _prof1 = _braw["arrivals"]["hourly_profile"], _pv4.raw["arrivals"]["hourly_profile"]
+    assert abs(_prof1[18] / _prof0[18] - 1.2) < 1e-6 and abs(_prof1[6] / _prof0[6] - 1.0) < 1e-6
     # end-to-end: numbers come from the engine, offline (no LLM key in CI)
     assert not assist_llm.available() or True          # available() must never raise
     wf = run_what_if("add 2 doctors", lean_raw2, reps=2, use_llm=False)
@@ -623,6 +637,34 @@ def main():
     assert store.get_setting("role_rates") is not None, "import should set role rates"
     print(f"Trust endpoints OK: {len(tl)} trusts listed; select persists (290/day); "
           f"template downloads ({len(tmpl.data)//1024} KB) and imports (with costs).")
+
+    # --- governance endpoints: data provenance, decision log, audit trail ---
+    ds = client.get("/api/data-status").get_json()
+    assert ds["source"]["kind"] == "workbook", ds["source"]   # the import above stamped it
+    assert ds["department"]["version"] >= 1 and ds["engine_version"] == store.ENGINE_VERSION
+    assert "overrides" in ds and isinstance(ds["warnings"], list)
+    act = client.post("/api/actions", json={"note": "Opened escalation cubicles from 14:00",
+                                            "author": "Site manager"}).get_json()
+    assert act["ok"] and act["action"]["id"] and act["action"]["context"]["department"]
+    assert client.post("/api/actions", json={"note": ""}).status_code == 400
+    acts = client.get("/api/actions").get_json()["actions"]
+    assert acts and acts[0]["note"].startswith("Opened escalation")
+    aud = client.get("/api/audit").get_json()["audit"]
+    assert any(a["kind"] == "setting" and a["key"] == "data_source" for a in aud)
+    assert any(a["kind"] == "department" for a in aud)
+    print(f"Governance endpoints OK: data-status shows source + warnings; decision log "
+          f"append-only ({len(acts)} entries); audit trail records config changes ({len(aud)} rows).")
+
+    # --- forecast uncertainty: a band with its basis, measured when possible ---
+    from ..planning.forecast import forecast as _fc, forecast_from_history as _fch, \
+        generate_daily_history as _gdh
+    _f1 = _fc(320, 12)
+    assert _f1["range"]["low"] < _f1["expected_per_day"] < _f1["range"]["high"]
+    assert "assumption" in _f1["range"]["basis"] and _f1["from_data"] is False
+    _f2 = _fch(_gdh())
+    assert "backtest" in _f2["range"]["basis"] and _f2["accuracy"]["mape_pct"] < 15
+    print(f"Forecast uncertainty OK: slider band is a stated assumption; history band is "
+          f"backtested (+/-{_f2['accuracy']['mape_pct']}%).")
 
     # --- scorecard targets endpoint: view defaults, edit, round-trip, reset ---
     st = client.get("/api/scorecard-targets").get_json()

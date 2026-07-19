@@ -288,6 +288,8 @@ def api_setup():
 def api_set_department():
     CURRENT["dept"] = Department.from_dict(request.get_json(force=True))
     version = store.save_department(CURRENT["dept"].to_dict())
+    store.save_setting("data_source", {"kind": "manual",
+                                       "label": "Set up by hand in the product"})
     return jsonify({"ok": True, "department": CURRENT["dept"].to_dict(), "version": version})
 
 
@@ -310,6 +312,9 @@ def api_trust_select():
     CURRENT["dept"] = dept
     version = store.save_department(dept.to_dict())
     store.clear_calibration("your_department")        # a fresh trust starts clean
+    store.save_setting("data_source", {
+        "kind": "trust", "ods": ods, "label": f"{profile.name} ({ods})",
+        "source": profile.source, "as_of": profile.as_of})
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "provenance": trusts.provenance(profile), "notes": trusts.notes(profile),
                     "source": profile.source, "as_of": profile.as_of})
@@ -348,6 +353,8 @@ def api_trust_import():
         save_role_rates(result["role_rates"])         # staff hourly rates from the workbook
     if result.get("service_params"):
         model_params.save_params(result["service_params"])   # service-time assumptions
+    store.save_setting("data_source", {
+        "kind": "workbook", "label": f"Imported workbook: {f.filename or 'upload'}"})
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "summary": result["summary"], "provenance": result["provenance"]})
 
@@ -393,6 +400,67 @@ def api_pathway_params():
         return jsonify({"ok": True, "params": saved})
     return jsonify({"stages": model_params.service_params(BASE_RAW),
                     "params": model_params.load_params()})
+
+
+# --- governance: data provenance, decision log, audit trail --------------------- #
+@app.route("/api/data-status")
+def api_data_status():
+    """Where every number on screen comes from, when it last changed, and
+    plain warnings when the model is still running on demonstration defaults -
+    so nobody mistakes demo data for their own department."""
+    src = store.get_setting("data_source")
+    meta = store.department_meta()
+    cal = store.get_calibration("your_department")
+    overrides = {
+        "service_times": bool(model_params.load_params()),
+        "scorecard_targets": bool(store.get_setting("scorecard_targets")),
+        "role_rates": bool(store.get_setting("role_rates")),
+        "cost_book": bool(store.get_setting("cost_book")),
+    }
+    bm = store.get_setting("benchmarks")
+    warnings = []
+    if not src:
+        warnings.append("The department is running on demonstration defaults - pick "
+                        "your trust or import your data on “Set up my ED” before "
+                        "using any figure operationally.")
+    if not cal:
+        warnings.append("No attendance calibration is loaded - arrival patterns and "
+                        "acuity mix are modelled assumptions, not your recorded activity.")
+    return jsonify({
+        "source": src or {"kind": "demo", "label": "Demonstration defaults (Model ED, 320/day)"},
+        "department": meta,                     # saved version + last-updated
+        "calibration": ({"applied": True, "created_at": cal["created_at"],
+                         "summary": cal["summary"]} if cal else {"applied": False}),
+        "overrides": overrides,
+        "benchmarks": {"uploaded": bool(bm and not bm.get("synthetic"))},
+        "engine_version": store.ENGINE_VERSION,
+        "warnings": warnings,
+    })
+
+
+@app.route("/api/actions", methods=["GET", "POST"])
+def api_actions():
+    """Operational decision log: append-only record of what the team decided
+    (and the model state it was decided against). GET lists, POST records."""
+    if request.method == "POST":
+        body = request.get_json(force=True) or {}
+        note = (body.get("note") or "").strip()
+        if not note:
+            return jsonify({"error": "a decision note is required"}), 400
+        context = {"department": store.department_meta(),
+                   "source": store.get_setting("data_source"),
+                   "engine_version": store.ENGINE_VERSION}
+        entry = store.log_action(note[:2000], author=(body.get("author") or "")[:128],
+                                 context=context)
+        return jsonify({"ok": True, "action": entry})
+    return jsonify({"actions": store.list_actions(limit=int(request.args.get("limit", 100)))})
+
+
+@app.route("/api/audit")
+def api_audit():
+    """Append-only audit trail of configuration changes (departments, targets,
+    rates, service times) - governance for a shared deployment."""
+    return jsonify({"audit": store.audit_trail(limit=int(request.args.get("limit", 100)))})
 
 
 # --- AI assist ----------------------------------------------------------------- #

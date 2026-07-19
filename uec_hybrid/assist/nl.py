@@ -37,7 +37,8 @@ RESOURCE_WORDS = [
 ]
 
 EXAMPLES = ["add 2 doctors", "add 3 nurses at 1pm", "remove a doctor overnight",
-            "double the cubicles", "10% more attendances", "40 more ward beds",
+            "double the cubicles", "10% more attendances", "10% staff sickness",
+            "20% more attendances in the evening", "40 more ward beds",
             "20 extra community places", "divert 20% of minors to the UTC",
             "a winter surge"]
 
@@ -216,6 +217,21 @@ def parse_question(question: str, raw: dict):
     if "winter" in q and "arrivals_scale" not in scenario:
         scenario["arrivals_scale"] = 1.12
         notes.append("winter surge assumed as +12% demand (edit in Plan ahead for other levels)")
+    # a time window on a demand change makes it an intra-day surge (evening peak, event)
+    if hours and isinstance(scenario.get("arrivals_scale"), float):
+        scenario["arrivals_scale"] = {"scale": scenario["arrivals_scale"], "hours": hours}
+        notes[-1] += wlabel + " only"
+
+    # --- workforce sickness / absence ------------------------------------------
+    m = (re.search(r"(\d+)\s*%\s+(?:staff\s+)?(?:sickness|absence|absent|off\s+sick)", q)
+         or re.search(r"(?:staff\s+)?(?:sickness|absence)\s+(?:at|of)\s+(\d+)\s*%", q)
+         or re.search(r"(\d+)\s*%\s+of\s+(?:the\s+)?staff\s+(?:are\s+)?(?:off|sick|absent)", q))
+    if m:
+        pct = min(90, int(m.group(1)))
+        scenario["staff_scale"] = round(1 - pct / 100, 3)
+        notes.append(f"staff sickness/absence: every staff group scaled to "
+                     f"{100 - pct}% of the rota (rounded to whole staff; fewer "
+                     f"nurses also close cubicles through the nurse-to-cubicle ratio)")
 
     # --- redirect minors --------------------------------------------------------
     m = re.search(r"(?:divert|redirect|send|stream)\s+(\d+)\s*%\s+(?:of\s+)?(?:the\s+)?(?:minors|low[- ]acuity|acuity\s*[45])", q)
