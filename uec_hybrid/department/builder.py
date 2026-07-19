@@ -101,6 +101,12 @@ def build(dept: Department) -> dict:
     if ratio and nurses and "cubicle" in raw["resources"]:
         cap = raw["resources"]["cubicle"]
         cap24 = list(cap) if isinstance(cap, list) else [cap] * 24
+        # stash the pre-ratio spaces and the nurse roster so downstream what-ifs
+        # ("add 3 nurses at 1pm") can recompute this cap exactly - the min() below
+        # would otherwise make the nurse contribution unrecoverable
+        uec = raw.setdefault("uec", {})
+        uec["physical_cubicles"] = [int(c) for c in cap24]
+        uec["ed_nurse_staffing"] = [int(n) for n in nurses]
         raw["resources"]["cubicle"] = [max(1, min(int(c), int(n) * int(ratio)))
                                        for c, n in zip(cap24, nurses)]
 

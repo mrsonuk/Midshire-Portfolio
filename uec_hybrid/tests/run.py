@@ -455,6 +455,8 @@ def main():
     assert sc["resources"]["ed_doctor"] == "+2"
     assert sc["sd"]["inpatient_beds"] == _braw["sd"]["inpatient_beds"] + 40
     assert parse_question("10% more attendances", _braw)[0]["arrivals_scale"] == 1.1
+    assert parse_question("what if demand goes up 10%?", _braw)[0]["arrivals_scale"] == 1.1
+    assert parse_question("demand goes down 15%", _braw)[0]["arrivals_scale"] == 0.85
     assert parse_question("divert 20% of minors", _braw)[0]["divert"]["fraction"] == 0.2
     assert parse_question("double the cubicles", _braw)[0]["resources"]["cubicle"] == "*2"
     assert parse_question("what's the meaning of life", _braw)[0] is None
@@ -462,13 +464,63 @@ def main():
     lean_raw2 = build_dept(lean)                       # lean has no paeds
     sc2, nts2 = parse_question("add 2 paeds doctors", lean_raw2)
     assert sc2 is None and any("doesn't have" in n for n in nts2), (sc2, nts2)
+    # nurses + time-of-day windows (the phrasing real users actually type)
+    sc3, nts3 = parse_question("What if I add 3 more nurses at 1 pm?", _braw)
+    assert sc3["nurses"]["change"] == "+3" and sc3["nurses"]["hours"] == list(range(13, 21)), sc3
+    assert len(nts3) == 2 and "1:4 nurse-to-cubicle ratio" in nts3[0], nts3   # deduped + honest
+    sc4, _ = parse_question("add 2 doctors from 8pm to 8am", _braw)
+    assert sc4["resources"]["ed_doctor"] == {"change": "+2",
+                                             "hours": [20, 21, 22, 23, 0, 1, 2, 3, 4, 5, 6, 7]}, sc4
+    sc5, _ = parse_question("remove a doctor overnight", _braw)
+    assert sc5["resources"]["ed_doctor"]["change"] == "-1" and 20 in sc5["resources"]["ed_doctor"]["hours"]
+    # scenario application: nurse change recomputed exactly through the builder's ratio
+    from ..analysis.scenarios import apply_scenario as _apply
+    _uec = _braw["uec"]
+    _pv, _ = _apply(Pathway.from_dict(_braw), {**sc3, "name": "n"})
+    _exp = [max(1, min(_uec["physical_cubicles"][h],
+                       (_uec["ed_nurse_staffing"][h] + (3 if 13 <= h < 21 else 0))
+                       * _uec["nurse_to_cubicle_ratio"])) for h in range(24)]
+    assert _pv.raw["resources"]["cubicle"] == _exp
+    # windowed resource change touches only the window's hours
+    _pv2, _ = _apply(Pathway.from_dict(_braw), {**sc4, "name": "n2"})
+    _doc0 = _braw["resources"]["ed_doctor"]
+    _d24 = list(_doc0) if isinstance(_doc0, list) else [_doc0] * 24
+    assert all(_pv2.raw["resources"]["ed_doctor"][h] == _d24[h] + (2 if (h >= 20 or h < 8) else 0)
+               for h in range(24))
+    # staff sickness: every staff group scaled; deep sickness closes cubicles via the ratio
+    sc6, n6 = parse_question("what if we have 10% staff sickness?", _braw)
+    assert sc6["staff_scale"] == 0.9 and "nurse-to-cubicle" in n6[0]
+    _pv3, _ = _apply(Pathway.from_dict(_braw), {**sc6, "name": "sick"})
+    assert _pv3.raw["resources"]["ed_doctor"][12] == int(round(_d24[12] * 0.9))
+    _deep, _ = _apply(Pathway.from_dict(_braw), {"name": "deep", "staff_scale": 0.5})
+    assert sum(_deep.raw["resources"]["cubicle"]) < sum(_braw["resources"]["cubicle"]), \
+        "50% sickness must close cubicles through the nurse ratio"
+    # time-windowed demand surge (evening peak / local event)
+    sc7, n7 = parse_question("20% more attendances in the evening", _braw)
+    assert sc7["arrivals_scale"] == {"scale": 1.2, "hours": list(range(16, 24))}, sc7
+    _pv4, _ = _apply(Pathway.from_dict(_braw), {**sc7, "name": "eve"})
+    _prof0, _prof1 = _braw["arrivals"]["hourly_profile"], _pv4.raw["arrivals"]["hourly_profile"]
+    assert abs(_prof1[18] / _prof0[18] - 1.2) < 1e-6 and abs(_prof1[6] / _prof0[6] - 1.0) < 1e-6
     # end-to-end: numbers come from the engine, offline (no LLM key in CI)
     assert not assist_llm.available() or True          # available() must never raise
     wf = run_what_if("add 2 doctors", lean_raw2, reps=2, use_llm=False)
     assert wf["answer"] and wf["deltas"]["four_hour"]["scenario"] >= 0
     assert wf["rows"][0]["scenario"] == "Baseline" and not wf["llm_used"]
-    print(f"AI assist (ask) OK: 6 phrasings parsed, missing areas skipped honestly; "
-          f"what-if 4-hour {wf['deltas']['four_hour']['base']}%→{wf['deltas']['four_hour']['scenario']}%.")
+    wf2 = run_what_if("add 3 more nurses at 1 pm", _braw, reps=2, use_llm=False)
+    assert not wf2.get("error") and wf2["answer"], wf2   # the once-broken phrase now runs
+    print(f"AI assist (ask) OK: 9 phrasings parsed incl. nurses + time windows; missing areas "
+          f"skipped honestly; what-if 4-hour {wf['deltas']['four_hour']['base']}%→"
+          f"{wf['deltas']['four_hour']['scenario']}%.")
+
+    # --- AI assist: offline retrieval (RAG) over glossary + product guide + docs ---
+    from ..assist import retrieval as _rag
+    _hit = _rag.best("how do I import my data from excel")
+    assert _hit and "template" in _hit["text"].lower(), _hit
+    assert _rag.best("what is the methodology behind this")["title"] == "Methodology"
+    assert _rag.best("zzz qqq xyzzy") is None            # nonsense: no confident guess
+    assert _rag.search("calibrate from ecds", k=3)       # multi-hit search works
+    print("AI assist (RAG) OK: retrieval answers how-to/concept questions offline; "
+          "nonsense returns nothing rather than a guess.")
 
     # --- AI assist: auto-calibration converges toward the observed figure ---
     from ..assist.autocal import auto_calibrate
@@ -493,7 +545,9 @@ def main():
         "pinch": lambda: {"bottleneck": "ED cubicles", "peak_hours": [14, 15, 16],
                           "recommendation": "<b>cubicle</b> is the binding constraint."},
         "gaps": lambda: None,
-        "what_if": lambda q: {"answer": f"simulated: {q}"},
+        "what_if": lambda q: ({"error": "no", "notes": ["skipped 'unicorns'"],
+                               "supported": ["add 2 doctors"]} if "unicorn" in q
+                              else {"answer": f"simulated: {q}"}),
     }
     cases = {"where is demand?": ("demand", "290"),
              "where should I deploy staff?": ("deploy", "ED nursing"),
@@ -501,14 +555,24 @@ def main():
              "how are we doing against the standards?": ("standards", "71"),
              "what does sdec mean?": ("glossary", "Same-Day"),
              "what if we add 2 doctors": ("what_if", "simulated"),
+             "what if we add 3 nurses at 1pm?": ("what_if", "simulated"),
+             # a near-miss what-if explains itself instead of shrugging
+             "what if we add 2 unicorns?": ("what_if_help", "couldn't set it up"),
+             # how-to questions the router can't match come from retrieval (RAG)
+             "how do I import my data from excel?": ("knowledge", "template"),
+             # "calibration" must not substring-match the glossary term "rat"
+             "how does calibration work?": ("knowledge", "calibr"),
+             # an edit/change how-to must beat the deploy-staff intent
+             "where do I change staff costs?": ("knowledge", "editable"),
+             "explain the methodology": ("knowledge", "discrete-event"),
              "tell me a joke": ("help", "where is demand")}
     for msg, (intent, needle) in cases.items():
         out = _chat.answer(msg, [], _stub)
         assert out["intent"] == intent and needle in out["reply"], (msg, out)
     assert "binding constraint" in _chat.answer("pinch point?", [], _stub)["reply"]  # html stripped
     assert "<b>" not in _chat.answer("pinch point?", [], _stub)["reply"]
-    print(f"Chatbot OK: {len(cases)} intents route to grounded answers; HTML stripped; "
-          "junk falls back to help.")
+    print(f"Chatbot OK: {len(cases)} intents route to grounded answers incl. what-if "
+          "near-miss help and RAG knowledge; HTML stripped; junk falls back to help.")
 
     # --- planner models the configured department, not a generic template ---
     from ..planning.planner import build_department
@@ -573,6 +637,34 @@ def main():
     assert store.get_setting("role_rates") is not None, "import should set role rates"
     print(f"Trust endpoints OK: {len(tl)} trusts listed; select persists (290/day); "
           f"template downloads ({len(tmpl.data)//1024} KB) and imports (with costs).")
+
+    # --- governance endpoints: data provenance, decision log, audit trail ---
+    ds = client.get("/api/data-status").get_json()
+    assert ds["source"]["kind"] == "workbook", ds["source"]   # the import above stamped it
+    assert ds["department"]["version"] >= 1 and ds["engine_version"] == store.ENGINE_VERSION
+    assert "overrides" in ds and isinstance(ds["warnings"], list)
+    act = client.post("/api/actions", json={"note": "Opened escalation cubicles from 14:00",
+                                            "author": "Site manager"}).get_json()
+    assert act["ok"] and act["action"]["id"] and act["action"]["context"]["department"]
+    assert client.post("/api/actions", json={"note": ""}).status_code == 400
+    acts = client.get("/api/actions").get_json()["actions"]
+    assert acts and acts[0]["note"].startswith("Opened escalation")
+    aud = client.get("/api/audit").get_json()["audit"]
+    assert any(a["kind"] == "setting" and a["key"] == "data_source" for a in aud)
+    assert any(a["kind"] == "department" for a in aud)
+    print(f"Governance endpoints OK: data-status shows source + warnings; decision log "
+          f"append-only ({len(acts)} entries); audit trail records config changes ({len(aud)} rows).")
+
+    # --- forecast uncertainty: a band with its basis, measured when possible ---
+    from ..planning.forecast import forecast as _fc, forecast_from_history as _fch, \
+        generate_daily_history as _gdh
+    _f1 = _fc(320, 12)
+    assert _f1["range"]["low"] < _f1["expected_per_day"] < _f1["range"]["high"]
+    assert "assumption" in _f1["range"]["basis"] and _f1["from_data"] is False
+    _f2 = _fch(_gdh())
+    assert "backtest" in _f2["range"]["basis"] and _f2["accuracy"]["mape_pct"] < 15
+    print(f"Forecast uncertainty OK: slider band is a stated assumption; history band is "
+          f"backtested (+/-{_f2['accuracy']['mape_pct']}%).")
 
     # --- scorecard targets endpoint: view defaults, edit, round-trip, reset ---
     st = client.get("/api/scorecard-targets").get_json()

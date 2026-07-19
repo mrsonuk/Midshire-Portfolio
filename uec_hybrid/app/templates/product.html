@@ -153,11 +153,14 @@
 <div class="wrap">
 
  <section class="panel active" id="panel-tower">
+  <div id="dataStatus" role="status" aria-live="polite" style="display:none;margin:0 0 10px;padding:8px 12px;border-radius:6px;font-size:13px"></div>
   <div id="towerBody"><div class="loading"><span class="spin"></span> Running your department...</div></div>
   <div class="card"><h2>Ask a what-if</h2>
    <p class="sub">Type a change in plain English and the model will run it against your department —
-    e.g. “add 2 doctors”, “10% more attendances”, “40 more ward beds”, “divert 20% of minors”.</p>
-   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="What if we add 2 doctors overnight?">
+    e.g. “add 2 doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more attendances”,
+    “40 more ward beds”, “divert 20% of minors”. Time windows like “from 8pm to 8am” apply the
+    change to just those hours.</p>
+   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="What if we add 3 nurses at 1pm?">
    <button id="askBtn" class="sec" style="margin-top:8px">Run what-if</button>
    <div class="status" id="askStatus"></div>
    <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
@@ -196,6 +199,15 @@
  </section>
 
  <section class="panel" id="panel-setup">
+  <div class="card"><h2>Decision log</h2>
+   <p class="sub">Record what the team decided and why — each entry is stamped with the model
+    state it was decided against, and entries can never be edited or deleted (audit-safe).</p>
+   <input type="text" id="actAuthor" placeholder="Your name / role (optional)" style="max-width:260px" aria-label="Author">
+   <input type="text" id="actNote" placeholder="e.g. Opened escalation cubicles from 14:00 based on today's projection" style="width:100%;max-width:640px;margin-top:6px" aria-label="Decision note">
+   <button id="actAdd" class="sec" style="margin-top:8px">Record decision</button>
+   <div class="status" id="actStatus"></div>
+   <div id="actList" style="margin-top:8px"></div>
+  </div>
   <div class="card"><h2>Start from your trust</h2>
    <p class="sub">Skip the manual set-up: load your trust's published figures, or import a filled-in
     spreadsheet. Either way the fields below fill in automatically — you can then fine-tune and re-run.</p>

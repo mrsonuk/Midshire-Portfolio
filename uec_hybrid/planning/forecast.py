@@ -38,7 +38,13 @@ def forecast(attendances_per_day: float, winter_uplift_pct: float = 12.0,
         "peak_hour": peak_hour,
         "winter_uplift_pct": winter_uplift_pct,
         "hourly_profile": profile,
-        "summary": (f"About {round(winter)} attendances a day this winter, "
+        "from_data": False,
+        # no history behind this figure, so the band is a stated planning
+        # assumption (+/-15%), never presented as measured accuracy
+        "range": {"low": round(winter * 0.85), "high": round(winter * 1.15),
+                  "basis": "assumption +/-15% - upload attendance history for a measured band"},
+        "summary": (f"About {round(winter)} attendances a day this winter "
+                    f"(plan for {round(winter * 0.85)}-{round(winter * 1.15)}), "
                     f"up from {round(attendances_per_day)} now "
                     f"(a {winter_uplift_pct:.0f}% winter rise). "
                     f"Busiest on {busiest_day}s and around {peak_hour}:00-"
@@ -158,6 +164,13 @@ def forecast_from_history(df: pd.DataFrame) -> dict:
     if accuracy:
         note += (f" Backtested on your last {accuracy['holdout_days']} days: typically "
                  f"within {accuracy['mape_pct']:.0f}% of the actual daily figure.")
+    # uncertainty band: measured backtest error when there is one, else a
+    # stated +/-15% assumption - the basis is always spelled out
+    if accuracy:
+        band = accuracy["mape_pct"] / 100
+        basis = f"backtest +/-{accuracy['mape_pct']:.0f}% (28-day holdout)"
+    else:
+        band, basis = 0.15, "assumption +/-15% - history too short to backtest"
     return {
         "now_per_day": round(recent_level),
         "expected_per_day": round(expected),
@@ -170,6 +183,8 @@ def forecast_from_history(df: pd.DataFrame) -> dict:
         "summary": note,
         "from_data": True,
         "accuracy": accuracy,
+        "range": {"low": round(expected * (1 - band)), "high": round(expected * (1 + band)),
+                  "basis": basis},
         "components": {"trend_pct_per_year": round(yoy, 1),
                        "bank_holiday_pct": round(bh_pct, 1),
                        "winter_vs_now_pct": round(winter_uplift_pct, 1)},
