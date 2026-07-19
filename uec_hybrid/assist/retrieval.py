@@ -78,10 +78,11 @@ PRODUCT_CARDS = [
      "against the intended Model ED pathway (conformance), and shows total and "
      "per-stage time for each pathway stage and each journey variant."),
     ("Methodology",
-     "A patient-level discrete-event simulation (every patient walks the pathway, "
-     "queues and all) is coupled hourly to a whole-hospital system-dynamics model "
-     "(beds, discharges, community capacity), so ward pressure feeds back into ED "
-     "exit-block. Monte-Carlo replication turns one week into a realistic spread."),
+     "The methodology - how the model works: a patient-level discrete-event "
+     "simulation (every patient walks the pathway, queues and all) is coupled "
+     "hourly to a whole-hospital system-dynamics model (beds, discharges, "
+     "community capacity), so ward pressure feeds back into ED exit-block. "
+     "Monte-Carlo replication turns one week into a realistic spread."),
     ("The Model ED blueprint",
      "The NHS “Model Emergency Department” describes the areas and standards a "
      "well-set-up ED runs. The gaps tab compares your set-up against it and puts a "
@@ -212,6 +213,8 @@ def search(query: str, k: int = 3) -> list[dict]:
             continue
         score = (sum(idx["idf"].get(t, 0.0) for t in matched)
                  + sum(idx["idf"].get(t, 0.0) for t in title_hits))
+        if ch["source"] == "product guide":
+            score *= 1.25                  # curated cards outrank incidental doc matches
         hits.append({"source": ch["source"], "title": ch["title"], "text": ch["text"],
                      "score": round(score, 2), "matched": len(matched | title_hits),
                      "title_hit": bool(title_hits)})

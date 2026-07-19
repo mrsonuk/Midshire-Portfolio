@@ -455,6 +455,8 @@ def main():
     assert sc["resources"]["ed_doctor"] == "+2"
     assert sc["sd"]["inpatient_beds"] == _braw["sd"]["inpatient_beds"] + 40
     assert parse_question("10% more attendances", _braw)[0]["arrivals_scale"] == 1.1
+    assert parse_question("what if demand goes up 10%?", _braw)[0]["arrivals_scale"] == 1.1
+    assert parse_question("demand goes down 15%", _braw)[0]["arrivals_scale"] == 0.85
     assert parse_question("divert 20% of minors", _braw)[0]["divert"]["fraction"] == 0.2
     assert parse_question("double the cubicles", _braw)[0]["resources"]["cubicle"] == "*2"
     assert parse_question("what's the meaning of life", _braw)[0] is None
@@ -544,6 +546,11 @@ def main():
              "what if we add 2 unicorns?": ("what_if_help", "couldn't set it up"),
              # how-to questions the router can't match come from retrieval (RAG)
              "how do I import my data from excel?": ("knowledge", "template"),
+             # "calibration" must not substring-match the glossary term "rat"
+             "how does calibration work?": ("knowledge", "calibr"),
+             # an edit/change how-to must beat the deploy-staff intent
+             "where do I change staff costs?": ("knowledge", "editable"),
+             "explain the methodology": ("knowledge", "discrete-event"),
              "tell me a joke": ("help", "where is demand")}
     for msg, (intent, needle) in cases.items():
         out = _chat.answer(msg, [], _stub)

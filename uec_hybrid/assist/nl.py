@@ -204,12 +204,12 @@ def parse_question(question: str, raw: dict):
 
     # --- demand ---------------------------------------------------------------
     m = (re.search(r"(\d+)\s*%\s+(?:more|extra|higher|increase in)\s+(?:demand|attendances|arrivals|patients)", q)
-         or re.search(r"(?:demand|attendances|arrivals)\s+(?:up|rises?|increases?|grows?)\s+(?:by\s+)?(\d+)\s*%", q))
+         or re.search(r"(?:demand|attendances|arrivals)\s+(?:goes\s+up|go(?:es)?\s+up|up|rises?|increases?|grows?|climbs?)\s+(?:by\s+)?(\d+)\s*%", q))
     if m:
         scenario["arrivals_scale"] = round(1 + int(m.group(1)) / 100, 3)
         notes.append(f"demand x{scenario['arrivals_scale']}")
     m = (re.search(r"(\d+)\s*%\s+(?:less|fewer|lower)\s+(?:demand|attendances|arrivals|patients)", q)
-         or re.search(r"(?:demand|attendances|arrivals)\s+(?:down|falls?|drops?|decreases?)\s+(?:by\s+)?(\d+)\s*%", q))
+         or re.search(r"(?:demand|attendances|arrivals)\s+(?:goes?\s+down|down|falls?|drops?|decreases?)\s+(?:by\s+)?(\d+)\s*%", q))
     if m:
         scenario["arrivals_scale"] = round(max(0.1, 1 - int(m.group(1)) / 100), 3)
         notes.append(f"demand x{scenario['arrivals_scale']}")

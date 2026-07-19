@@ -156,7 +156,8 @@ def _fmt_department(provider):
 def _fmt_glossary(message):
     q = message.lower()
     for term in sorted(GLOSSARY, key=len, reverse=True):
-        if term in q:
+        # whole-word match only: "calibration" must not match the term "rat"
+        if re.search(rf"(?<![a-z0-9]){re.escape(term)}(?![a-z0-9])", q):
             return f"{term.upper() if len(term) <= 5 else term.capitalize()}: {GLOSSARY[term]}"
     return None
 
@@ -204,6 +205,15 @@ def answer(message: str, history: list | None, provider: dict) -> dict:
     gl = _fmt_glossary(ql) if re.search(r"what (is|does|are)|mean(s|ing)?\b|explain|define", ql) else None
     if gl:
         return {"reply": gl, "intent": "glossary", "llm_used": False}
+
+    # "where do I change/edit X" is a how-to, not an operational question -
+    # answer from the docs before the intent router can misread it as deploy/demand
+    if re.search(r"\b(change|edit|update|configure|customi[sz]e)\b", ql):
+        hit = retrieval.best(q)
+        if hit:
+            src = ("the " if " " in hit["source"] else "") + hit["source"]
+            return {"reply": f"{hit['text']} (from {src})",
+                    "intent": "knowledge", "llm_used": False, "source": hit["source"]}
 
     for pattern, handler in INTENTS:
         if re.search(pattern, ql):
