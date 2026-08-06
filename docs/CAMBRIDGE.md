@@ -1,0 +1,134 @@
+# Cambridge University Hospitals (CUH / RGT) — working file
+
+Goal: a **Cambridge version of the Model ED Optimiser for the CUH COO in ~2 weeks**,
+built from published data plus the ED pathway the Moorhouse team has already
+mapped — presented as *their* department, never as a mock-up, with every
+assumption labelled on screen.
+
+**Nothing in this repo carries an unverified number.** Every CUH figure below is
+a named slot pointing at the primary publication it must be transcribed from.
+The product skips empty slots and keeps flagging them as assumptions.
+
+---
+
+## 1. How the Cambridge version is stood up (reproducible)
+
+```bash
+python3 -m uec_hybrid.ingest.seed RGT --warm
+python3 -m uec_hybrid.app.server        # product on http://127.0.0.1:5000
+```
+
+The seed composes three committed files through the product's own ingest paths:
+
+| File | Carries | Status |
+|---|---|---|
+| `uec_hybrid/data/nhs_trust_snapshot.csv` (row `RGT`) | attendances/day, beds, occupancy (INPUTS); 4-hour %, 12-hour % (VALIDATION targets) | **to transcribe** |
+| `uec_hybrid/data/rgt_published.json` | hour-of-arrival shape, acuity mix, ambulance share, admission rate by acuity → calibration patch | **to transcribe** |
+| `uec_hybrid/data/seeds/rgt_cuh_workbook.xlsx` | areas + hours, rota, REAL physical capacity, costs, service times | **fill at the Moorhouse/CUH sessions** |
+
+Re-running the seed after editing any of the three refreshes the department.
+`--warm` pre-computes the control tower, exec brief and gap view so the demo
+opens instantly.
+
+---
+
+## 2. Published-data transcription checklist (≈30–60 min with normal internet)
+
+Work through in order; record the period ("May 2026") next to each number.
+
+1. **NHS England, A&E Attendances and Emergency Admissions (monthly)** —
+   provider-level file, row RGT.
+   → `attendances_per_day` (state Type 1 vs all types), `four_hour_pct`,
+   `twelve_hour_pct` → snapshot CSV + `rgt_published.json`.
+   https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/
+   ⚠ CUH was a UEC field-testing site **May 2019 – May 2023** (4-hour data not
+   reported in that window) — use recent months and say so if asked.
+2. **NHS England, Bed Availability and Occupancy (KH03, quarterly, overnight)** —
+   provider RGT → `inpatient_beds` (G&A available), `bed_occupancy` → snapshot CSV.
+   https://www.england.nhs.uk/statistics/statistical-work-areas/bed-availability-and-occupancy/
+3. **NHS Digital, Hospital Accident & Emergency Activity (annual, ECDS-based)** —
+   provider-level CSV/dashboard → hour-of-arrival distribution, acuity mix,
+   ambulance-arrival share, admitted share by acuity, under-16 share
+   → `rgt_published.json`. Where only national distributions are open, use them
+   and set `granularity` — the product will say "national shape, trust volume".
+   https://digital.nhs.uk/data-and-information/publications/statistical/hospital-accident--emergency-activity
+4. **Winter/UEC Daily SitRep (seasonal) or Ambulance Quality Indicators** —
+   handover >30/>60 min for context/validation → `rgt_published.json`.
+5. Optional: refresh peer figures for the exec-brief benchmark upload
+   (`/api/benchmarks`, CSV: organisation, attendances_per_day, four_hour_pct,
+   twelve_hour_pct) with real East-of-England / London peers from source 1.
+
+Then re-run the seed and check `validate_against_observed`:
+`python3 -m uec_hybrid.ingest.trust_profile RGT` prints modelled vs observed
+4-hour. Gap > 10 points → run auto-calibration (Analyst → Data & calibration,
+or `/api/auto-calibrate`) against the observed figure.
+
+---
+
+## 3. What only Cambridge can tell us — the one-hour session checklist
+
+The Moorhouse team has already process-mapped the CUH ED; this converts their
+map into the seed workbook. Nothing here is in any open dataset.
+
+**A. Pathway shape (drives everything else)**
+- Walk the process map against the Model ED blueprint. Which of the 9 areas
+  exist: RAT · co-located UTC · fit-to-sit · paeds area · EEMAC · SDEC · CDU ·
+  frailty (FAU) · MH liaison? Opening hours for each?
+- Anything the map has that the blueprint lacks (or wires differently)?
+  → decision gate: subset = pure config; extra/re-wired stages = small,
+  additive code change (new area entry, default-off).
+
+**B. Physical capacity → workbook `Capacity` sheet**
+- Majors cubicles · resus bays · CDU beds · SDEC chairs · FAU beds · EEMAC
+  spaces · UTC rooms · paeds cubicles · minors spaces · fit-to-sit chairs ·
+  ambulance handover bays · CT scanners · X-ray rooms.
+
+**C. Workforce → workbook `Rota` sheet** *(do NOT request workforce data files —
+agreed position; the rota grid filled in conversation is configuration, not a
+data hand-over. The tool is visibly ready for workforce data when the COO
+offers it.)*
+- Shifts per role (role, start, end, count); nurse-to-cubicle ratio if not 1:4.
+
+**D. Whole-hospital context**
+- Community / virtual-ward pull (default 60/day is synthetic), ward discharge
+  reality, escalation triggers.
+
+**E. Scope + validation**
+- Is the modelled footprint the adult Type 1 ED only? (Addenbrooke's runs a
+  **separate paediatric ED** — the paeds area toggle is not the same thing.)
+- Their observed 4-hour/12-hour (they have the data and offered comparison) —
+  used only to validate/calibrate, shown as such.
+
+---
+
+## 4. Assumptions register — what the banner will still flag, and why that's fine
+
+Until the sessions fill them, these stay template values and the product's
+provenance banner (now on every surface: control tower, exec brief, planner,
+analyst) lists them as assumptions:
+
+- physical capacity (all counts) — **the exact gap the Portsmouth demo Q&A
+  called out; the Capacity sheet is its fix**
+- enabled areas + hours, rota, community capacity
+- arrival profile / acuity / admission rates (until `rgt_published.json` is filled)
+- per-stage service times (never published — auto-calibrate to observed 4-hour)
+- cost book £ and staff rates (finance must confirm before any business case)
+
+## 5. Demo cautions (say it before they ask)
+
+- "Every number's provenance is on screen — green = published/provided,
+  amber = still an assumption. Give us the counts and the banner shrinks."
+- The 4-hour reporting gap 2019–2023 (field-test site) — we use recent months.
+- The "divert to UTC" planning lever models *demand removed from the ED*, not a
+  routed UTC co-location — phrase it as "redirect away from the front door".
+- Model ED gap benefits are simulated counterfactuals (that's the strength);
+  their cost bands are editable planning assumptions.
+
+## 6. Branch / preservation
+
+- `main` = the original build (Portsmouth demo was `main` + selecting RHU at
+  runtime; nothing Portsmouth-specific exists in code).
+- **All Cambridge work lives on `claude/cambridge-data-plugin-feedback-hjrm3r`.**
+- Side-by-side demo of both: two checkouts, two databases, two ports.
+  (True multi-department in one instance is roadmap G-15 — the store already
+  keys by department; not needed for this demo.)

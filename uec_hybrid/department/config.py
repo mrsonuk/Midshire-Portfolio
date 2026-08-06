@@ -77,6 +77,11 @@ class Department:
     # default; set it (e.g. from a trust's bed-availability return) so exit-block
     # feedback reflects how full THIS hospital actually runs.
     baseline_bed_occupancy: float | None = None
+    # REAL physical capacity by resource key (e.g. {"cdu_bed": 6, "cubicle": 28}).
+    # Empty = the Model ED template scaled by attendances; a trust's own counts
+    # replace the scaled figure exactly (no open dataset publishes these, so they
+    # can only come from the trust). Staff resources are rota-driven, not set here.
+    capacity: dict = field(default_factory=dict)
 
     @classmethod
     def default(cls):
@@ -96,7 +101,8 @@ class Department:
                 "enabled": self.enabled, "rota": self.rota,
                 "inpatient_beds": self.inpatient_beds, "community_capacity": self.community_capacity,
                 "hours": {k: list(v) for k, v in (self.hours or {}).items()},
-                "baseline_bed_occupancy": self.baseline_bed_occupancy}
+                "baseline_bed_occupancy": self.baseline_bed_occupancy,
+                "capacity": {k: int(v) for k, v in (self.capacity or {}).items()}}
 
     @classmethod
     def from_dict(cls, d):
@@ -106,6 +112,14 @@ class Department:
             if k in hours and isinstance(v, (list, tuple)) and len(v) == 2:
                 hours[k] = [int(v[0]), int(v[1])]
         occ = d.get("baseline_bed_occupancy", base.baseline_bed_occupancy)
+        capacity = {}
+        for k, v in (d.get("capacity") or {}).items():
+            try:
+                n = int(v)
+            except (TypeError, ValueError):
+                continue
+            if n > 0:                      # 0/negative not representable - drop
+                capacity[str(k)] = n
         return cls(name=d.get("name", base.name),
                    attendances_per_day=float(d.get("attendances_per_day", base.attendances_per_day)),
                    enabled=d.get("enabled", base.enabled),
@@ -113,4 +127,5 @@ class Department:
                    inpatient_beds=int(d.get("inpatient_beds", base.inpatient_beds)),
                    community_capacity=int(d.get("community_capacity", base.community_capacity)),
                    hours=hours,
-                   baseline_bed_occupancy=(float(occ) if occ is not None else None))
+                   baseline_bed_occupancy=(float(occ) if occ is not None else None),
+                   capacity=capacity)

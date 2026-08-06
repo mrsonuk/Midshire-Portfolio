@@ -4,12 +4,15 @@ instead of anyone editing JSON/Python. The template mirrors the "Set up my ED"
 model exactly, so a non-technical user configures the whole department from a
 spreadsheet:
 
-* **Overview**  - name, attendances/day, inpatient beds, community capacity,
-                  bed occupancy.
+* **Overview**  - name, ODS code, attendances/day, inpatient beds, community
+                  capacity, bed occupancy.
 * **Areas**     - which of the Model ED areas the trust runs, and their hours.
 * **Rota**      - the workforce roster (role, start, end, count).
+* **Capacity**  (optional) - the trust's REAL physical counts (cubicles, CDU
+                  beds, resus bays…) - no open dataset publishes these.
 * **Arrivals**  (optional) - attendances by hour -> a calibration patch.
 * **AcuityMix** (optional) - acuity split -> a calibration patch.
+* **Costs / ServiceTimes** (optional) - £ figures and measured stage times.
 
 ``read_workbook`` returns a ready ``Department`` plus an optional calibration
 patch (reusing the ECDS seam's ``apply_patch``), a plain-language summary and
@@ -26,7 +29,7 @@ from openpyxl import Workbook, load_workbook
 from ..department.config import AREAS, DEFAULT_HOURS, Department
 from ..department.builder import BASE_RAW
 from ..workforce.defaults import DEFAULT_ROTA
-from ..workforce.roles import ROLES, default_rates
+from ..workforce.roles import ROLES, STAFF_RESOURCES, default_rates
 from ..finance.costbook import DEFAULT_COST_BOOK
 from ..model_params import service_params
 
@@ -100,8 +103,10 @@ def _read_overview(rows) -> dict:
 
 def _read_areas(rows):
     """Header row then area_key/enabled/open/close. Returns (enabled, hours) or
-    (None, None) when the sheet is empty (keep the department default)."""
-    body = [r for r in rows[1:] if r and r[0] not in (None, "")]
+    (None, None) when the sheet is empty (keep the department default).
+    '#'-prefixed rows are comments, as on the other sheets."""
+    body = [r for r in rows[1:] if r and r[0] not in (None, "")
+            and not _norm(r[0]).startswith("#")]
     if not body:
         return None, None
     enabled, hours = [], {}
@@ -178,6 +183,39 @@ def _read_acuity(rows):
     return mix or None
 
 
+def _capacity_catalogue() -> list[dict]:
+    """The physical (non-staff) resources a trust can set real counts for, with
+    the template default and which area each belongs to."""
+    area_of = {}
+    for key, meta in AREAS.items():
+        for r in meta.get("resources", []):
+            area_of.setdefault(r, meta["label"])
+    rows = []
+    for key, v in BASE_RAW.get("resources", {}).items():
+        if key in STAFF_RESOURCES or not isinstance(v, (int, float)):
+            continue
+        rows.append({"key": key, "default": int(v),
+                     "belongs_to": area_of.get(key, "Core ED (always present)")})
+    return rows
+
+
+def _read_capacity(rows):
+    """Optional Capacity sheet (resource_key/your_count): the trust's REAL
+    physical counts (cubicles, CDU beds, resus bays…). Returns dict or None."""
+    body = [r for r in rows[1:] if r and r[0] not in (None, "")]
+    valid = {c["key"] for c in _capacity_catalogue()}
+    out = {}
+    for r in body:
+        key = _norm(r[0])
+        if key.startswith("#") or key not in valid:
+            continue
+        v = _num(r[1]) if len(r) > 1 else None
+        if v is None or v <= 0:
+            continue
+        out[key] = int(v)
+    return out or None
+
+
 def _read_costs(rows):
     """Optional Costs sheet (item/value): cost-book figures + per-role hourly
     rates. Returns (cost_book, role_rates), each a dict or None."""
@@ -226,7 +264,7 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     is_csv = (filename or "").lower().endswith(".csv")
     summary: list[str] = []
     over, areas_enabled, areas_hours, rota, arrivals, acuity = {}, None, None, None, None, None
-    cost_book, rates, svc_params = None, None, None
+    cost_book, rates, svc_params, capacity = None, None, None, None
 
     if is_csv:
         text = data.decode("utf-8-sig", errors="replace")
@@ -245,6 +283,8 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
             arrivals = _read_arrivals(_sheet_rows(sheets["arrivals"]))
         if "acuitymix" in sheets:
             acuity = _read_acuity(_sheet_rows(sheets["acuitymix"]))
+        if "capacity" in sheets:
+            capacity = _read_capacity(_sheet_rows(sheets["capacity"]))
         if "costs" in sheets:
             cost_book, rates = _read_costs(_sheet_rows(sheets["costs"]))
         if "servicetimes" in sheets:
@@ -271,6 +311,24 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
         summary.append(f"Rota set from workbook ({len(rota)} shifts).")
     else:
         summary.append("Rota kept at template default (no Rota sheet).")
+    if capacity is not None:
+        base["capacity"] = capacity
+        summary.append(f"Physical capacity set from workbook ({len(capacity)} "
+                       f"resource(s): {', '.join(sorted(capacity))}).")
+        for k, v in sorted(capacity.items()):
+            prov.append({"field": f"capacity.{k}", "value": v, "source": "workbook"})
+    else:
+        summary.append("Physical capacity kept at the scaled template default "
+                       "(no Capacity sheet) - counts like CDU beds and cubicles "
+                       "are modelled assumptions until the trust supplies them.")
+        prov.append({"field": "capacity", "value": None, "source": "template default"})
+    # keep the ODS code visible in the department name: it links the set-up back
+    # to the trust's published figures and lets auto-calibration find the trust's
+    # real observed 4-hour performance
+    ods = (over.get("ods_code") or "").strip().upper()
+    if ods and f"({ods})" not in str(base.get("name") or ""):
+        base["name"] = f"{base.get('name') or 'Your Emergency Department'} ({ods})"
+        prov.append({"field": "ods_code", "value": ods, "source": "workbook"})
     dept = Department.from_dict(base)
 
     # --- optional calibration patch (reuses the ECDS seam) ---
@@ -315,11 +373,15 @@ def build_template() -> Workbook:
         ["Model ED Optimiser - department set-up workbook"],
         ["Fill in the tabs, then upload this file in 'Set up my ED'. No coding needed."],
         [""],
-        ["Overview  - your department's headline figures (name, attendances/day, beds)."],
-        ["Areas     - tick (yes/no) the areas you run, and their opening hours (0-24)."],
-        ["Rota      - your workforce roster: role, start hour, end hour, staff count."],
-        ["Arrivals  - OPTIONAL: attendances by hour of day (overrides attendances/day)."],
-        ["AcuityMix - OPTIONAL: your acuity split (Acuity 1..5)."],
+        ["Overview     - your department's headline figures (name, ODS code, attendances/day, beds)."],
+        ["Areas        - tick (yes/no) the areas you run, and their opening hours (0-24)."],
+        ["Rota         - your workforce roster: role, start hour, end hour, staff count."],
+        ["Capacity     - OPTIONAL: your REAL physical counts (cubicles, CDU beds, resus bays...)."],
+        ["               Blank rows keep a size-scaled template estimate - a modelled assumption."],
+        ["Arrivals     - OPTIONAL: attendances by hour of day (overrides attendances/day)."],
+        ["AcuityMix    - OPTIONAL: your acuity split (Acuity 1..5)."],
+        ["Costs        - OPTIONAL: cost-book figures and staff hourly rates (£)."],
+        ["ServiceTimes - OPTIONAL: your measured stage times (minutes), if you have them."],
         [""],
         ["Blank cells keep the model's sensible default; nothing is required except a name."],
     ]):
@@ -346,6 +408,16 @@ def build_template() -> Workbook:
         ro.append([s["role"], s["start"], s["end"], s["count"]])
     ro.append([])
     ro.append(["# valid roles:", ", ".join(ROLES)])
+
+    cp = wb.create_sheet("Capacity")
+    cp.append(["resource_key", "your_count", "template_default", "belongs to"])
+    for row in _capacity_catalogue():
+        cp.append([row["key"], "", row["default"], row["belongs_to"]])
+    cp.append([])
+    cp.append(["# Your REAL physical counts. Blank = keep a size-scaled template",
+               "", "", ""])
+    cp.append(["# estimate (a modelled assumption, flagged as such in the product).",
+               "", "", ""])
 
     arv = wb.create_sheet("Arrivals")
     arv.append(["hour", "attendances"])

@@ -290,6 +290,7 @@ def api_set_department():
     version = store.save_department(CURRENT["dept"].to_dict())
     store.save_setting("data_source", {"kind": "manual",
                                        "label": "Set up by hand in the product"})
+    store.save_setting("provenance", None)      # hand edits invalidate field-level provenance
     return jsonify({"ok": True, "department": CURRENT["dept"].to_dict(), "version": version})
 
 
@@ -315,6 +316,8 @@ def api_trust_select():
     store.save_setting("data_source", {
         "kind": "trust", "ods": ods, "label": f"{profile.name} ({ods})",
         "source": profile.source, "as_of": profile.as_of})
+    store.save_setting("provenance", {"rows": trusts.provenance(profile),
+                                      "notes": trusts.notes(profile)})
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "provenance": trusts.provenance(profile), "notes": trusts.notes(profile),
                     "source": profile.source, "as_of": profile.as_of})
@@ -355,6 +358,7 @@ def api_trust_import():
         model_params.save_params(result["service_params"])   # service-time assumptions
     store.save_setting("data_source", {
         "kind": "workbook", "label": f"Imported workbook: {f.filename or 'upload'}"})
+    store.save_setting("provenance", {"rows": result["provenance"], "notes": []})
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "summary": result["summary"], "provenance": result["provenance"]})
 
@@ -418,6 +422,8 @@ def api_data_status():
         "cost_book": bool(store.get_setting("cost_book")),
     }
     bm = store.get_setting("benchmarks")
+    d = _dept()
+    prov = store.get_setting("provenance") or {}
     warnings = []
     if not src:
         warnings.append("The department is running on demonstration defaults - pick "
@@ -426,6 +432,25 @@ def api_data_status():
     if not cal:
         warnings.append("No attendance calibration is loaded - arrival patterns and "
                         "acuity mix are modelled assumptions, not your recorded activity.")
+    if not (d.capacity or {}):
+        warnings.append("Physical capacity (cubicles, CDU beds, resus bays…) is "
+                        "scaled from the Model ED template, not your real counts - "
+                        "fill the Capacity sheet of the set-up workbook.")
+    # what is still an assumption, at a glance - the honest label the demo wears
+    assumed = []
+    if not (d.capacity or {}):
+        assumed.append("physical capacity")
+    if not cal:
+        assumed.append("arrival profile & acuity mix")
+    if not overrides["service_times"]:
+        assumed.append("service times")
+    if not overrides["cost_book"]:
+        assumed.append("cost book (£)")
+    if not overrides["role_rates"]:
+        assumed.append("staff hourly rates")
+    assumed += sorted({str(r.get("field")) for r in (prov.get("rows") or [])
+                       if str(r.get("source", "")).startswith("template default")
+                       and not str(r.get("field")).startswith("capacity")})
     return jsonify({
         "source": src or {"kind": "demo", "label": "Demonstration defaults (Model ED, 320/day)"},
         "department": meta,                     # saved version + last-updated
@@ -434,6 +459,8 @@ def api_data_status():
         "overrides": overrides,
         "benchmarks": {"uploaded": bool(bm and not bm.get("synthetic"))},
         "engine_version": store.ENGINE_VERSION,
+        "provenance": prov,                     # per-field rows from the last import
+        "assumed": assumed,                     # plain-language "still assumptions"
         "warnings": warnings,
     })
 

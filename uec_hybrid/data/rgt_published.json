@@ -1,0 +1,73 @@
+{
+  "ods_code": "RGT",
+  "name": "Cambridge University Hospitals NHS Foundation Trust",
+  "site": "Addenbrooke's Hospital (adult Type 1 ED; a separate paediatric ED operates on site - state which footprint each figure covers)",
+  "as_of": "",
+  "status": "TEMPLATE - every value below is null until transcribed from the named publication. Null blocks are skipped by the product (the template assumption stays, and stays flagged). Never enter a number without recording its source and period. Note: CUH was a UEC field-testing site May 2019 - May 2023, so 4-hour data has a gap in that window; use recent months.",
+  "attendances_per_day": {
+    "value": null,
+    "period": "",
+    "source": "NHS England, A&E Attendances and Emergency Admissions (monthly), provider-level CSV, row RGT: attendances for the period / days in the period. Record whether Type 1 only or all types. https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/"
+  },
+  "four_hour_pct": {
+    "value": null,
+    "period": "",
+    "note": "VALIDATION TARGET, not a model input - goes in nhs_trust_snapshot.csv too.",
+    "source": "Same NHSE monthly A&E publication, provider RGT: percentage within 4 hours (all types and Type 1 both published - record which)."
+  },
+  "twelve_hour_pct": {
+    "value": null,
+    "period": "",
+    "note": "VALIDATION TARGET, not a model input.",
+    "source": "Same NHSE monthly A&E publication, provider RGT: 12-hour waits from decision to admit (and/or 12h from arrival, ECDS measure) as share of attendances."
+  },
+  "hourly_shares": {
+    "values": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
+    "granularity": "",
+    "source": "NHS Digital, Hospital Accident & Emergency Activity (ECDS-based, annual), 'attendances by time of arrival'. Use provider-level RGT if the open CSV carries it; otherwise the national Type 1 distribution and set granularity='national shape, trust volume'. https://digital.nhs.uk/data-and-information/publications/statistical/hospital-accident--emergency-activity"
+  },
+  "acuity_mix_pct": {
+    "values": {"Acuity 1": null, "Acuity 2": null, "Acuity 3": null, "Acuity 4": null, "Acuity 5": null},
+    "granularity": "",
+    "source": "Hospital A&E Activity (ECDS): attendances by acuity. Provider-level RGT if published; else national Type 1 shares, labelled as such."
+  },
+  "ambulance_share": {
+    "value": null,
+    "period": "",
+    "source": "Hospital A&E Activity (ECDS): share of attendances arriving by ambulance, provider RGT. (The A&E Quality Indicators provider workbook also carries arrival-mode counts.)"
+  },
+  "admission_rate_by_acuity": {
+    "values": {"Acuity 1": null, "Acuity 2": null, "Acuity 3": null, "Acuity 4": null, "Acuity 5": null},
+    "granularity": "",
+    "source": "Hospital A&E Activity (ECDS): admitted share by acuity. Provider-level if published; else national Type 1, labelled."
+  },
+  "paediatric_share": {
+    "value": null,
+    "period": "",
+    "note": "Careful: Addenbrooke's runs a separate paediatric ED - only fill this if modelling the combined footprint.",
+    "source": "Hospital A&E Activity (ECDS): attendances by age band (share under 16), provider RGT."
+  },
+  "mental_health_share": {
+    "value": null,
+    "period": "",
+    "source": "Hospital A&E Activity (ECDS): chief complaint / mental-health flag share if published at provider level; else leave null."
+  },
+  "bed_occupancy": {
+    "value": null,
+    "period": "",
+    "note": "Goes in nhs_trust_snapshot.csv (bed_occupancy column) as a model INPUT.",
+    "source": "NHS England Bed Availability and Occupancy (KH03 quarterly, overnight G&A), provider RGT; or the UEC/Winter Daily SitRep in season. https://www.england.nhs.uk/statistics/statistical-work-areas/bed-availability-and-occupancy/"
+  },
+  "inpatient_beds": {
+    "value": null,
+    "period": "",
+    "note": "Goes in nhs_trust_snapshot.csv (inpatient_beds column) as a model INPUT.",
+    "source": "KH03 overnight G&A beds available, provider RGT (or the trust's annual report)."
+  },
+  "ambulance_handover_over_30_min_pct": {
+    "value": null,
+    "period": "",
+    "note": "Context/validation for the handover metrics - not yet a model input.",
+    "source": "NHS England Urgent and Emergency Care Daily Situation Reports (winter), ambulance handover delays by trust; or the Ambulance Quality Indicators (monthly)."
+  }
+}

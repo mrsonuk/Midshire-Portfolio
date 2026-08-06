@@ -46,6 +46,7 @@
  <a href="/analyst">Analyst view</a>
 </nav>
 <div class="wrap">
+ <div id="dataStatus" role="status" aria-live="polite" style="display:none;margin:10px 0 0;padding:8px 12px;border-radius:6px;font-size:13px"></div>
  <div id="loading" class="loading"><span class="spin"></span> Preparing your brief...</div>
  <div id="content" style="display:none">
   <div class="risk" id="risk"></div>
@@ -134,5 +135,6 @@ $('#report').onclick=()=>{
  }).catch(e=>{$('#reportNote').textContent='Could not build the report: '+e.message;$('#report').disabled=false;});
 };
 </script>
+<script src="/static/provenance.js"></script>
 </body>
 </html>

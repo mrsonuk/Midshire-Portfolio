@@ -88,6 +88,14 @@ def build(dept: Department) -> dict:
         elif r not in STAFF_RESOURCES:
             raw["resources"][r] = max(1, int(round(raw["resources"][r] * scale)))
 
+    # --- real physical capacity: the trust's own counts replace the scaled
+    # template exactly (counts for disabled areas are inert - their resource is
+    # already gone). Applied BEFORE the nurse ratio so staffing still gates
+    # how many of the REAL cubicles can open.
+    for r, v in (getattr(dept, "capacity", None) or {}).items():
+        if r in raw["resources"] and r not in STAFF_RESOURCES:
+            raw["resources"][r] = max(1, int(v))
+
     # --- workforce rota -> by-hour staffing for the staff areas present ---
     staffing = staffing_by_hour(dept.rota)
     for r in list(raw["resources"]):

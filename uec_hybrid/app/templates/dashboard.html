@@ -87,6 +87,7 @@
  <a href="/exec" style="padding:11px 15px;font-weight:600;font-size:14px;color:#425563;text-decoration:none;margin-left:auto">Executive brief</a>
  <a href="/planner" style="padding:11px 15px;font-weight:600;font-size:14px;color:#425563;text-decoration:none">Plan ahead</a>
 </nav>
+<div id="dataStatus" role="status" aria-live="polite" style="display:none;margin:10px 22px 0;padding:8px 12px;border-radius:6px;font-size:13px"></div>
 <div class="layout">
  <aside class="sidebar">
   <label>Pathway</label><select id="pathway"></select>
@@ -193,5 +194,6 @@
 </div>
 <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
 <script>initDashboard({{ pathways|tojson }});</script>
+<script src="/static/provenance.js"></script>
 </body>
 </html>

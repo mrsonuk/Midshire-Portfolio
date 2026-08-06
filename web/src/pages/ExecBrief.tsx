@@ -5,6 +5,43 @@ function rag4h(v: number) {
   return v >= 78 ? 'green' : v >= 72 ? 'amber' : 'red'
 }
 
+interface DataStatus {
+  source?: { kind?: string; label?: string; as_of?: string }
+  assumed?: string[]
+  warnings?: string[]
+}
+
+// Data-provenance banner: where the numbers come from and what is still an
+// assumption - the same banner the Flask surfaces show (advisory, never blocks).
+function ProvenanceBanner() {
+  const [status, setStatus] = useState<DataStatus | null>(null)
+  useEffect(() => {
+    fetch('/api/data-status')
+      .then((r) => r.json())
+      .then(setStatus)
+      .catch(() => {})
+  }, [])
+  if (!status) return null
+  const demo = status.source?.kind === 'demo'
+  const style = {
+    margin: '10px 0 0',
+    padding: '8px 12px',
+    borderRadius: 6,
+    fontSize: 13,
+    background: demo ? '#fff4e5' : '#eef6ee',
+    border: demo ? '1px solid #ffb81c' : '1px solid #007f3b',
+    color: demo ? '#3b3b3b' : '#212b32',
+  }
+  const assumed = status.assumed?.length ? ` Still assumptions: ${status.assumed.join(', ')}.` : ''
+  return (
+    <div role="status" aria-live="polite" style={style}>
+      <b>{demo ? 'Demonstration data.' : 'Your data:'}</b>{' '}
+      {demo ? (status.warnings ?? []).join(' ') : status.source?.label}
+      <span style={{ color: '#b25900' }}>{assumed}</span>
+    </div>
+  )
+}
+
 function Tile(props: { cls: string; k: string; v: string; band?: Band | null; suffix: string }) {
   const spread = props.band ? `good week ${props.band.good}${props.suffix}, tough week ${props.band.tough}${props.suffix}` : ''
   return (
@@ -49,6 +86,7 @@ export default function ExecBrief() {
 
   return (
     <>
+      <ProvenanceBanner />
       <p className="sub">
         {data.department.name}, about {data.department.attendances_per_day} attendances a day ,{' '}
         {data.department.calibrated ? 'calibrated from your data' : 'synthetic until calibrated'}

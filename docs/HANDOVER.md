@@ -153,9 +153,21 @@ calibration patch / settings):
   flagged in `notes`/`provenance`. `ingest/nhs_open_data.fetch_trust(ods)` is the
   automatic API-pull seam (reads the snapshot; documented live adapter).
 - **Import a workbook** - `ingest/workbook.py`: `write_template()` builds a blank
-  `.xlsx` (Overview / Areas / Rota / optional Arrivals / AcuityMix / Costs /
-  ServiceTimes); `read_workbook()` returns a `Department` + optional calibration
-  patch + cost book + role rates + service params. CSV Overview also accepted.
+  `.xlsx` (Overview / Areas / Rota / optional Capacity / Arrivals / AcuityMix /
+  Costs / ServiceTimes); `read_workbook()` returns a `Department` + optional
+  calibration patch + cost book + role rates + service params. CSV Overview also
+  accepted. The Capacity sheet carries the trust's REAL physical counts
+  (`Department.capacity`, applied in the builder after size-scaling and before
+  the nurse-ratio cap); the Overview `ods_code` is kept in the department name so
+  auto-calibration can find the trust's observed 4-hour figure.
+- **Published aggregates** - `ingest/published.py`: converts published aggregate
+  distributions (`data/<ods>_published.json`: hour-of-arrival shape, acuity mix,
+  ambulance share, admission rates - each block cited) into the same calibration
+  patch as an ECDS upload. Null blocks are skipped, never invented.
+- **Committed seed** - `ingest/seed.py` (`python3 -m uec_hybrid.ingest.seed RGT
+  [--warm]`): stands up a demo/pilot trust reproducibly from the snapshot row +
+  `data/seeds/<ods>_*.xlsx` + published aggregates, stamping `data_source` and a
+  persisted per-field `provenance` setting. See `docs/CAMBRIDGE.md`.
 - **Set up by hand** - the product's *Set up my ED* form + rota editor.
 - **Calibrate** - the ECDS seam (3.5), replacing synthetic arrivals/case-mix/
   admission rates with a real extract.

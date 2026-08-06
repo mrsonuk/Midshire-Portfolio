@@ -168,8 +168,13 @@ Costs and benefits use a **cost book** you can edit (hourly rates, value of avoi
 The product runs out of the box on **typical NHS patterns**. To make it more like your trust:
 
 1. **Pick your trust** or **import a workbook** — fastest way to set attendances, beds, and rota
-2. **Analyst → Data & calibration** — upload an ECDS-style CSV to calibrate arrivals by hour, acuity mix, and admission rates from real activity
-3. **Edit costs and targets** — adjust hourly rates and RAG targets if your trust uses different assumptions
+2. **Fill the workbook's Capacity sheet** — your real physical counts (cubicles, CDU beds, resus bays…); no open dataset publishes these, so they stay flagged as assumptions until you provide them
+3. **Analyst → Data & calibration** — upload an ECDS-style CSV to calibrate arrivals by hour, acuity mix, and admission rates from real activity
+4. **Edit costs and targets** — adjust hourly rates and RAG targets if your trust uses different assumptions
+
+A **data-provenance banner** on every screen (control tower, executive brief, planner, analyst) shows where the numbers come from and lists what is still an assumption.
+
+For a demo/pilot trust, a reproducible set-up can be committed to the repo and stood up with one command — see `docs/CAMBRIDGE.md` and `python3 -m uec_hybrid.ingest.seed RGT --warm`.
 
 **Important:** Service times (how long triage or a scan takes) are modelled defaults unless you provide stage-level timestamps. Always **validate against local data** before operational decisions.
 
