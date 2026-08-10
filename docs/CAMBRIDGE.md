@@ -120,6 +120,14 @@ name from the call, verify), not a data extract.
 | 5 | Timings: median + p95 for arrival→triage, →first clinician, →DTA, DTA→departure, total (admit vs discharge) | minutes | per-stage service-time calibration (ServiceTimes tab) |
 | 6 | Monthly 4h %, 12h DTA, LBBS %, handover >30/>60 (12 months) | monthly | validation targets (snapshot CSV + `validate_against_observed`) |
 | 7 | *Optional:* daily attendance totals, 24 months | date × count | `/api/forecast-data` (planner, later) |
+| 8 | Imaging activity: attendances receiving X-ray / CT (count or %), median request→completion turnaround | counts + minutes | imaging nodes (`ct_scanner`/`xray_room` demand + service time) — capacity alone comes from the Claire session |
+| 9 | Attendances flagged as mental-health presentations (count) | count | `mental_health_share` attribute → MH liaison node demand |
+
+Item 4 destinations must include admitted / discharged / transferred / referred
+to community, and CUH should use their own location names verbatim — we map
+them to the process map (and the journey-string fallback parses that same
+vocabulary). Note: imaging is often not a location move in ED systems, so it
+needs its own extract (item 8) rather than relying on transitions.
 
 **Fallback for 2 + 4**: CUH holds a patient-level extract with each attendance's
 location sequence comma-delimited in one field. If aggregates are harder to
