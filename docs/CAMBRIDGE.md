@@ -83,11 +83,11 @@ map into the seed workbook. Nothing here is in any open dataset.
   spaces · UTC rooms · paeds cubicles · minors spaces · fit-to-sit chairs ·
   ambulance handover bays · CT scanners · X-ray rooms.
 
-**C. Workforce → workbook `Rota` sheet** *(do NOT request workforce data files —
-agreed position; the rota grid filled in conversation is configuration, not a
-data hand-over. The tool is visibly ready for workforce data when the COO
-offers it.)*
-- Shifts per role (role, start, end, count); nurse-to-cubicle ratio if not 1:4.
+**C. Workforce → workbook `Rota` sheet** *(EXPLICITLY DEFERRED — agreed with the
+team: the first CUH build is demand + activity + service capacity only, no
+workforce anything. Staffing stays template defaults, flagged as assumptions.
+The tool is visibly ready for workforce data when the COO offers it.)*
+- Later: shifts per role (role, start, end, count); nurse-to-cubicle ratio if not 1:4.
 
 **D. Whole-hospital context**
 - Community / virtual-ward pull (default 60/day is synthetic), ward discharge
@@ -98,6 +98,37 @@ offers it.)*
   **separate paediatric ED** — the paeds area toggle is not the same thing.)
 - Their observed 4-hour/12-hour (they have the data and offered comparison) —
   used only to validate/calibrate, shown as such.
+
+---
+
+## 3a. The one-shot data ask (sent via Yasmin — control tower first, aggregate only)
+
+Agreed scope: recreate the **control tower / ED flow diagram** from demand,
+patient activity and service capacity — **no workforce data**. All extracts are
+aggregate counts from CUH's self-service dashboard (no identifiers, no clinical
+detail; small-number suppression fine). Suggested period: most recent 13 full
+weeks for profiles; 12 months monthly for performance. Capacity/layout is
+confirmed in a 30–45 min session with the ED ops manager (Claire Hanford —
+name from the call, verify), not a data extract.
+
+| # | Extract | Shape | Feeds |
+|---|---|---|---|
+| 1 | Arrivals by hour × mode (ambulance/walk-in/other) | hour 0–23 × mode × count | `hourly_shares` + ambulance stream share |
+| 2 | Arrivals into each ED area by hour | area × hour × count | streaming splits + flow-map calibration |
+| 3 | Acuity (1–5) × disposition (admit/discharge/transfer) | counts | `acuity_mix_pct` + `admission_rate_by_acuity` |
+| 4 | Area→area transition counts (incl. ward/discharge sinks) | from × to × count | Sankey/flow-map link volumes |
+| 5 | Timings: median + p95 for arrival→triage, →first clinician, →DTA, DTA→departure, total (admit vs discharge) | minutes | per-stage service-time calibration (ServiceTimes tab) |
+| 6 | Monthly 4h %, 12h DTA, LBBS %, handover >30/>60 (12 months) | monthly | validation targets (snapshot CSV + `validate_against_observed`) |
+| 7 | *Optional:* daily attendance totals, 24 months | date × count | `/api/forecast-data` (planner, later) |
+
+**Fallback for 2 + 4**: CUH holds a patient-level extract with each attendance's
+location sequence comma-delimited in one field. If aggregates are harder to
+produce, a de-identified 3-column cut (arrival date+hour, location sequence,
+final disposition) lets us derive both — parse the sequence, count transitions,
+and build the calibration patch. Only one of the two routes is needed.
+
+**Scope question asked once**: adult Type 1 ED only vs including the separate
+paediatric ED — decides every denominator above.
 
 ---
 
