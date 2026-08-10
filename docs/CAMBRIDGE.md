@@ -129,6 +129,15 @@ them to the process map (and the journey-string fallback parses that same
 vocabulary). Note: imaging is often not a location move in ED systems, so it
 needs its own extract (item 8) rather than relying on transitions.
 
+**Part B must also cover downstream flow** (the exit-block mechanism — the
+bottleneck the control tower exists to show): typical inpatient discharges per
+day (+ morning/afternoon skew), community / virtual-ward pull per day (model
+default 60/day is synthetic), and their own G&A beds + occupancy figure
+(otherwise published KH03). Feeds `sd.ward_discharge_capacity_per_hour`,
+`sd.community_clearance_per_hour`, `community_capacity`, `inpatient_beds`,
+`baseline_bed_occupancy`. Optional Part A line: daily inpatient discharges
+(date, count) for the same 13 weeks.
+
 **Fallback for 2 + 4**: CUH holds a patient-level extract with each attendance's
 location sequence comma-delimited in one field. If aggregates are harder to
 produce, a de-identified 3-column cut (arrival date+hour, location sequence,
