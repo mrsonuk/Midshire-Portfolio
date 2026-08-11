@@ -147,6 +147,18 @@ and build the calibration patch. Only one of the two routes is needed.
 **Scope question asked once**: adult Type 1 ED only vs including the separate
 paediatric ED — decides every denominator above.
 
+**CHEQS inventory outcome (Josh, via Yas)** — final pull agreed, nothing further:
+arrivals by hour × mode ✓ · arrivals by area by hour ✓ · area × discharge
+destination ✓ (replaces acuity × disposition; acuity falls back to published if
+absent) · patient-moves extract, pseudonymised, 4 weeks ✓ (replaces aggregate
+transitions AND yields per-area dwell → real service-time calibration) ·
+timings monthly, by majors/minors ✓ · X-ray/CT counts, no turnaround (stays a
+labelled assumption) · MH monthly counts from their MH dashboard ✓ · monthly
+performance 12 months ✓ (their "left without being seen" = LBBS). Non-CHEQS
+piece: docs/cuh_minimum_data.xlsx (Areas / Capacity / Downstream) with the ops
+team. Remaining assumptions after landing: imaging turnaround, workforce
+(agreed), renege/patience.
+
 ---
 
 ## 4. Assumptions register — what the banner will still flag, and why that's fine
