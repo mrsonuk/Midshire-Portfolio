@@ -470,30 +470,34 @@ def main():
     rgt_patch, rgt_summary = pub.patch_from_aggregates(rgt_agg)
     assert rgt_patch["arrivals"].get("hourly_profile") and rgt_patch["admission_rates"]
     for block in ("hourly_shares", "acuity_mix_pct", "ambulance_share",
-                  "admission_rate_by_acuity", "mental_health_share"):
+                  "admission_rate_by_acuity"):
         s = str(rgt_agg[block].get("source", ""))
-        assert "SYNTHETIC" in s or "SECONDARY" in s, f"{block} must carry its label"
-    assert rgt_agg["four_hour_pct"]["value"] is None, \
-        "validation targets must never be synthetic"
-    assert "paediatric" not in rgt_patch["attributes"], "paeds share pends scope answer"
+        assert "SYNTHETIC" in s, f"{block} is still a placeholder and must say so"
+    # REAL transcribed figures (June 2026 ECDS provisional, committed under data/)
+    assert rgt_patch["attributes"]["paediatric"] == 0.1971   # 2,420 / 12,280 T1&2
+    assert rgt_patch["attributes"]["mental_health"] == 0.0257  # 315 / 12,280
+    assert rgt_agg["four_hour_pct"]["value"] == 52.93, \
+        "validation target must be the real published figure"
     assert any("SYNTHETIC" in s for s in rgt_summary), rgt_summary
-    print("Published aggregates OK: shares -> patch maths check out; RGT synthetic "
-          "placeholders carry their labels; validation targets stay real-only.")
+    print("Published aggregates OK: shares -> patch maths check out; RGT mixes real "
+          "transcribed figures (cited) with labelled synthetic distributions.")
 
     # --- Cambridge (RGT) registry row + committed seed: reproducible set-up ---
     assert "RGT" in codes, "Cambridge University Hospitals must be in the registry"
     rgt_prof = get_profile("rgt")
     rgt = to_department(rgt_prof)
     assert "(RGT)" in rgt.name and "Cambridge" in rgt.name
-    assert rgt.attendances_per_day == 430 and rgt.inpatient_beds == 1165
-    assert "SYNTHETIC" in rgt_prof.source, "synthetic inputs must carry their label"
-    assert rgt_prof.observed_four_hour_pct is None, \
-        "validation targets must never be synthetic"
+    # REAL inputs transcribed from the primary files committed under data/
+    assert rgt.attendances_per_day == 400.5 and rgt.inpatient_beds == 1068
+    assert rgt.baseline_bed_occupancy == 0.8926
+    assert "June-2026-CSV" in rgt_prof.source and "KH03" in rgt_prof.source, \
+        "real inputs must cite the primary files they came from"
+    assert rgt_prof.observed_four_hour_pct == 52.93, "validation target is real"
     from ..ingest.seed import find_seed_workbook, seed as run_seed
     assert find_seed_workbook("RGT") is not None, "seed workbook must be committed"
     seeded = run_seed("RGT")
     assert seeded["ok"] and "(RGT)" in seeded["department"]["name"]
-    assert seeded["department"]["attendances_per_day"] == 430
+    assert seeded["department"]["attendances_per_day"] == 400.5
     assert store.get_setting("data_source")["kind"] == "seed"
     assert store.get_setting("provenance")["rows"], "seed must persist provenance"
     assert seeded["calibration_applied"], "synthetic aggregates must drive the patch"
