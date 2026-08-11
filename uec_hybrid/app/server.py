@@ -432,6 +432,13 @@ def api_data_status():
     if not cal:
         warnings.append("No attendance calibration is loaded - arrival patterns and "
                         "acuity mix are modelled assumptions, not your recorded activity.")
+    # a calibration built from labelled synthetic placeholders must never pass
+    # for real recorded activity - keep saying so until real data replaces it
+    cal_synthetic = bool(cal and any("SYNTHETIC" in s for s in (cal.get("summary") or [])))
+    if cal_synthetic:
+        warnings.append("The loaded calibration is built from SYNTHETIC placeholder "
+                        "figures - arrival patterns and case mix are illustrative "
+                        "until the trust's real extracts replace them.")
     if not (d.capacity or {}):
         warnings.append("Physical capacity (cubicles, CDU beds, resus bays…) is "
                         "scaled from the Model ED template, not your real counts - "
@@ -442,6 +449,8 @@ def api_data_status():
         assumed.append("physical capacity")
     if not cal:
         assumed.append("arrival profile & acuity mix")
+    elif cal_synthetic:
+        assumed.append("arrival profile & case mix (SYNTHETIC calibration)")
     if not overrides["service_times"]:
         assumed.append("service times")
     if not overrides["cost_book"]:

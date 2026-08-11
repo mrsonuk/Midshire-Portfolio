@@ -455,31 +455,50 @@ def main():
     assert abs(daily_stream_split(praw["arrivals"])["ambulance"] - 0.285) < 0.02
     pnode = next(n for n in praw["nodes"] if n["id"] == "disposition_general")
     assert pnode["routes_by_class"]["Acuity 3"][0] == ["await_inpatient_bed", 0.22]
-    # the committed RGT file is a cited TEMPLATE: all-null -> empty patch, honestly
+    # the committed RGT file is a SYNTHETIC placeholder build: it must produce a
+    # patch, every filled block must be labelled SYNTHETIC/SECONDARY in its own
+    # source string, and validation targets must stay null (real data only)
     rgt_agg = pub.load_aggregates("RGT")
     assert rgt_agg and rgt_agg["ods_code"] == "RGT"
-    empty_patch, empty_summary = pub.patch_from_aggregates(rgt_agg)
-    assert not any(empty_patch[k] for k in ("arrivals", "attributes", "admission_rates"))
-    assert any("template assumption kept" in s for s in empty_summary)
-    print("Published aggregates OK: shares -> patch maths check out; null template "
-          "-> empty patch (assumptions stay flagged, never invented).")
+    rgt_patch, rgt_summary = pub.patch_from_aggregates(rgt_agg)
+    assert rgt_patch["arrivals"].get("hourly_profile") and rgt_patch["admission_rates"]
+    for block in ("hourly_shares", "acuity_mix_pct", "ambulance_share",
+                  "admission_rate_by_acuity", "mental_health_share"):
+        s = str(rgt_agg[block].get("source", ""))
+        assert "SYNTHETIC" in s or "SECONDARY" in s, f"{block} must carry its label"
+    assert rgt_agg["four_hour_pct"]["value"] is None, \
+        "validation targets must never be synthetic"
+    assert "paediatric" not in rgt_patch["attributes"], "paeds share pends scope answer"
+    assert any("SYNTHETIC" in s for s in rgt_summary), rgt_summary
+    print("Published aggregates OK: shares -> patch maths check out; RGT synthetic "
+          "placeholders carry their labels; validation targets stay real-only.")
 
     # --- Cambridge (RGT) registry row + committed seed: reproducible set-up ---
     assert "RGT" in codes, "Cambridge University Hospitals must be in the registry"
-    rgt = to_department(get_profile("rgt"))
+    rgt_prof = get_profile("rgt")
+    rgt = to_department(rgt_prof)
     assert "(RGT)" in rgt.name and "Cambridge" in rgt.name
-    assert rgt.attendances_per_day == Department.default().attendances_per_day, \
-        "no figure is committed until transcribed - defaults, flagged"
+    assert rgt.attendances_per_day == 430 and rgt.inpatient_beds == 1165
+    assert "SYNTHETIC" in rgt_prof.source, "synthetic inputs must carry their label"
+    assert rgt_prof.observed_four_hour_pct is None, \
+        "validation targets must never be synthetic"
     from ..ingest.seed import find_seed_workbook, seed as run_seed
     assert find_seed_workbook("RGT") is not None, "seed workbook must be committed"
     seeded = run_seed("RGT")
     assert seeded["ok"] and "(RGT)" in seeded["department"]["name"]
+    assert seeded["department"]["attendances_per_day"] == 430
     assert store.get_setting("data_source")["kind"] == "seed"
     assert store.get_setting("provenance")["rows"], "seed must persist provenance"
-    assert not seeded["calibration_applied"], \
-        "an all-null aggregates file must not fabricate a calibration"
+    assert seeded["calibration_applied"], "synthetic aggregates must drive the patch"
+    assert any("SYNTHETIC" in s for s in seeded["summary"]), \
+        "the seed summary must say the calibration is synthetic"
     v1 = seeded["version"]
     assert run_seed("RGT")["version"] == v1 + 1, "re-seeding appends a version"
+    # the banner must keep saying the calibration is synthetic until real data lands
+    from ..app.server import app as _seed_app
+    ds_synth = _seed_app.test_client().get("/api/data-status").get_json()
+    assert any("SYNTHETIC" in w for w in ds_synth["warnings"]), ds_synth["warnings"]
+    assert any("SYNTHETIC" in a for a in ds_synth["assumed"]), ds_synth["assumed"]
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted).")
 

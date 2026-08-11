@@ -1,73 +1,73 @@
 {
   "ods_code": "RGT",
   "name": "Cambridge University Hospitals NHS Foundation Trust",
-  "site": "Addenbrooke's Hospital (adult Type 1 ED; a separate paediatric ED operates on site - state which footprint each figure covers)",
-  "as_of": "",
-  "status": "TEMPLATE - every value below is null until transcribed from the named publication. Null blocks are skipped by the product (the template assumption stays, and stays flagged). Never enter a number without recording its source and period. Note: CUH was a UEC field-testing site May 2019 - May 2023, so 4-hour data has a gap in that window; use recent months.",
+  "site": "Addenbrooke's Hospital (adult Type 1 ED; a separate paediatric ED operates on site - scope confirmation pending from CUH)",
+  "as_of": "SYNTHETIC placeholders, Aug 2026",
+  "status": "SYNTHETIC PLACEHOLDER BUILD - every numeric block below is a clearly-labelled synthetic value (typical NHS pattern) so the full pipeline runs end-to-end. Replace each block's value(s) with the real figure from the source named in that block, set granularity to 'provider' or 'national', and delete the SYNTHETIC prefix from its source. The block shape IS the drop-in format. Note: CUH was a UEC field-testing site May 2019 - May 2023 (4-hour reporting gap); use recent months when transcribing.",
   "attendances_per_day": {
-    "value": null,
-    "period": "",
-    "source": "NHS England, A&E Attendances and Emergency Admissions (monthly), provider-level CSV, row RGT: attendances for the period / days in the period. Record whether Type 1 only or all types. https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/"
+    "value": 430,
+    "period": "SYNTHETIC estimate",
+    "source": "SYNTHETIC PLACEHOLDER - informed estimate only: CUH board reporting via Cambridge Independent (Mar 2024) cited +62 attendances/day year-on-year (+18.2%), and CUH/Cambridge Network (winter 2025) reported days exceeding 500 ED attendances. REPLACE WITH: NHS England, A&E Attendances and Emergency Admissions (monthly), provider RGT - attendances / days in period. https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/"
   },
   "four_hour_pct": {
     "value": null,
     "period": "",
-    "note": "VALIDATION TARGET, not a model input - goes in nhs_trust_snapshot.csv too.",
-    "source": "Same NHSE monthly A&E publication, provider RGT: percentage within 4 hours (all types and Type 1 both published - record which)."
+    "note": "DELIBERATELY LEFT NULL - this is a VALIDATION TARGET; the model must never be validated or auto-calibrated against a synthetic number. Fill only with the real published figure.",
+    "source": "NHSE monthly A&E publication, provider RGT (record Type 1 vs all types)."
   },
   "twelve_hour_pct": {
     "value": null,
     "period": "",
-    "note": "VALIDATION TARGET, not a model input.",
-    "source": "Same NHSE monthly A&E publication, provider RGT: 12-hour waits from decision to admit (and/or 12h from arrival, ECDS measure) as share of attendances."
+    "note": "DELIBERATELY LEFT NULL - validation target, real data only. Context (secondary, unverified): Cambridge Independent reported 12,280 twelve-hour incidents in the year to Nov 2025.",
+    "source": "NHSE monthly A&E publication, provider RGT."
   },
   "hourly_shares": {
-    "values": [null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null, null],
-    "granularity": "",
-    "source": "NHS Digital, Hospital Accident & Emergency Activity (ECDS-based, annual), 'attendances by time of arrival'. Use provider-level RGT if the open CSV carries it; otherwise the national Type 1 distribution and set granularity='national shape, trust volume'. https://digital.nhs.uk/data-and-information/publications/statistical/hospital-accident--emergency-activity"
+    "values": [0.0179, 0.0119, 0.0119, 0.0089, 0.0089, 0.0119, 0.0119, 0.0179, 0.0387, 0.0595, 0.0685, 0.0744, 0.0744, 0.0655, 0.0625, 0.0625, 0.0625, 0.0625, 0.0595, 0.0506, 0.0476, 0.0417, 0.0298, 0.0238],
+    "granularity": "SYNTHETIC",
+    "source": "SYNTHETIC PLACEHOLDER (typical NHS Type 1 hour-of-arrival shape). REPLACE WITH: CHEQS extract 1 (arrivals by hour x mode) or NHS Digital Hospital A&E Activity 'time of arrival'. https://digital.nhs.uk/data-and-information/publications/statistical/hospital-accident--emergency-activity"
   },
   "acuity_mix_pct": {
-    "values": {"Acuity 1": null, "Acuity 2": null, "Acuity 3": null, "Acuity 4": null, "Acuity 5": null},
-    "granularity": "",
-    "source": "Hospital A&E Activity (ECDS): attendances by acuity. Provider-level RGT if published; else national Type 1 shares, labelled as such."
+    "values": {"Acuity 1": 0.88, "Acuity 2": 5.5, "Acuity 3": 24.65, "Acuity 4": 60.68, "Acuity 5": 8.29},
+    "granularity": "SYNTHETIC",
+    "source": "SYNTHETIC PLACEHOLDER (typical national Type 1 acuity mix). REPLACE WITH: CHEQS triage-category table if held, else Hospital A&E Activity national distribution (set granularity 'national')."
   },
   "ambulance_share": {
-    "value": null,
-    "period": "",
-    "source": "Hospital A&E Activity (ECDS): share of attendances arriving by ambulance, provider RGT. (The A&E Quality Indicators provider workbook also carries arrival-mode counts.)"
+    "value": 0.30,
+    "period": "SYNTHETIC",
+    "source": "SYNTHETIC PLACEHOLDER (typical Type 1 conveyance share ~30%). REPLACE WITH: CHEQS extract 1 mode split, or Hospital A&E Activity arrival-mode table, provider RGT."
   },
   "admission_rate_by_acuity": {
-    "values": {"Acuity 1": null, "Acuity 2": null, "Acuity 3": null, "Acuity 4": null, "Acuity 5": null},
-    "granularity": "",
-    "source": "Hospital A&E Activity (ECDS): admitted share by acuity. Provider-level if published; else national Type 1, labelled."
+    "values": {"Acuity 1": 0.55, "Acuity 2": 0.45, "Acuity 3": 0.22, "Acuity 4": 0.08, "Acuity 5": 0.03},
+    "granularity": "SYNTHETIC",
+    "source": "SYNTHETIC PLACEHOLDER (typical admitted share by acuity). REPLACE WITH: CHEQS extract 3 (area x destination + triage category), else Hospital A&E Activity."
   },
   "paediatric_share": {
     "value": null,
     "period": "",
-    "note": "Careful: Addenbrooke's runs a separate paediatric ED - only fill this if modelling the combined footprint.",
-    "source": "Hospital A&E Activity (ECDS): attendances by age band (share under 16), provider RGT."
+    "note": "LEFT NULL pending the scope answer - Addenbrooke's runs a separate paediatric ED; if the build is adult-only this should be 0.",
+    "source": "CHEQS scope confirmation (Josh), then extract 3 by age band if in footprint."
   },
   "mental_health_share": {
-    "value": null,
-    "period": "",
-    "source": "Hospital A&E Activity (ECDS): chief complaint / mental-health flag share if published at provider level; else leave null."
+    "value": 0.04,
+    "period": "SYNTHETIC",
+    "source": "SYNTHETIC PLACEHOLDER (typical ~4% MH presentations). REPLACE WITH: CHEQS MH dashboard monthly counts / total attendances."
   },
   "bed_occupancy": {
-    "value": null,
-    "period": "",
-    "note": "Goes in nhs_trust_snapshot.csv (bed_occupancy column) as a model INPUT.",
-    "source": "NHS England Bed Availability and Occupancy (KH03 quarterly, overnight G&A), provider RGT; or the UEC/Winter Daily SitRep in season. https://www.england.nhs.uk/statistics/statistical-work-areas/bed-availability-and-occupancy/"
+    "value": 0.94,
+    "period": "SYNTHETIC",
+    "note": "Mirrored in nhs_trust_snapshot.csv (bed_occupancy) as the model INPUT.",
+    "source": "SYNTHETIC PLACEHOLDER (typical acute G&A occupancy). REPLACE WITH: NHS England Bed Availability and Occupancy KH03 (overnight G&A occupied/available), provider RGT. https://www.england.nhs.uk/statistics/statistical-work-areas/bed-availability-and-occupancy/ (CUH's own figure not needed - agreed with CUH after their denominator concern.)"
   },
   "inpatient_beds": {
-    "value": null,
-    "period": "",
-    "note": "Goes in nhs_trust_snapshot.csv (inpatient_beds column) as a model INPUT.",
-    "source": "KH03 overnight G&A beds available, provider RGT (or the trust's annual report)."
+    "value": 1165,
+    "period": "secondary source",
+    "note": "Mirrored in nhs_trust_snapshot.csv (inpatient_beds) as the model INPUT.",
+    "source": "SECONDARY SOURCE (unverified): Wikipedia/CQC-derived trust figure of 1,165 inpatient beds (+103 day beds); Addenbrooke's site alone cited as 880. VERIFY AGAINST: KH03 overnight G&A beds available, provider RGT."
   },
   "ambulance_handover_over_30_min_pct": {
     "value": null,
     "period": "",
-    "note": "Context/validation for the handover metrics - not yet a model input.",
-    "source": "NHS England Urgent and Emergency Care Daily Situation Reports (winter), ambulance handover delays by trust; or the Ambulance Quality Indicators (monthly)."
+    "note": "Context/validation only - real data only (CHEQS extract 8 or winter SitRep).",
+    "source": "NHSE UEC Daily SitRep (winter) / Ambulance Quality Indicators, or CHEQS monthly performance."
   }
 }

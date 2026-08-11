@@ -75,8 +75,8 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
             profile = [round(s / tot * apd, 2) for s in shares]
             patch["arrivals"]["hourly_profile"] = profile
             gran = (agg.get("hourly_shares") or {}).get("granularity", "published")
-            summary.append(f"Arrival profile from published data ({gran} hour-of-"
-                           f"arrival shape x {round(apd)}/day). {src}".strip())
+            summary.append(f"Arrival profile applied ({gran} hour-of-arrival shape "
+                           f"x {round(apd)}/day). {src}".strip())
     elif shares and not apd:
         skipped.append("hourly shape (no attendances/day to scale it by)")
     else:
@@ -94,7 +94,7 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
         if tot > 0:
             patch["arrivals"]["acuity_mix"] = {k: round(v / tot * 100, 2)
                                                for k, v in clean.items()}
-            summary.append(f"Acuity mix from published data. {src}".strip())
+            summary.append(f"Acuity mix applied. {src}".strip())
     else:
         skipped.append("acuity mix")
 
@@ -104,7 +104,7 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
         if amb > 1.5:              # entered as a percent
             amb = amb / 100.0
         patch["attributes"]["ambulance"] = round(amb, 4)
-        summary.append(f"Ambulance arrivals {amb*100:.0f}% from published data. {src}".strip())
+        summary.append(f"Ambulance arrivals {amb*100:.0f}%. {src}".strip())
     else:
         skipped.append("ambulance conveyance share")
 
@@ -116,7 +116,7 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
             if v > 1.5:
                 v = v / 100.0
             patch["attributes"][attr] = round(v, 4)
-            summary.append(f"{label.capitalize()} {v*100:.1f}% from published data. {src}".strip())
+            summary.append(f"{label.capitalize()} {v*100:.1f}%. {src}".strip())
         else:
             skipped.append(label)
 
@@ -131,7 +131,7 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
                 r = r / 100.0
             patch["admission_rates"][label] = round(r, 3)
         if patch["admission_rates"]:
-            summary.append(f"Admission rate by acuity from published data. {src}".strip())
+            summary.append(f"Admission rate by acuity applied. {src}".strip())
     else:
         skipped.append("admission rate by acuity")
 

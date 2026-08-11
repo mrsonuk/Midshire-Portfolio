@@ -11,6 +11,39 @@ The product skips empty slots and keeps flagging them as assumptions.
 
 ---
 
+## 0. CURRENT BUILD STATE — synthetic placeholder build (Aug 2026)
+
+The Cambridge department now stands up end-to-end with **clearly-labelled
+synthetic placeholders** so every screen works while real data is collected.
+Direct downloads from england.nhs.uk / digital.nhs.uk are blocked in the build
+environment, so primary figures could not be transcribed here; secondary
+sources are cited where used, everything else is SYNTHETIC and says so on the
+banner of every screen.
+
+| Value in the build | Status | Source / replacement |
+|---|---|---|
+| Attendances 430/day | SYNTHETIC estimate | Informed by CUH board reporting via Cambridge Independent (Mar 2024: +62/day YoY, +18.2%) and CUH/Cambridge Network news (winter 2025: days >500). REPLACE: NHSE monthly A&E, provider RGT |
+| Inpatient beds 1,165 | SECONDARY (unverified) | Wikipedia/CQC-derived trust figure. VERIFY: KH03 |
+| Bed occupancy 0.94 | SYNTHETIC | typical acute. REPLACE: KH03 |
+| Hourly shape, acuity mix, ambulance 30%, admission rates, MH 4% | SYNTHETIC | typical NHS Type 1 patterns. REPLACE: CHEQS extracts 1/3 or Hospital A&E Activity |
+| 4-hour %, 12-hour % | **deliberately blank** | validation targets are real-data-only — never validate/auto-calibrate against synthetic (context, secondary: 12,280 twelve-hour incidents in year to Nov 2025, Cambridge Independent) |
+| Areas, capacity, rota, service times, paeds share | template defaults, flagged | ops workbook / CHEQS moves extract / scope answer |
+
+**Drop-in map when real data lands** (then `python3 -m uec_hybrid.ingest.seed RGT --warm`):
+
+| Incoming | Goes into |
+|---|---|
+| CHEQS 1 (arrivals hour × mode) | `rgt_published.json` → `hourly_shares` (+`ambulance_share`), granularity 'provider' |
+| CHEQS 2 (arrivals by area) | Areas confirm + streaming splits (pathway config) |
+| CHEQS 3 (area × destination, triage) | `admission_rate_by_acuity` / `acuity_mix_pct` + routing |
+| CHEQS 4 (moves extract) | transitions + per-area dwell → ServiceTimes tab of the seed workbook |
+| CHEQS 5 (timings) | ServiceTimes tab cross-check |
+| CHEQS 7 (MH) | `mental_health_share` |
+| CHEQS 8 (monthly performance) | snapshot CSV `four_hour_pct`/`twelve_hour_pct` (validation) |
+| CHEQS 9 (discharges by hour) | Downstream answers → SD block |
+| NHSE monthly A&E + KH03 | snapshot CSV attendances/beds/occupancy (replace synthetic) |
+| Ops workbook (Capacity + Questions) | seed workbook Capacity sheet + community_capacity |
+
 ## 1. How the Cambridge version is stood up (reproducible)
 
 ```bash
