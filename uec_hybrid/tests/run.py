@@ -303,7 +303,14 @@ def main():
     assert store.get_calibration("your_department")["summary"] == ["ok"]
     store.clear_calibration("your_department")
     assert store.get_calibration("your_department") is None
-    print("Store OK: department versions persist; run cache keyed by config hash.")
+    # audit details are truncated summaries (2000 chars) - a long JSON value cut
+    # mid-string must degrade to raw text, never break the whole trail
+    store.save_setting("audit_trunc_check", {"long": "x" * 3000})
+    trail = store.audit_trail()
+    row = next(r for r in trail if r["key"] == "audit_trunc_check")
+    assert isinstance(row["detail"], str) and len(row["detail"]) == 2000
+    print("Store OK: department versions persist; run cache keyed by config hash; "
+          "truncated audit details degrade safely.")
 
     # --- ECDS calibration patch follows the department through set-up changes ---
     from ..demand.ecds_seam import generate_sample, derive_patch, apply_patch

@@ -212,13 +212,24 @@ def setting_meta(key: str) -> dict | None:
 
 
 # --- governance: audit trail + operational decision log ----------------------- #
+def _audit_detail(raw: str):
+    """Audit details are truncated summaries (save_setting keeps 2000 chars),
+    so a long value can be cut mid-JSON - fall back to the raw text rather
+    than failing the whole trail."""
+    if raw.startswith(("{", "[")):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+    return raw
+
+
 def audit_trail(limit: int = 100) -> list[dict]:
     """Most-recent-first log of configuration changes (append-only)."""
     with _session() as s:
         rows = s.query(AuditRow).order_by(AuditRow.at.desc(), AuditRow.id.desc()).limit(limit)
         return [{"at": r.at.isoformat(), "kind": r.kind, "key": r.key,
-                 "detail": json.loads(r.detail) if r.detail.startswith(("{", "[")) else r.detail}
-                for r in rows]
+                 "detail": _audit_detail(r.detail)} for r in rows]
 
 
 def log_action(note: str, author: str = "", context: dict | None = None) -> dict:
