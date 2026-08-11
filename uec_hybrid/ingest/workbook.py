@@ -103,23 +103,31 @@ def _read_overview(rows) -> dict:
 
 def _read_areas(rows):
     """Header row then area_key/enabled/open/close. Returns (enabled, hours) or
-    (None, None) when the sheet is empty (keep the department default).
+    (None, None) when the sheet is empty OR no row has the enabled cell filled
+    (keep the department default) - so a collection workbook can pre-list every
+    area for a trust to tick without an unfilled sheet reading as "all off".
     '#'-prefixed rows are comments, as on the other sheets."""
     body = [r for r in rows[1:] if r and r[0] not in (None, "")
             and not _norm(r[0]).startswith("#")]
     if not body:
         return None, None
     enabled, hours = [], {}
+    any_filled = False
     for r in body:
         key = _norm(r[0])
         if key not in AREAS:
             continue
-        if len(r) > 1 and _truthy(r[1]):
-            enabled.append(key)
+        val = r[1] if len(r) > 1 else None
+        if val not in (None, ""):
+            any_filled = True
+            if _truthy(val):
+                enabled.append(key)
         o = _num(r[2]) if len(r) > 2 else None
         c = _num(r[3]) if len(r) > 3 else None
         if o is not None and c is not None:
             hours[key] = [int(o), int(c)]
+    if not any_filled:
+        return None, None
     return enabled, hours
 
 

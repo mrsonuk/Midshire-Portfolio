@@ -419,6 +419,20 @@ def main():
     buf4 = _io.BytesIO(); wb4.save(buf4)
     assert set(wbk.read_workbook(buf4.getvalue(), filename="c.xlsx")["department"].enabled) \
         == set(Department.default().enabled)
+    # pre-listed area rows with EVERY enabled cell blank = sheet not answered
+    # (defaults kept) - so a collection workbook can list areas for a trust to
+    # tick; one explicit answer then makes the sheet authoritative
+    wb5 = load_workbook(_io.BytesIO(wb_bytes))
+    ar5 = wb5["Areas"]
+    for r in range(2, ar5.max_row + 1):
+        ar5.cell(row=r, column=2).value = None
+    buf5 = _io.BytesIO(); wb5.save(buf5)
+    assert set(wbk.read_workbook(buf5.getvalue(), filename="d.xlsx")["department"].enabled) \
+        == set(Department.default().enabled)
+    ar5.cell(row=2, column=2).value = "yes"
+    buf6 = _io.BytesIO(); wb5.save(buf6)
+    only = wbk.read_workbook(buf6.getvalue(), filename="e.xlsx")["department"].enabled
+    assert only == [wbk._norm(ar5.cell(row=2, column=1).value)], only
     print("Capacity OK: real counts replace the scaled template (nurse ratio still "
           "gates cubicles); workbook Capacity sheet + ODS code round-trip.")
 
