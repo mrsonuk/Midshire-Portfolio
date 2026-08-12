@@ -1,18 +1,19 @@
 {
   "ods_code": "RGT",
   "name": "Cambridge University Hospitals NHS Foundation Trust",
-  "site": "Addenbrooke's Hospital. NOTE: the published Type 1 figure INCLUDES the on-site paediatric ED (ECDS Paediatric Performance sheet shows 2,420 T1&2 paediatric attendances) - confirm the CHEQS footprint matches.",
-  "as_of": "June 2026 (A&E/ECDS), Q4 2025-26 ending March 2026 (beds)",
-  "status": "MIXED BUILD - headline volumes, validation targets, paediatric and MH shares are REAL, transcribed from the primary publication files committed under data/ (each block cites file + sheet/column). Distribution blocks (hourly shape, acuity mix, ambulance share, admission-by-acuity) remain SYNTHETIC placeholders until the CUH CHEQS extracts land - each says so in its source.",
+  "site": "Addenbrooke's Hospital. The modelled footprint is the ED front door (resus, majors trolleys, majors ambulant, minors, paeds) with SDEC as a co-located area. CUH's own extracts count the paediatric ED as an area within the department.",
+  "as_of": "CUH CHEQS extracts Feb-Aug 2026 (batch 1, received 12 Aug 2026 from Joshua at CUH); NHS England publications June 2026 (A&E/ECDS) and Q4 2025-26 (beds)",
+  "status": "REAL BUILD - headline volumes and validation targets are transcribed from NHS England publications (files under data/), and the distribution blocks (hourly shape, area/acuity mix, ambulance share, admission rates) are computed from CUH's own CHEQS extracts committed under data/cuh/. Each block cites its exact file. Where an internal figure and a published figure measure the same thing differently, the note says so - see docs/CUH_DATA_LOG.md for the reconciliation.",
   "attendances_per_day": {
     "value": 400.5,
     "period": "June 2026 (30 days), Type 1 only",
-    "source": "NHS England monthly A&E Attendances and Emergency Admissions, June 2026 provider CSV (data/June-2026-CSV-Wfg38l.csv), row RGT: 'A&E attendances Type 1' = 12,015 / 30. All-types incl. 'Other A&E Department' (5,849) would be 595/day - the model's footprint is the Type 1 ED. https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/"
+    "note": "The volume anchor stays the PUBLISHED Type 1 figure. CUH's internal per-area counts give 446.2/day for the same front-door footprint over Feb-Jul 2026 (80,771 attendances / 181 days, data/cuh/Performance *.xlsx) - the ~11% gap is a counting-basis difference (internal area counts include planned returns and did-not-waits that the published Type 1 series treats differently), logged in docs/CUH_DATA_LOG.md.",
+    "source": "NHS England monthly A&E Attendances and Emergency Admissions, June 2026 provider CSV (data/June-2026-CSV-Wfg38l.csv), row RGT: 'A&E attendances Type 1' = 12,015 / 30. https://www.england.nhs.uk/statistics/statistical-work-areas/ae-waiting-times-and-activity/"
   },
   "four_hour_pct": {
     "value": 52.93,
     "period": "June 2026, Type 1",
-    "note": "VALIDATION TARGET (not a model input). Corroborated by ECDS provisional 4 Hour Performance: 53.58% T1&2 (5,700 of 12,280 over 4h).",
+    "note": "VALIDATION TARGET (not a model input). Corroborated by ECDS provisional 4 Hour Performance: 53.58% T1&2. CUH internal cross-check: front-door areas (excl SDEC) Feb-Jul 2026 show 59.5% within 4 hours on the CHEQS counting basis (data/cuh/Performance *.xlsx, breaches/attendances) - internal counts include did-not-waits, so the published series remains the target.",
     "source": "data/June-2026-CSV-Wfg38l.csv row RGT: 1 - (5,656 over-4hrs Type 1 / 12,015 Type 1 attendances). ECDS corroboration: data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, '4 Hour Performance', row RGT."
   },
   "twelve_hour_pct": {
@@ -22,36 +23,37 @@
     "source": "data/June-2026-CSV-Wfg38l.csv row RGT ('Patients who have waited 12+ hrs from DTA to admission'); data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, '12 Hour Performance', row RGT."
   },
   "hourly_shares": {
-    "values": [0.0179, 0.0119, 0.0119, 0.0089, 0.0089, 0.0119, 0.0119, 0.0179, 0.0387, 0.0595, 0.0685, 0.0744, 0.0744, 0.0655, 0.0625, 0.0625, 0.0625, 0.0625, 0.0595, 0.0506, 0.0476, 0.0417, 0.0298, 0.0238],
-    "granularity": "SYNTHETIC",
-    "source": "SYNTHETIC PLACEHOLDER (typical NHS Type 1 hour-of-arrival shape) - not in the monthly/ECDS publication files. REPLACE WITH: CHEQS extract 1 (arrivals by hour x mode)."
+    "values": [0.0198, 0.0155, 0.0109, 0.0112, 0.0109, 0.0109, 0.012, 0.0192, 0.0343, 0.0541, 0.0651, 0.0693, 0.0718, 0.0657, 0.0614, 0.0575, 0.0638, 0.0597, 0.0619, 0.0594, 0.0563, 0.0446, 0.0366, 0.028],
+    "granularity": "provided (CUH extract, ED front door, May-Aug 2026)",
+    "source": "CUH CHEQS extract: data/cuh/Arrivals and departures by hour May to Aug 26.xlsx (46,132 arrivals by hour of day, May-Aug 2026; excludes direct-to-SDEC referrals). Shares are each hour's arrivals / 46,132."
   },
   "acuity_mix_pct": {
-    "values": {"Acuity 1": 0.88, "Acuity 2": 5.5, "Acuity 3": 24.65, "Acuity 4": 60.68, "Acuity 5": 8.29},
-    "granularity": "SYNTHETIC",
-    "source": "SYNTHETIC PLACEHOLDER (typical national Type 1 acuity mix) - ECDS provisional publishes chief complaint, not acuity, by provider. REPLACE WITH: CHEQS triage-category table."
+    "values": {"Acuity 1": 2.51, "Acuity 2": 18.88, "Acuity 3": 42.21, "Acuity 4": 36.41, "Acuity 5": 0.0},
+    "granularity": "provided (CUH extract, area-proxy mapping, Feb-Jul 2026)",
+    "note": "Mapping, stated plainly: the model's acuity bands are proxied by CUH's own treatment areas over the ADULT front door (resus = Acuity 1, majors trolleys = 2, majors ambulant = 3, minors = 4). CUH's extract is by area, not triage category, so minors carries bands 4 and 5 together (Acuity 5 set to zero rather than invented). Paediatric arrivals are routed separately by paediatric_share; SDEC is modelled as the streamed destination, not front-door demand.",
+    "source": "CUH CHEQS extract: data/cuh/Performance Resus.xlsx, Performance Majors Trolleys.xlsx, Performance Majors Ambulant.xlsx, Performance Minors.xlsx - Total Att summed Feb-Jul 2026 (1,754 / 13,211 / 29,544 / 25,481 of 69,990 adult front-door attendances)."
   },
   "ambulance_share": {
-    "value": 0.30,
-    "period": "SYNTHETIC",
-    "source": "SYNTHETIC PLACEHOLDER (typical Type 1 conveyance ~30%) - arrival mode is not in the provided publication files. REPLACE WITH: CHEQS extract 1 mode split."
+    "value": 0.1914,
+    "period": "May-Aug 2026",
+    "source": "CUH CHEQS extract: data/cuh/Arrivals Ambulance May to Aug 2026.xlsx (8,830 ambulance arrivals) / data/cuh/Arrivals and departures by hour May to Aug 26.xlsx (46,132 total front-door arrivals). Walk-ins (data/cuh/arrivals ambulant May to Aug 2026.xlsx) are 34,088; the 3,214 residual is other modes (recorded ~1/hour in data/cuh/Arrivals Other.xlsx)."
   },
   "admission_rate_by_acuity": {
-    "values": {"Acuity 1": 0.55, "Acuity 2": 0.45, "Acuity 3": 0.22, "Acuity 4": 0.08, "Acuity 5": 0.03},
-    "granularity": "SYNTHETIC",
-    "note": "Overall check against real data: emergency admissions via A&E Type 1 = 2,822 / 12,015 = 23.5% (June 2026 SitRep); ECDS disposal-admitted 1,955 of 12,280 = 15.9% (different definition).",
-    "source": "SYNTHETIC PLACEHOLDER per-acuity split. REPLACE WITH: CHEQS extract 3 (area x destination + triage category)."
+    "values": {"Acuity 1": 0.7434, "Acuity 2": 0.5604, "Acuity 3": 0.0423, "Acuity 4": 0.0005, "Acuity 5": null},
+    "granularity": "provided (CUH extract, area-proxy mapping, Feb-Jul 2026)",
+    "note": "Same area-proxy bands as acuity_mix_pct: resus 1,304/1,754 admitted, trolleys 7,404/13,211, majors ambulant 1,251/29,544, minors 14/25,481. Acuity 5 is null because no CUH area maps to it (its share is zero). Paeds admit 1,444/10,781 = 13.4%; SDEC 4,179/26,022 = 16.1% (routed by area, not these bands).",
+    "source": "CUH CHEQS extract: data/cuh/Performance *.xlsx, Total Adm / Total Att summed Feb-Jul 2026."
   },
   "paediatric_share": {
-    "value": 0.1971,
-    "period": "June 2026, Type 1 & 2",
-    "note": "REAL: 2,420 paediatric of 12,280 T1&2 attendances - the published Type 1 footprint INCLUDES the paediatric ED. If the build is scoped adult-only after CUH's answer, set this to 0 and use adult-only denominators from CHEQS.",
-    "source": "data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Paediatric Performance', row RGT."
+    "value": 0.1335,
+    "period": "Feb-Jul 2026",
+    "note": "CUH's own paediatric ED area: 10,781 of 80,771 front-door attendances. The PUBLISHED age-based figure is higher (2,420 of 12,280 T1&2 = 19.71%, June 2026 ECDS) because children treated outside the paeds area still count by age; the model routes by AREA, so the extract figure drives routing and the published figure stays here as the age-based cross-check.",
+    "source": "CUH CHEQS extract: data/cuh/Performance Paeds.xlsx, Total Att summed Feb-Jul 2026 / all five front-door areas. Published cross-check: data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Paediatric Performance', row RGT."
   },
   "mental_health_share": {
     "value": 0.0257,
     "period": "June 2026, Type 1 & 2",
-    "note": "REAL: 315 MH attendances / 12,280 T1&2.",
+    "note": "REAL: 315 MH attendances / 12,280 T1&2. Not covered by CHEQS batch 1, so the published figure stands.",
     "source": "data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Mental Health', row RGT."
   },
   "bed_occupancy": {
@@ -69,7 +71,40 @@
   "ambulance_handover_over_30_min_pct": {
     "value": null,
     "period": "",
-    "note": "Not in the provided files - real data only (CHEQS extract 8 or winter SitRep).",
+    "note": "Not in the publications or in CHEQS batch 1 - real data only (winter SitRep, or a follow-up CHEQS extract).",
     "source": "NHSE UEC Daily SitRep (winter) / Ambulance Quality Indicators, or CHEQS monthly performance."
+  },
+  "cuh_extracts": {
+    "note": "Reference blocks below are transcribed from CHEQS batch 1 for validation and manual calibration. They are NOT auto-consumed by the calibration patch (patch_from_aggregates reads only the blocks above); the engine's service times are tuned against the observed 4-hour figure via auto-calibration, with these medians as the sense-check.",
+    "stage_time_medians_june_2026_mins": {
+      "columns": ["arrival_to_initial_assessment", "initial_assessment_to_treatment", "treatment_to_departure", "dta_to_departure"],
+      "resus": [2.3, 19.5, 314.6, 131.0],
+      "majors_trolleys": [0.5, 53.1, 652.5, 460.5],
+      "majors_ambulant": [26.7, 74.5, 147.4, 137.7],
+      "minors": [37.3, 60.8, 55.6, 65.6],
+      "paeds": [15.5, 52.7, 77.0, 83.3],
+      "sdec": [0.4, 52.5, 266.4, 723.4],
+      "source": "CUH CHEQS extract: data/cuh/Performance *.xlsx, June 2026 rows (median minutes)."
+    },
+    "time_in_department_june_2026_mins": {
+      "note": "VALIDATION TARGETS - observed time-in-department, June 2026.",
+      "columns": ["total_median", "total_95th", "admitted_median", "admitted_95th"],
+      "resus": [324, 1302.2, 346, 1345.5],
+      "majors_trolleys": [725, 1618.4, 940, 1690.1],
+      "majors_ambulant": [254, 645.9, 398, 1053.5],
+      "minors": [164, 316, 323, 626.3],
+      "paeds": [176, 372, 222, 421.0],
+      "sdec": [247, 2022.8, 1022, 4309.0],
+      "source": "CUH CHEQS extract: data/cuh/TID *.xlsx, June 2026 rows."
+    },
+    "sdec": {
+      "attendances_per_day": 143.8,
+      "admission_rate": 0.1606,
+      "four_hour_within_pct": 48.99,
+      "period": "Feb-Jul 2026",
+      "source": "CUH CHEQS extract: data/cuh/Performance SDEC.xlsx (26,022 attendances / 181 days; 4,179 admitted; breaches 51.01%)."
+    },
+    "disposal_mix": "Per-area destination-on-leaving tables (Discharge, Admit, EAU3/EAU4, GP, OP clinic, DNW...) are committed as data/cuh/Discharges *.xlsx and data/cuh/Discharge Destinatoin.xlsx - see docs/CUH_DATA_LOG.md for the admission-route reading.",
+    "patient_moves": "data/cuh/Patient moves 4 weeks (deidentified).xlsx - 4,474 area moves for 3,960 visits, 10 Jul-9 Aug 2026, mostly SAU SDEC / Clinic 5 SDEC / EAU3 / EAU4 stays and ED-to-ward transfers. Identifiers (CSN, MRN) were REMOVED before committing; visits carry sequential ids. Feeds SDEC/assessment-unit length-of-stay checks."
   }
 }

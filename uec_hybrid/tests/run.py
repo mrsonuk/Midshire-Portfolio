@@ -406,9 +406,9 @@ def main():
     assert abs(daily_stream_split(praw["arrivals"])["ambulance"] - 0.285) < 0.02
     pnode = next(n for n in praw["nodes"] if n["id"] == "disposition_general")
     assert pnode["routes_by_class"]["Acuity 3"][0] == ["await_inpatient_bed", 0.22]
-    # the committed RGT file is a SYNTHETIC placeholder build: it must produce a
-    # patch, every filled block must be labelled SYNTHETIC/SECONDARY in its own
-    # source string, and validation targets must stay null (real data only)
+    # the committed RGT file is now a REAL build: CHEQS batch 1 (data/cuh/)
+    # drives every distribution block, each block cites its exact extract
+    # file, and nothing is labelled SYNTHETIC any more
     rgt_agg = pub.load_aggregates("RGT")
     assert rgt_agg and rgt_agg["ods_code"] == "RGT"
     rgt_patch, rgt_summary = pub.patch_from_aggregates(rgt_agg)
@@ -416,15 +416,18 @@ def main():
     for block in ("hourly_shares", "acuity_mix_pct", "ambulance_share",
                   "admission_rate_by_acuity"):
         s = str(rgt_agg[block].get("source", ""))
-        assert "SYNTHETIC" in s, f"{block} is still a placeholder and must say so"
-    # REAL transcribed figures (June 2026 ECDS provisional, committed under data/)
-    assert rgt_patch["attributes"]["paediatric"] == 0.1971   # 2,420 / 12,280 T1&2
-    assert rgt_patch["attributes"]["mental_health"] == 0.0257  # 315 / 12,280
+        assert "SYNTHETIC" not in s and "data/cuh" in s, \
+            f"{block} must cite the CUH extract it was computed from"
+    # REAL figures from the CUH extracts (area-proxy mapping, Feb-Jul 2026)
+    assert rgt_patch["attributes"]["paediatric"] == 0.1335   # 10,781 / 80,771 front door
+    assert rgt_patch["attributes"]["mental_health"] == 0.0257  # 315 / 12,280 (published)
+    assert rgt_patch["attributes"]["ambulance"] == 0.1914    # 8,830 / 46,132
+    assert rgt_patch["admission_rates"]["Acuity 2"] == 0.56  # trolleys 7,404 / 13,211
     assert rgt_agg["four_hour_pct"]["value"] == 52.93, \
         "validation target must be the real published figure"
-    assert any("SYNTHETIC" in s for s in rgt_summary), rgt_summary
-    print("Published aggregates OK: shares -> patch maths check out; RGT mixes real "
-          "transcribed figures (cited) with labelled synthetic distributions.")
+    assert not any("SYNTHETIC" in s for s in rgt_summary), rgt_summary
+    print("Published aggregates OK: shares -> patch maths check out; RGT distributions "
+          "come from the CUH extracts and cite their files.")
 
     # --- Cambridge (RGT) registry row + committed seed: reproducible set-up ---
     assert "RGT" in codes, "Cambridge University Hospitals must be in the registry"
@@ -444,16 +447,19 @@ def main():
     assert seeded["department"]["attendances_per_day"] == 400.5
     assert store.get_setting("data_source")["kind"] == "seed"
     assert store.get_setting("provenance")["rows"], "seed must persist provenance"
-    assert seeded["calibration_applied"], "synthetic aggregates must drive the patch"
-    assert any("SYNTHETIC" in s for s in seeded["summary"]), \
-        "the seed summary must say the calibration is synthetic"
+    assert seeded["calibration_applied"], "the CUH aggregates must drive the patch"
+    assert any("data/cuh" in s for s in seeded["summary"]), \
+        "the seed summary must cite the CUH extract files"
+    assert not any("SYNTHETIC" in s for s in seeded["summary"]), seeded["summary"]
     v1 = seeded["version"]
     assert run_seed("RGT")["version"] == v1 + 1, "re-seeding appends a version"
-    # the banner must keep saying the calibration is synthetic until real data lands
+    # real extracts have replaced the placeholders: the banner must stop calling
+    # the calibration synthetic (physical capacity stays a template assumption)
     from ..app.server import app as _seed_app
-    ds_synth = _seed_app.test_client().get("/api/data-status").get_json()
-    assert any("SYNTHETIC" in w for w in ds_synth["warnings"]), ds_synth["warnings"]
-    assert any("SYNTHETIC" in a for a in ds_synth["assumed"]), ds_synth["assumed"]
+    ds_seed = _seed_app.test_client().get("/api/data-status").get_json()
+    assert not any("SYNTHETIC" in w for w in ds_seed["warnings"]), ds_seed["warnings"]
+    assert not any("SYNTHETIC" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
+    assert any("capacity" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted).")
 
