@@ -205,10 +205,23 @@ def api_trust_import():
     dept = result["department"]
     CURRENT["dept"] = dept
     version = store.save_department(dept.to_dict())
-    if result.get("patch"):
-        store.save_calibration("your_department", result["patch"], result["summary"])
+    # like picking the trust from the list: any committed aggregates for the
+    # workbook's ODS code fill in whatever the workbook itself didn't carry
+    # (ambulance share, admission rates...) - the workbook wins where both have
+    # a value, so an upload is never poorer than the drop-down
+    patch, summary = result.get("patch"), list(result["summary"])
+    ods = result.get("ods_code")
+    agg = published.load_aggregates(ods) if ods else None
+    if agg:
+        from ..ingest.seed import _merge_patch
+        apatch, asummary = published.patch_from_aggregates(agg, dept.attendances_per_day)
+        patch = _merge_patch(apatch, patch or {})
+        summary += asummary
+    if patch and any(patch.get(k) for k in ("arrivals", "attributes", "admission_rates")):
+        store.save_calibration("your_department", patch, summary)
     else:
         store.clear_calibration("your_department")
+    result["summary"] = summary
     if result.get("cost_book"):
         save_cost_book(result["cost_book"])           # £ figures from the workbook
     if result.get("role_rates"):

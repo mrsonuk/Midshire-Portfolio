@@ -365,7 +365,7 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
 
     return {"department": dept, "patch": (patch or None), "summary": summary,
             "provenance": prov, "cost_book": cost_book, "role_rates": rates,
-            "service_params": svc_params}
+            "service_params": svc_params, "ods_code": (ods or None)}
 
 
 # --------------------------------------------------------------------------- #

@@ -688,6 +688,20 @@ def main():
     client.post("/api/trust/select", json={"ods": "RFF"})
     assert store.get_calibration("your_department") is None, \
         "RFF has no aggregates file - calibration must be cleared"
+    # uploading the FILLED Cambridge workbook stands up the whole build: the
+    # workbook carries arrivals + acuity, and its ODS code pulls the rest of
+    # the committed CUH aggregates in behind it (workbook wins where both set)
+    from io import BytesIO as _BIO2
+    from ..ingest.seed import find_seed_workbook as _fsw
+    up_rgt = client.post("/api/trust/import", content_type="multipart/form-data",
+                         data={"file": (_BIO2(_fsw("RGT").read_bytes()),
+                                        "rgt_cuh_workbook.xlsx")}).get_json()
+    assert up_rgt["ok"] and up_rgt["department"]["attendances_per_day"] == 400.5
+    cal_up = store.get_calibration("your_department")["patch"]
+    assert abs(sum(cal_up["arrivals"]["hourly_profile"]) - 400.5) < 0.05
+    assert cal_up["arrivals"]["acuity_mix"]["Acuity 2"] == 18.88     # workbook
+    assert cal_up["attributes"]["ambulance"] == 0.1914               # merged in
+    assert cal_up["admission_rates"]["Acuity 1"] == 0.743            # merged in
     tmpl = client.get("/api/trust/template")
     assert tmpl.status_code == 200 and len(tmpl.data) > 3000 and tmpl.data[:2] == b"PK"
     from io import BytesIO as _BIO
