@@ -125,7 +125,7 @@ def parse_question(question: str, raw: dict):
             if not _nurse_ready():
                 note = ("skipped nurses - no nurse-to-cubicle ratio is configured, so "
                         "nurses don't limit flow in this model (edit the rota on the "
-                        "Workforce tab instead)")
+                        "rota in Set up my ED instead)")
                 if note not in notes:
                     notes.append(note)
                 return
@@ -216,7 +216,7 @@ def parse_question(question: str, raw: dict):
         notes.append(f"demand x{scenario['arrivals_scale']}")
     if "winter" in q and "arrivals_scale" not in scenario:
         scenario["arrivals_scale"] = 1.12
-        notes.append("winter surge assumed as +12% demand (edit in Plan ahead for other levels)")
+        notes.append("winter surge assumed as +12% demand")
     # a time window on a demand change makes it an intra-day surge (evening peak, event)
     if hours and isinstance(scenario.get("arrivals_scale"), float):
         scenario["arrivals_scale"] = {"scale": scenario["arrivals_scale"], "hours": hours}

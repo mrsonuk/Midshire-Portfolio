@@ -13,7 +13,7 @@ from .roles import STAFF_RESOURCES, SUPPORT_RESOURCES, RATIO_RESOURCES, AREA_LAB
 
 
 def _demand_profile(attendances_per_day: float) -> list[float]:
-    from ..planning.forecast import HOURLY
+    from ..demand.profile import HOURLY
     tot = sum(HOURLY) or 1
     return [h * attendances_per_day / tot for h in HOURLY]
 

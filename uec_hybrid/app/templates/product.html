@@ -143,12 +143,7 @@
 </div></header>
 <nav id="nav">
  <a class="active" data-tab="tower">Control tower</a>
- <a data-tab="workforce">Workforce</a>
- <a data-tab="gaps">Model ED gaps</a>
  <a data-tab="setup">Set up my ED</a>
- <a class="ext" href="/exec">Executive brief</a>
- <a class="ext" href="/planner" style="margin-left:0">Plan ahead</a>
- <a class="ext" href="/analyst" style="margin-left:0">Analyst view</a>
 </nav>
 <div class="wrap">
 
@@ -165,37 +160,6 @@
    <div class="status" id="askStatus"></div>
    <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
   </div>
- </section>
-
- <section class="panel" id="panel-workforce">
-  <div class="wftiles" id="wfTiles"></div>
-  <div class="card"><h2>Are you staffed for the demand curve?</h2>
-   <p class="sub" id="wfHeadline"></p>
-   <p class="hint">Blue bars are staff on shift by hour; the shaded curve behind is the arrival demand
-    shape; red bars are hours where staffing looks light. Click any hour to see exactly who is on.</p>
-   <div class="wfgrid" id="wfAreas"></div>
-   <div class="drill" id="wfDrill"></div></div>
-  <div class="card"><h2>Where the pay-bill goes</h2>
-   <p class="sub" id="wfCost"></p>
-   <div class="costbars" id="wfBreakdown"></div></div>
-  <div class="card"><h2>Your rota: change it and watch it move</h2>
-   <p class="sub">Edit the shifts below. The staffing-vs-demand charts and the pay-bill update
-    instantly. When it looks right, "Apply &amp; re-run" updates the control tower's standards and
-    pinch-point. Hours are 24-hour; a shift can run past midnight (e.g. 22 to 08).</p>
-   <div id="rotaTable"></div>
-   <button id="addShift" class="sec">Add a shift</button>
-   <button id="applyRota">Apply &amp; re-run</button>
-   <div class="status" id="rotaStatus"></div></div>
- </section>
-
- <section class="panel" id="panel-gaps">
-  <div class="card"><h2>Your department vs the Model ED</h2>
-   <p class="sub" id="gapSummary"></p>
-   <div id="gapHave"></div>
-   <h2 style="margin-top:16px">Elements you don't have, and what they'd add</h2>
-   <p class="sub">Modelled improvement if you put each in place at this demand, with the business
-    case priced from your cost book.</p>
-   <div id="gapMiss"></div></div>
  </section>
 
  <section class="panel" id="panel-setup">

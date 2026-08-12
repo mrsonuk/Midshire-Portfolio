@@ -80,7 +80,7 @@ def _fmt_demand(provider):
     span = f"{_hh(min(top))}-{_hh(max(top) + 1)}"
     return (f"Your department expects about {per_day:.0f} attendances a day. Demand is heaviest "
             f"around {span} (about {max(prof):.0f}/hour at the peak) and quietest around "
-            f"{_hh(lo)} (about {prof[lo]:.0f}/hour). The Workforce tab shows your staffing "
+            f"{_hh(lo)} (about {prof[lo]:.0f}/hour). The control tower drill-down shows staffing "
             f"against this exact curve.")
 
 
@@ -123,14 +123,14 @@ def _fmt_standards(provider):
     if not bits:
         return "No standards computed yet - open the Control tower to run your department."
     return ("Across simulated weeks of your department as configured: " + "; ".join(bits) +
-            ". The Executive brief shows these as cards with the pinch point and pay-bill.")
+            ". The control tower shows these with the good-week and tough-week spread.")
 
 
 def _fmt_gaps(provider):
     g = provider["gaps"]()
     if not g:
-        return ("The Model ED gap analysis hasn't been run yet for this set-up - open the "
-                "“Model ED gaps” tab once (it takes a few minutes first time) and ask me again.")
+        return ("The Model ED gap analysis is not part of this build - it focuses on "
+                "the control tower and department set-up.")
     missing = g.get("missing") or []
     if not missing:
         return "You have every Model ED element - nothing is missing."
@@ -141,7 +141,7 @@ def _fmt_gaps(provider):
         money = f" (~£{fin['annual_benefit']:,.0f}/year)" if fin.get("annual_benefit") else ""
         tops.append(f"{item.get('label', '?')} - {val}{money}")
     return (f"You're missing {len(missing)} Model ED element(s). Biggest opportunities: "
-            + "; ".join(tops) + ". Each has a costed business case on the gaps tab.")
+            + "; ".join(tops) + ".")
 
 
 def _fmt_department(provider):

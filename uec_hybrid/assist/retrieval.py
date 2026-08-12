@@ -39,12 +39,8 @@ PRODUCT_CARDS = [
      "Areas, Rota, Arrivals, AcuityMix, Costs, ServiceTimes) and import it back - "
      "the entire department, rota, demand profile, costs and service times update "
      "in one go. CSV works too. Re-import any time to update."),
-    ("Calibrate from your ECDS extract",
-     "On the Analyst view's Data tab, upload an ECDS (Emergency Care Data Set) "
-     "extract and the model calibrates its arrival profile, acuity mix and service "
-     "times to your real attendances. A reset button restores the defaults."),
     ("Auto-calibrate to your 4-hour position",
-     "On the Analyst view's Data tab, type the 4-hour performance you actually "
+     "Give the model the 4-hour performance you actually "
      "observe and auto-calibrate tunes the model's service-time scale until the "
      "modelled figure matches - so what-ifs start from your reality."),
     ("Control tower",
@@ -52,31 +48,11 @@ PRODUCT_CARDS = [
      "is a pathway stage - click one to drill into its queue and timings; the tiles "
      "above show the standards from simulated weeks; the slider replays the day "
      "hour by hour."),
-    ("Workforce tab",
-     "Shows every staff group's rota against the demand curve, hour by hour, plus "
-     "the weekly pay-bill. Add, edit or remove shifts in the rota editor - the "
-     "engine restaffs and re-runs. Hourly rates are editable (Costs tab of the "
-     "workbook, or the cost book)."),
     ("Set up my ED",
      "Where the department is configured without code: attendances per day, "
      "inpatient beds, community capacity, which areas you run (SDEC, RAT, UTC, "
      "frailty, paediatrics, mental health, CDU) and their opening hours - plus the "
      "trust picker and Excel import."),
-    ("Executive brief",
-     "The /exec page: the standards as cards (typical, good week, tough week), the "
-     "pinch point, and the pay-bill on one screen, with a downloadable PDF report."),
-    ("Planner",
-     "The /planner page answers planning questions: a winter uplift (e.g. +10% "
-     "demand), “plan today” from this morning's attendances and hospital fullness, "
-     "and pre-built surge templates."),
-    ("Analyst view",
-     "The engine room at /analyst: run the simulation, Monte-Carlo it over many "
-     "weeks, compare scenarios side by side, and validate the model - with a "
-     "scorecard against editable targets and plain-language interpretations."),
-    ("Validation and conformance",
-     "The Analyst view's Validation tab checks every simulated patient journey "
-     "against the intended Model ED pathway (conformance), and shows total and "
-     "per-stage time for each pathway stage and each journey variant."),
     ("Methodology",
      "The methodology - how the model works: a patient-level discrete-event "
      "simulation (every patient walks the pathway, queues and all) is coupled "
@@ -85,7 +61,7 @@ PRODUCT_CARDS = [
      "Monte-Carlo replication turns one week into a realistic spread."),
     ("The Model ED blueprint",
      "The NHS “Model Emergency Department” describes the areas and standards a "
-     "well-set-up ED runs. The gaps tab compares your set-up against it and puts a "
+     "well-set-up ED runs. This build focuses on the flow view; a fuller edition adds a "
      "costed business case on each missing element."),
     ("Ask a what-if",
      "Type a change in plain English and the engine simulates it against your "
