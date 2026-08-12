@@ -39,6 +39,13 @@ PRODUCT_CARDS = [
      "Areas, Rota, Arrivals, AcuityMix, Costs, ServiceTimes) and import it back - "
      "the entire department, rota, demand profile, costs and service times update "
      "in one go. CSV works too. Re-import any time to update."),
+    ("How calibration works",
+     "Calibration replaces the model's synthetic assumptions with your recorded "
+     "activity. The set-up workbook's Arrivals and AcuityMix tabs calibrate the "
+     "arrival profile and case mix; the published-aggregates file does the same "
+     "from open NHS data; and auto-calibration tunes the service-time assumption "
+     "until the modelled 4-hour position matches the figure you observed. Every "
+     "calibrated value shows its source on the provenance banner."),
     ("Auto-calibrate to your 4-hour position",
      "Give the model the 4-hour performance you actually "
      "observe and auto-calibrate tunes the model's service-time scale until the "
