@@ -36,7 +36,8 @@ RESOURCE_WORDS = [
     (r"doctors?|consultants?|registrars?|shos?|medics?|clinicians?", "ed_doctor"),
 ]
 
-EXAMPLES = ["add 2 doctors", "add 3 nurses at 1pm", "remove a doctor overnight",
+EXAMPLES = ["what would it take to reach 90% in 4 hours",
+            "add 2 doctors", "add 3 nurses at 1pm", "remove a doctor overnight",
             "double the cubicles", "10% more attendances", "10% staff sickness",
             "20% more attendances in the evening", "40 more ward beds",
             "20 extra community places", "divert 20% of minors to the UTC",
@@ -100,6 +101,24 @@ def _resource_for(phrase: str, raw: dict):
 
 
 _STOP = r"(?=[,.?]| and | at | over| to | from | between |$)"
+
+
+_TARGET = re.compile(
+    r"(what\s+(?:would|will|does)\s+it\s+take|what(?:'s| is)\s+needed|"
+    r"how\s+(?:do|can|could|would)\s+we\s+(?:get\s+to|reach|hit|achieve)|"
+    r"(?:to\s+)?(?:reach|hit|achieve)\b).{0,60}?(\d{1,3})(?:\.\d+)?\s*%")
+
+
+def parse_target(question: str) -> float | None:
+    """A goal-seeking question ("what would it take to achieve 90% in 4 hours?")
+    names a TARGET, not a change - it is answered by stacking the CI-gated
+    recommendations (optimise.recommend.target_plan), not by the scenario
+    parser. Returns the target percentage, or None if this is not one."""
+    m = _TARGET.search(" " + question.lower().strip())
+    if not m:
+        return None
+    pct = float(m.group(2))
+    return pct if 1.0 <= pct <= 100.0 else None
 
 
 def parse_question(question: str, raw: dict):

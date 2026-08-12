@@ -714,6 +714,29 @@ def main():
     acd = acr.get_json()
     assert acr.status_code == 200 and "scale" in acd and acd["history"] and "saved_params" in acd, acd
     assert client.post("/api/auto-calibrate", json={}).status_code == 400  # no observed figure
+    # --- "what would it take": a goal question -> CI-gated stacked plan ---
+    from ..assist.nl import parse_target
+    assert parse_target("What would it take to achieve 90% in 4 hours?") == 90.0
+    assert parse_target("how do we hit 85% in four hours") == 85.0
+    assert parse_target("add 2 doctors") is None and parse_target("10% more attendances") is None
+    tr = client.post("/api/ask", json={"question": "what would it take to reach 90% in 4 hours?",
+                                       "replications": 2})
+    tp = tr.get_json()
+    assert tr.status_code == 200 and tp["kind"] == "target" and tp["target"] == 90.0, tp
+    assert tp["baseline"] > 0 and isinstance(tp["steps"], list) and tp["note"]
+    assert tp["reached"] == (tp["modelled"] >= tp["target"])
+    # an already-met goal answers from the same cached recommendation run
+    tr2 = client.post("/api/ask", json={"question": "what would it take to reach 5% in 4 hours?",
+                                        "replications": 2}).get_json()
+    assert tr2["reached"] and not tr2["steps"]
+    from ..assist.chat import _fmt_target
+    txt = _fmt_target({"baseline": 69.0, "target": 90.0, "modelled": 77.9, "reached": False,
+                       "steps": [{"title": "Add 1 nurse", "delta_four_hour": 5.9,
+                                  "weekly_cost": 952, "cumulative_four_hour": 75.1}],
+                       "note": "Even stacking falls short."})
+    assert "90.0" in txt and "Add 1 nurse" in txt and "falls short" in txt
+    print("Target plan OK: goal questions parse, stack CI-gated moves, answer honestly.")
+
     from .. import model_params as _mp
     _mp.save_params({})                                    # reset any saved tuning
     ch = client.post("/api/chat", json={"message": "where is demand?"}).get_json()

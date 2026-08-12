@@ -120,6 +120,7 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
     days = max(1.0, (base_raw.get("sim_duration_minutes", 10080)
                      - base_raw.get("warmup_minutes", 1440)) / 1440.0)
     base = _table(base_raw, reps, base_seed)
+    baseline_four_hour = float(base["four_hour"].mean())
 
     def corridor_per_day(tab):
         return float(tab["n_twelve_hour"].mean() / days) if "n_twelve_hour" in tab else 0.0
@@ -146,6 +147,7 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
                 ws["role"], ws["start"], ws["end"], ws.get("count", 1))
         net = (fin["annual_benefit"] - weekly * 52) if weekly else None
         results.append({
+            "move": move,
             "title": move["title"], "kind": move["kind"],
             "delta_four_hour": round(mean, 1), "delta_low": round(lo, 1),
             "delta_lwbs": round(lwbs_d, 1),
@@ -163,7 +165,82 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
                                       else r["annual_benefit"]), reverse=True)
     rejected = [r for r in results if not r["confident"]]
     return {"recommendations": confident, "rejected": rejected,
+            "baseline_four_hour": round(baseline_four_hour, 1),
             "reps": reps, "n_candidates": len(moves),
             "note": ("Every candidate is simulated against the same random weeks as the "
                      "baseline; only changes whose improvement clears the noise are "
                      "recommended. Costs are indicative and editable in the cost book.")}
+
+
+def _raw_for_stack(dept, moves, calibration):
+    """Build the department with a whole stack of moves applied cumulatively."""
+    d = dept
+    for m in moves:
+        d = _apply(d, m)
+    raw = build_dept(d)
+    if calibration:
+        raw = apply_patch(raw, calibration)
+    for m in moves:
+        if m["kind"] == "capacity":
+            cap = raw["resources"].get(m["resource"])
+            if isinstance(cap, list):
+                raw["resources"][m["resource"]] = [c + m["add"] for c in cap]
+            elif cap is not None:
+                raw["resources"][m["resource"]] = cap + m["add"]
+    return raw
+
+
+def target_plan(dept, target, calibration=None, book=None, reps=4,
+                base_seed=1200, rec=None, max_steps=6, limit=None) -> dict:
+    """Answer "what would it take to reach X% in 4 hours": stack the CI-gated
+    recommendations, largest first, re-simulating each cumulative package with
+    the same paired seeds, until the modelled 4-hour reaches the target or the
+    confident moves run out. The answer is honest in both directions: it never
+    stacks a change that failed the noise gate, and it says plainly when even
+    everything together cannot reach the target."""
+    target = float(target)
+    rec = rec or recommend(dept, calibration=calibration, reps=reps,
+                           base_seed=base_seed, book=book, limit=limit)
+    baseline = float(rec.get("baseline_four_hour") or 0.0)
+    out = {"kind": "target", "target": round(target, 1), "baseline": round(baseline, 1),
+           "steps": [], "modelled": round(baseline, 1), "reached": baseline >= target}
+    if baseline >= target:
+        out["note"] = (f"The department is already modelled at {baseline:.1f}% within "
+                       f"4 hours, at or above the {target:.0f}% goal.")
+        return out
+    ranked = sorted([r for r in rec.get("recommendations", []) if r.get("move")],
+                    key=lambda r: r.get("delta_four_hour", 0), reverse=True)
+    if not ranked:
+        out["note"] = ("No change in the searched set (staffing, capacity, opening "
+                       "hours) clears statistical noise, so there is nothing "
+                       "defensible to stack toward the target. The gap likely needs "
+                       "different levers: demand diversion, downstream beds and "
+                       "discharge, or service-time transformation.")
+        return out
+    stack, modelled = [], baseline
+    for r in ranked[:max_steps]:
+        stack.append(r["move"])
+        tab = _table(_raw_for_stack(dept, stack, calibration), reps, base_seed)
+        modelled = float(tab["four_hour"].mean())
+        out["steps"].append({
+            "title": r["title"], "delta_four_hour": r["delta_four_hour"],
+            "weekly_cost": r.get("weekly_cost"), "cost_band": r.get("cost_band"),
+            "cumulative_four_hour": round(modelled, 1)})
+        if modelled >= target:
+            break
+    out["modelled"] = round(modelled, 1)
+    out["reached"] = modelled >= target
+    weekly = sum(s["weekly_cost"] or 0 for s in out["steps"])
+    out["weekly_cost"] = weekly or None
+    if out["reached"]:
+        out["note"] = (f"Stacking {len(out['steps'])} change(s) that each clear "
+                       f"statistical noise takes the modelled 4-hour position from "
+                       f"{baseline:.1f}% to {modelled:.1f}%, meeting the {target:.0f}% goal."
+                       + (f" Added staffing costs about £{weekly:,} a week." if weekly else ""))
+    else:
+        out["note"] = (f"Even stacking every change that clears statistical noise "
+                       f"reaches {modelled:.1f}%, short of the {target:.0f}% goal from a "
+                       f"{baseline:.1f}% baseline. Closing the rest needs levers outside "
+                       f"this search: demand diversion, downstream beds and discharge, "
+                       f"or service-time transformation.")
+    return out

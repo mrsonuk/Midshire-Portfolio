@@ -60,7 +60,7 @@ from ..ingest import trust_profile as trusts
 from ..ingest import workbook as trust_workbook
 from .. import model_params
 from ..assist import run_what_if, auto_calibrate
-from ..assist.nl import parse_question, EXAMPLES as ASK_EXAMPLES
+from ..assist.nl import parse_question, parse_target, EXAMPLES as ASK_EXAMPLES
 from ..assist import llm as assist_llm
 from ..assist import chat as assist_chat
 from ..viz.flow_model import control_tower
@@ -306,6 +306,23 @@ def api_audit():
 
 
 # --- AI assist ----------------------------------------------------------------- #
+def _target_plan(target: float, reps: int = 4) -> dict:
+    """The "what would it take" answer for the saved department, cached like
+    every other heavy result (and reusing the cached recommendation run)."""
+    from ..optimise.recommend import recommend, target_plan
+    d = _dept()
+    patch = _calibration_patch("your_department")
+    book = load_cost_book()
+    rec = store.cached_or_compute(
+        "recommend", {"dept": d.to_dict(), "patch": patch, "book": book, "reps": reps},
+        lambda: recommend(d, calibration=patch, book=book, reps=reps))
+    return store.cached_or_compute(
+        "target_plan", {"dept": d.to_dict(), "patch": patch, "book": book,
+                        "target": float(target), "reps": reps},
+        lambda: target_plan(d, target, calibration=patch, book=book,
+                            reps=reps, rec=rec))
+
+
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     """Ask a what-if in plain English. The question is translated into a scenario
@@ -317,6 +334,9 @@ def api_ask():
     if not question:
         return jsonify({"error": "no question given", "supported": ASK_EXAMPLES}), 400
     reps = max(2, min(24, int(body.get("replications", 6))))
+    target = parse_target(question)
+    if target is not None:
+        return jsonify(_target_plan(target, reps=max(2, min(4, reps))))
     raw = _dept_raw()
     scenario, _notes = parse_question(question, raw)
     if scenario is None and not assist_llm.available():
@@ -354,6 +374,7 @@ def _chat_provider() -> dict:
         "pinch": pinch,
         "gaps": lambda: store.cached("gap", {"dept": d.to_dict(), "book": load_cost_book()}),
         "what_if": lambda q: run_what_if(q, raw, reps=4),
+        "target": lambda q: (lambda t: _target_plan(t) if t is not None else None)(parse_target(q)),
     }
 
 

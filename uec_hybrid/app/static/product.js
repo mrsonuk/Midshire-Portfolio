@@ -155,6 +155,21 @@ async function runAsk(){
     (d.supported?'<p class="hint">Try: '+d.supported.map(s=>'“'+s+'”').join(' · ')+'</p>':'');
    return;
   }
+  if(d.kind==='target'){
+   $('#askStatus').textContent='';
+   let steps='';
+   (d.steps||[]).forEach((s,i)=>{
+    const cost=s.weekly_cost?(' · ~£'+s.weekly_cost.toLocaleString()+'/wk'):(s.cost_band?(' · '+s.cost_band+' cost'):'');
+    steps+='<tr><td>'+(i+1)+'. '+s.title+'</td><td style="text-align:right">+'+s.delta_four_hour+' pts'+cost+'</td>'+
+     '<td style="text-align:right;font-weight:700">'+s.cumulative_four_hour+'%</td></tr>';
+   });
+   $('#askOut').style.display='block';
+   $('#askOut').innerHTML='<div class="h">'+(d.reached?'Reaching ':'Toward ')+d.target+'% in 4 hours (from '+d.baseline+'%)</div>'+
+    (steps?'<table style="width:100%;font-size:13px;margin:8px 0"><tr><th style="text-align:left">Change (stacked in order)</th>'+
+     '<th style="text-align:right">Effect</th><th style="text-align:right">Running 4-hour</th></tr>'+steps+'</table>':'')+
+    '<p>'+(d.note||'')+'</p>';
+   return;
+  }
   $('#askStatus').textContent='';
   let rows='';
   for(const k in (d.deltas||{})){

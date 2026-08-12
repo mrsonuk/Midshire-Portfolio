@@ -162,6 +162,24 @@ def _fmt_glossary(message):
     return None
 
 
+def _fmt_target(plan):
+    """Narrate a "what would it take" plan computed by optimise.recommend."""
+    base, tgt = plan.get("baseline"), plan.get("target")
+    steps = plan.get("steps") or []
+    if not steps:
+        return plan.get("note") or (
+            f"You are modelled at {base}% within 4 hours against a {tgt}% goal, and "
+            "no searched change clears statistical noise.")
+    bits = []
+    for i, s in enumerate(steps, 1):
+        cost = (f", about £{s['weekly_cost']:,}/week" if s.get("weekly_cost")
+                else (f", {s['cost_band']} cost" if s.get("cost_band") else ""))
+        bits.append(f"{i}) {s['title']} (+{s['delta_four_hour']} pts{cost}, "
+                    f"cumulative {s['cumulative_four_hour']}%)")
+    return (f"From a modelled {base}% toward the {tgt}% goal: " + "; ".join(bits)
+            + f". {plan.get('note', '')}").strip()
+
+
 def _fmt_what_if(provider, message):
     """Run a what-if on the real engine. Returns (reply | None, raw output) -
     the raw output carries the parse notes when it failed."""
@@ -195,6 +213,13 @@ def answer(message: str, history: list | None, provider: dict) -> dict:
 
     # what-ifs go to the real engine first - a language model can't simulate
     whatif_fail = None
+    tgt_feed = provider.get("target")
+    if tgt_feed:
+        plan = tgt_feed(q)
+        if plan:
+            return {"reply": _fmt_target(plan), "intent": "what_would_it_take",
+                    "llm_used": False}
+
     if _WHATIF_HINT.search(ql):
         reply, out = _fmt_what_if(provider, q)
         if reply:
