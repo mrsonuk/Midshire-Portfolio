@@ -675,6 +675,19 @@ def main():
     assert sel["ok"] and sel["department"]["attendances_per_day"] == 290
     assert store.load_department()["baseline_bed_occupancy"] == 0.918, "trust must persist"
     assert client.post("/api/trust/select", json={"ods": "ZZZ"}).status_code == 404
+    # picking a trust with committed aggregates (RGT -> data/cuh/) must apply
+    # them as the calibration - the UI flow, not just the seed CLI, uses them
+    sel_rgt = client.post("/api/trust/select", json={"ods": "RGT"}).get_json()
+    assert any("data/cuh" in s for s in sel_rgt["calibration_summary"]), \
+        "selecting RGT must load the CUH extract calibration"
+    cal_rgt = store.get_calibration("your_department")
+    assert cal_rgt and cal_rgt["patch"]["attributes"]["ambulance"] == 0.1914
+    ds_rgt = client.get("/api/data-status").get_json()
+    assert "arrival profile & acuity mix" not in ds_rgt["assumed"], ds_rgt["assumed"]
+    # a trust with NO committed aggregates still starts clean
+    client.post("/api/trust/select", json={"ods": "RFF"})
+    assert store.get_calibration("your_department") is None, \
+        "RFF has no aggregates file - calibration must be cleared"
     tmpl = client.get("/api/trust/template")
     assert tmpl.status_code == 200 and len(tmpl.data) > 3000 and tmpl.data[:2] == b"PK"
     from io import BytesIO as _BIO
@@ -720,6 +733,19 @@ def main():
     acd = acr.get_json()
     assert acr.status_code == 200 and "scale" in acd and acd["history"] and "saved_params" in acd, acd
     assert client.post("/api/auto-calibrate", json={}).status_code == 400  # no observed figure
+    # --- recommender searches downstream levers too (no simulation needed) ---
+    from ..optimise.recommend import _candidates as _rec_cands, _apply_raw as _rec_apply_raw
+    from ..workforce.view import workforce_view as _wfv
+    _cands = _rec_cands(Department.default(), _wfv(Department.default()))
+    _sd_moves = [m for m in _cands if m["kind"] == "sd"]
+    assert {m["param"] for m in _sd_moves} == {"inpatient_beds", "community_capacity"}, \
+        "downstream levers (beds, community discharge) must be in the searched set"
+    _raw_sd = build_dept(Department.default())
+    _beds0 = _raw_sd.get("sd", {}).get("inpatient_beds", 320)
+    _raw_sd = _rec_apply_raw(_raw_sd, next(m for m in _sd_moves
+                                           if m["param"] == "inpatient_beds"))
+    assert _raw_sd["sd"]["inpatient_beds"] > _beds0, "sd move must raise ward beds"
+
     # --- "what would it take": a goal question -> CI-gated stacked plan ---
     from ..assist.nl import parse_target
     assert parse_target("What would it take to achieve 90% in 4 hours?") == 90.0

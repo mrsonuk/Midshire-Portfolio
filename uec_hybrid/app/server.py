@@ -56,6 +56,7 @@ from ..department.config import Department, AREAS, CORE_NOTE
 from ..department.builder import build as build_dept
 from ..workforce.roles import ROLES, AREA_LABEL
 from ..workforce.view import workforce_view
+from ..ingest import published
 from ..ingest import trust_profile as trusts
 from ..ingest import workbook as trust_workbook
 from .. import model_params
@@ -160,7 +161,17 @@ def api_trust_select():
     dept = trusts.to_department(profile)
     CURRENT["dept"] = dept
     version = store.save_department(dept.to_dict())
-    store.clear_calibration("your_department")        # a fresh trust starts clean
+    # a fresh trust starts clean, then any committed aggregates for it (the
+    # trust's own extracts or published distributions, e.g. data/cuh/ for RGT
+    # via rgt_published.json) are applied as the calibration - picking your
+    # trust must load everything the build already knows about it
+    store.clear_calibration("your_department")
+    cal_summary = []
+    agg = published.load_aggregates(ods)
+    if agg:
+        patch, cal_summary = published.patch_from_aggregates(
+            agg, dept.attendances_per_day)
+        store.save_calibration("your_department", patch, cal_summary)
     store.save_setting("data_source", {
         "kind": "trust", "ods": ods, "label": f"{profile.name} ({ods})",
         "source": profile.source, "as_of": profile.as_of})
@@ -168,6 +179,7 @@ def api_trust_select():
                                       "notes": trusts.notes(profile)})
     return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
                     "provenance": trusts.provenance(profile), "notes": trusts.notes(profile),
+                    "calibration_summary": cal_summary,
                     "source": profile.source, "as_of": profile.as_of})
 
 

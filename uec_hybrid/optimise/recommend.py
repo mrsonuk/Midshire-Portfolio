@@ -14,6 +14,7 @@ from __future__ import annotations
 import copy
 
 import numpy as np
+from scipy import stats as _st
 
 from ..des.pathway import Pathway
 from ..analysis.montecarlo import monte_carlo
@@ -41,6 +42,9 @@ PHYSICAL_MOVES = [
     {"kind": "capacity", "resource": "handover_bay", "add": 1,
      "title": "Add an ambulance handover bay", "cost_band": "Low"},
 ]
+
+# fallbacks matching the what-if defaults, for a raw built without an sd block
+_SD_DEFAULTS = {"inpatient_beds": 320, "community_capacity": 60}
 
 
 def _shift_cost_per_week(role_id, start, end, count=1):
@@ -72,6 +76,16 @@ def _candidates(dept, wf) -> list:
                 out.append({"kind": "hours", "area": area, "open": o, "close": min(24, c + 2),
                             "title": f"Keep {area.upper().replace('_', '-')} open two hours later "
                                      f"(to {min(24, c + 2):02d}:00)", "cost_band": "Low"})
+    # downstream levers: at high ward occupancy the front door is exit-block
+    # bound and no amount of ED staffing clears the noise - the honest search
+    # must include the whole-hospital levers the what-if box already models
+    beds_add = max(10, int(round((dept.inpatient_beds or 320) * 0.02)))
+    out.append({"kind": "sd", "param": "inpatient_beds", "add": beds_add,
+                "title": f"Open {beds_add} more inpatient beds (or free the equivalent "
+                         f"through earlier ward discharge)", "cost_band": "High"})
+    out.append({"kind": "sd", "param": "community_capacity", "add": 20,
+                "title": "Add 20 community / virtual-ward discharge places a day "
+                         "(pull admitted patients out sooner)", "cost_band": "Moderate"})
     return out
 
 
@@ -87,16 +101,28 @@ def _apply(dept, move):
     return d
 
 
-def _raw_for(dept, move, calibration):
-    raw = build_dept(_apply(dept, move) if move else dept)
-    if calibration:
-        raw = apply_patch(raw, calibration)
-    if move and move["kind"] == "capacity":
+def _apply_raw(raw, move):
+    """Moves that act on the built pathway rather than the Department config:
+    exact physical counts, and the SD-layer (whole-hospital) levers."""
+    if move["kind"] == "capacity":
         cap = raw["resources"].get(move["resource"])
         if isinstance(cap, list):
             raw["resources"][move["resource"]] = [c + move["add"] for c in cap]
         elif cap is not None:
             raw["resources"][move["resource"]] = cap + move["add"]
+    elif move["kind"] == "sd":
+        sd = raw.setdefault("sd", {})
+        sd[move["param"]] = (sd.get(move["param"], _SD_DEFAULTS.get(move["param"], 0))
+                             + move["add"])
+    return raw
+
+
+def _raw_for(dept, move, calibration):
+    raw = build_dept(_apply(dept, move) if move else dept)
+    if calibration:
+        raw = apply_patch(raw, calibration)
+    if move:
+        raw = _apply_raw(raw, move)
     return raw
 
 
@@ -125,20 +151,19 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
     def corridor_per_day(tab):
         return float(tab["n_twelve_hour"].mean() / days) if "n_twelve_hour" in tab else 0.0
 
-    results = []
-    for move in moves:
-        cand = _table(_raw_for(dept, move, calibration), reps, base_seed)
-        d4 = cand["four_hour"].to_numpy() - base["four_hour"].to_numpy()
-        mean, se = float(d4.mean()), float(d4.std(ddof=1) / np.sqrt(len(d4))) if len(d4) > 1 else 0.0
-        from scipy import stats as _st
+    def evaluate(move, base_tab, n_reps):
+        cand = _table(_raw_for(dept, move, calibration), n_reps, base_seed)
+        d4 = cand["four_hour"].to_numpy() - base_tab["four_hour"].to_numpy()
+        mean = float(d4.mean())
+        se = float(d4.std(ddof=1) / np.sqrt(len(d4))) if len(d4) > 1 else 0.0
         tcrit = float(_st.t.ppf(0.95, df=max(1, len(d4) - 1)))
         lo = mean - tcrit * se                      # one-sided 95% lower bound (Student t)
-        lwbs_d = (float(cand["lwbs"].mean() - base["lwbs"].mean())
-                  if "lwbs" in cand and "lwbs" in base else 0.0)
+        lwbs_d = (float(cand["lwbs"].mean() - base_tab["lwbs"].mean())
+                  if "lwbs" in cand and "lwbs" in base_tab else 0.0)
         fin = business_case(
             {"delta": mean, "corridor_per_day": corridor_per_day(cand),
              "cost": move.get("cost_band", "Low")},
-            {"corridor_per_day": corridor_per_day(base)},
+            {"corridor_per_day": corridor_per_day(base_tab)},
             attendances_per_day=dept.attendances_per_day, book=book)
         weekly = move.get("weekly_cost")
         ws = move.get("with_shift")
@@ -146,7 +171,7 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
             weekly = (weekly or 0) + _shift_cost_per_week(
                 ws["role"], ws["start"], ws["end"], ws.get("count", 1))
         net = (fin["annual_benefit"] - weekly * 52) if weekly else None
-        results.append({
+        return {
             "move": move,
             "title": move["title"], "kind": move["kind"],
             "delta_four_hour": round(mean, 1), "delta_low": round(lo, 1),
@@ -158,18 +183,37 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
             "summary": (f"+{mean:.1f} points on the 4-hour standard "
                         f"(at least +{lo:.1f} with 95% confidence)" if lo > 0 else
                         f"about +{mean:.1f} points, but within the noise - not recommended"),
-        })
+        }
+
+    results = [evaluate(move, base, reps) for move in moves]
+
+    # nothing cleared at this replication count? before saying nothing, give
+    # the promising candidates (positive mean effect) a tighter look with more
+    # paired weeks - a real effect clears the narrower interval, noise still fails
+    escalated = None
+    if not any(r["confident"] for r in results):
+        near = sorted([r for r in results if r["delta_four_hour"] > 0],
+                      key=lambda r: r["delta_four_hour"], reverse=True)[:6]
+        if near:
+            escalated = min(12, max(8, reps * 2))
+            base_hi = _table(base_raw, escalated, base_seed)
+            for r in near:
+                results[results.index(r)] = evaluate(r["move"], base_hi, escalated)
 
     confident = sorted([r for r in results if r["confident"]],
                        key=lambda r: (r["net_annual"] if r["net_annual"] is not None
                                       else r["annual_benefit"]), reverse=True)
     rejected = [r for r in results if not r["confident"]]
+    note = ("Every candidate is simulated against the same random weeks as the "
+            "baseline; only changes whose improvement clears the noise are "
+            "recommended. Costs are indicative and editable in the cost book.")
+    if escalated:
+        note += (f" Nothing cleared at {reps} simulated weeks, so the most promising "
+                 f"changes were re-tested against {escalated} paired weeks.")
     return {"recommendations": confident, "rejected": rejected,
             "baseline_four_hour": round(baseline_four_hour, 1),
-            "reps": reps, "n_candidates": len(moves),
-            "note": ("Every candidate is simulated against the same random weeks as the "
-                     "baseline; only changes whose improvement clears the noise are "
-                     "recommended. Costs are indicative and editable in the cost book.")}
+            "reps": reps, "reps_escalated": escalated, "n_candidates": len(moves),
+            "note": note}
 
 
 def _raw_for_stack(dept, moves, calibration):
@@ -181,12 +225,7 @@ def _raw_for_stack(dept, moves, calibration):
     if calibration:
         raw = apply_patch(raw, calibration)
     for m in moves:
-        if m["kind"] == "capacity":
-            cap = raw["resources"].get(m["resource"])
-            if isinstance(cap, list):
-                raw["resources"][m["resource"]] = [c + m["add"] for c in cap]
-            elif cap is not None:
-                raw["resources"][m["resource"]] = cap + m["add"]
+        raw = _apply_raw(raw, m)
     return raw
 
 
@@ -201,6 +240,7 @@ def target_plan(dept, target, calibration=None, book=None, reps=4,
     target = float(target)
     rec = rec or recommend(dept, calibration=calibration, reps=reps,
                            base_seed=base_seed, book=book, limit=limit)
+    reps = rec.get("reps_escalated") or reps       # stack at the reps that judged the moves
     baseline = float(rec.get("baseline_four_hour") or 0.0)
     out = {"kind": "target", "target": round(target, 1), "baseline": round(baseline, 1),
            "steps": [], "modelled": round(baseline, 1), "reached": baseline >= target}
@@ -212,16 +252,23 @@ def target_plan(dept, target, calibration=None, book=None, reps=4,
                     key=lambda r: r.get("delta_four_hour", 0), reverse=True)
     if not ranked:
         out["note"] = ("No change in the searched set (staffing, capacity, opening "
-                       "hours) clears statistical noise, so there is nothing "
-                       "defensible to stack toward the target. The gap likely needs "
-                       "different levers: demand diversion, downstream beds and "
-                       "discharge, or service-time transformation.")
+                       "hours, downstream beds and discharge) clears statistical "
+                       "noise, even after re-testing the promising ones with more "
+                       "simulated weeks. The remaining gap likely needs demand "
+                       "diversion or service-time transformation - try those in the "
+                       "what-if box (e.g. \"divert 20% of minors\").")
         return out
     stack, modelled = [], baseline
     for r in ranked[:max_steps]:
         stack.append(r["move"])
         tab = _table(_raw_for_stack(dept, stack, calibration), reps, base_seed)
-        modelled = float(tab["four_hour"].mean())
+        stacked = float(tab["four_hour"].mean())
+        if stacked < modelled:
+            # good alone, worse in combination (interaction or noise) - a step
+            # only stays in the plan if the stacked result actually improves
+            stack.pop()
+            continue
+        modelled = stacked
         out["steps"].append({
             "title": r["title"], "delta_four_hour": r["delta_four_hour"],
             "weekly_cost": r.get("weekly_cost"), "cost_band": r.get("cost_band"),
@@ -241,6 +288,6 @@ def target_plan(dept, target, calibration=None, book=None, reps=4,
         out["note"] = (f"Even stacking every change that clears statistical noise "
                        f"reaches {modelled:.1f}%, short of the {target:.0f}% goal from a "
                        f"{baseline:.1f}% baseline. Closing the rest needs levers outside "
-                       f"this search: demand diversion, downstream beds and discharge, "
-                       f"or service-time transformation.")
+                       f"this search, such as demand diversion or service-time "
+                       f"transformation - try them in the what-if box.")
     return out

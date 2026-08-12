@@ -281,8 +281,12 @@ async function loadRecommendations(){
 }
 function std(k,b,hi,a,c,unit,sub){
  if(!b)return '';const cls=rag(b.typical,hi,a,c);
- const lo=Math.min(b.good,b.tough),hi2=Math.max(b.good,b.tough),span=Math.max(1,hi2-lo);
- const pos=Math.max(0,Math.min(100,100*(b.typical-lo)/span));
+ // the caption reads "tough week ... to good week ...", so the dot must sit on
+ // a tough(left)-to-good(right) axis whichever direction the metric runs -
+ // for lower-is-better tiles (12-hour waits, walk-outs) good is the SMALLER
+ // number and a raw low-to-high scale would render the dot inverted
+ const span=b.good-b.tough;
+ const pos=Math.abs(span)<1e-9?50:Math.max(0,Math.min(100,100*(b.typical-b.tough)/span));
  return `<div class="tile ${cls}"><div class="k">${k}</div><div class="v">${b.typical}${unit}</div>
    <div class="range"><b style="left:0;width:100%;background:var(--line)"></b><i style="left:${pos}%"></i></div>
    <div class="s">tough week ${b.tough}${unit} &nbsp;to&nbsp; good week ${b.good}${unit}<br>${sub}</div></div>`;
