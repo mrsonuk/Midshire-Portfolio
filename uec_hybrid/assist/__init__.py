@@ -6,7 +6,7 @@ AI assist: the two places AI genuinely earns its keep in this product.
   engine (paired Monte-Carlo vs baseline), and answered in plain language.
   Every number in the answer comes from the engine - never from a language
   model. A rule-based parser keeps it fully offline; if the ``anthropic``
-  package is installed and ``ANTHROPIC_API_KEY`` is set, Claude upgrades the
+  package is installed and ``ANTHROPIC_API_KEY`` is set,  upgrades the
   parsing (free-form phrasing) and the narration. No key -> offline mode,
   same numbers.
 

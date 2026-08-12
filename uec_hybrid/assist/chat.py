@@ -12,7 +12,7 @@ Grounding contract (same as the rest of assist/):
 - How-to and concept questions the router can't match are answered by
   retrieval (see ``retrieval``): the best passage from the glossary, the
   product guide and the docs - still fully offline, and never a weak guess.
-- With Claude configured (see ``llm``), free-form questions are answered from
+- With  configured (see ``llm``), free-form questions are answered from
   a compact JSON context of the same computed data plus the top retrieved
   passages (RAG) - the model is instructed to use only those numbers, and
   questions that need a simulation are routed back to the real engine via a
@@ -185,7 +185,7 @@ _WHATIF_HINT = re.compile(r"what if|\badd\b|\bremove\b|\bextra\b|\bfewer\b|doubl
 
 def answer(message: str, history: list | None, provider: dict) -> dict:
     """Answer a chat message from the product's computed data. ``provider`` maps
-    names -> callables (see server._chat_provider). Offline-first; Claude (when
+    names -> callables (see server._chat_provider). Offline-first;  (when
     configured) handles anything the router can't."""
     from . import llm, retrieval
     q = (message or "").strip()
@@ -250,7 +250,7 @@ def answer(message: str, history: list | None, provider: dict) -> dict:
 
 
 # ------------------------------------------------------------------------------
-# Claude tier: free-form questions over the same computed context
+#  tier: free-form questions over the same computed context
 # ------------------------------------------------------------------------------
 def _context(provider, message: str = "") -> dict:
     """Compact JSON of everything already computed - a few KB, numbers only from

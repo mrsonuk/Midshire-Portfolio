@@ -309,7 +309,7 @@ def api_audit():
 @app.route("/api/ask", methods=["POST"])
 def api_ask():
     """Ask a what-if in plain English. The question is translated into a scenario
-    (rule-based; Claude fallback when configured), simulated against the saved
+    (rule-based;  fallback when configured), simulated against the saved
     department (paired Monte-Carlo vs baseline) and answered in plain language.
     Every number in the answer comes from the engine."""
     body = request.get_json(force=True) or {}
@@ -361,7 +361,7 @@ def _chat_provider() -> dict:
 def api_chat():
     """The product chatbot: grounded answers about the configured department -
     demand, deployment, pinch point, standards, gaps, glossary, what-ifs.
-    Offline router by default; Claude (when configured) for free-form questions."""
+    Offline router by default;  (when configured) for free-form questions."""
     body = request.get_json(force=True) or {}
     message = str(body.get("message", "")).strip()
     history = body.get("history") or []

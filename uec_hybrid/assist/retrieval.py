@@ -12,7 +12,7 @@ relevant passage from a small knowledge base:
 
 The index is IDF-weighted keyword overlap - pure Python, no dependencies, no
 network - built once per process and rebuilt if the doc files change. It is
-used two ways: fully offline, the top passage IS the answer; with Claude
+used two ways: fully offline, the top passage IS the answer; with 
 configured, the top passages are added to the model's context so free-form
 answers are grounded in the docs (classic RAG). The numbers rule is unchanged
 either way: figures only ever come from the engine, never from retrieved text.
@@ -84,7 +84,7 @@ PRODUCT_CARDS = [
      "Every figure on every screen and in every chat answer comes from the "
      "product's own simulation of your department - the AI layer only translates "
      "questions and narrates computed results, and works fully offline. With a "
-     "Claude key configured it phrases things better; it still never invents a number."),
+     " key configured it phrases things better; it still never invents a number."),
     ("Editable costs, targets and service times",
      "Role hourly rates, scorecard targets (e.g. what counts as green on the "
      "4-hour standard) and clinical service times are all editable - via the Excel "

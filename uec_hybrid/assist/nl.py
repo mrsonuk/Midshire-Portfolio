@@ -4,7 +4,7 @@ Ask a what-if: plain English -> scenario -> engine -> plain-English answer.
 The contract that keeps this trustworthy:
 - The language layer only ever TRANSLATES (question -> scenario) and NARRATES
   (computed results -> sentences). All numbers come from the simulation.
-- A rule-based parser handles the common phrasings fully offline. When Claude
+- A rule-based parser handles the common phrasings fully offline. When 
   is available (see ``llm``) it is used as a fallback parser for free-form
   phrasing and as a better narrator - but its output is validated against the
   department's real resources, and the computed table is always shown.

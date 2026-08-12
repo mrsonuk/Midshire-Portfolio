@@ -1,5 +1,5 @@
 """
-Optional Claude integration for the assist layer.
+Optional  integration for the assist layer.
 
 Design rules (why NHS deployments stay safe and offline):
 - Entirely optional: used only when the ``anthropic`` package is installed AND
@@ -17,7 +17,7 @@ from __future__ import annotations
 import json
 import os
 
-MODEL = "claude-opus-4-8"
+MODEL = "-opus-4-8"
 
 
 def available() -> bool:
@@ -59,7 +59,7 @@ def _schema(resource_names: list[str]) -> dict:
 
 
 def parse_with_llm(question: str, raw: dict):
-    """Ask Claude to translate a free-form what-if into our scenario shape.
+    """Ask  to translate a free-form what-if into our scenario shape.
     Returns (scenario, notes) or None. Output is schema-constrained and then
     validated: only real resources, bounded numbers."""
     try:

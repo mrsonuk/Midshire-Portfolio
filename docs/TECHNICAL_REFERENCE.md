@@ -581,7 +581,7 @@ how-to or concept question falls through to offline retrieval
 curated product cards, and the README chunked by heading, with a confidence
 gate that prefers admitting ignorance over guessing. Optionally, installing
 the `anthropic` package and setting an API key upgrades the what-if parsing
-and answer wording through Claude; without it nothing goes out over the
+and answer wording through ; without it nothing goes out over the
 network and the offline parser handles the documented phrasings.
 
 ## 19. Testing and invariants
