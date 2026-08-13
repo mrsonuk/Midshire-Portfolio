@@ -12,6 +12,9 @@ spreadsheet:
                   beds, resus bays…) - no open dataset publishes these.
 * **Arrivals**  (optional) - attendances by hour -> a calibration patch.
 * **AcuityMix** (optional) - acuity split -> a calibration patch.
+* **Investigations** (optional) - CT / X-ray per attendance -> a calibration
+                  patch that moves the imaging_decision routing onto the
+                  trust's real imaging workload.
 * **Costs / ServiceTimes** (optional) - £ figures and measured stage times.
 
 ``read_workbook`` returns a ready ``Department`` plus an optional calibration
@@ -191,6 +194,25 @@ def _read_acuity(rows):
     return mix or None
 
 
+def _read_investigations(rows):
+    """Optional Investigations sheet (modality/rate): CT and X-ray WORKLOAD per
+    attendance (imaging events / attendances, so a patient imaged twice counts
+    twice). Returns an imaging dict or None."""
+    body = [r for r in rows[1:] if r and r[0] not in (None, "")]
+    out = {}
+    for r in body:
+        key = _norm(r[0])
+        if key.startswith("#") or key not in ("ct", "xray"):
+            continue
+        v = _num(r[1]) if len(r) > 1 else None
+        if v is None or v <= 0:
+            continue
+        if v > 1.5:                      # entered as a percent
+            v = v / 100.0
+        out[key] = round(v, 4)
+    return out or None
+
+
 def _capacity_catalogue() -> list[dict]:
     """The physical (non-staff) resources a trust can set real counts for, with
     the template default and which area each belongs to."""
@@ -272,7 +294,7 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
     is_csv = (filename or "").lower().endswith(".csv")
     summary: list[str] = []
     over, areas_enabled, areas_hours, rota, arrivals, acuity = {}, None, None, None, None, None
-    cost_book, rates, svc_params, capacity = None, None, None, None
+    cost_book, rates, svc_params, capacity, imaging = None, None, None, None, None
 
     if is_csv:
         text = data.decode("utf-8-sig", errors="replace")
@@ -291,6 +313,8 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
             arrivals = _read_arrivals(_sheet_rows(sheets["arrivals"]))
         if "acuitymix" in sheets:
             acuity = _read_acuity(_sheet_rows(sheets["acuitymix"]))
+        if "investigations" in sheets:
+            imaging = _read_investigations(_sheet_rows(sheets["investigations"]))
         if "capacity" in sheets:
             capacity = _read_capacity(_sheet_rows(sheets["capacity"]))
         if "costs" in sheets:
@@ -350,6 +374,11 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
         patch.setdefault("arrivals", {})["acuity_mix"] = {
             k: round(v / tot * 100, 2) for k, v in acuity.items()}
         summary.append("Acuity mix set from workbook.")
+    if imaging is not None:
+        patch["imaging"] = imaging
+        summary.append("Imaging workload set from workbook ("
+                       + ", ".join(f"{'CT' if k == 'ct' else 'X-ray'} {v*100:.0f}% per attendance"
+                                   for k, v in sorted(imaging.items())) + ").")
 
     if cost_book:
         summary.append(f"Cost book: {', '.join(sorted(cost_book))} set from workbook.")
@@ -388,6 +417,7 @@ def build_template() -> Workbook:
         ["               Blank rows keep a size-scaled template estimate - a modelled assumption."],
         ["Arrivals     - OPTIONAL: attendances by hour of day (overrides attendances/day)."],
         ["AcuityMix    - OPTIONAL: your acuity split (Acuity 1..5)."],
+        ["Investigations - OPTIONAL: CT and X-ray per attendance (imaging workload)."],
         ["Costs        - OPTIONAL: cost-book figures and staff hourly rates (£)."],
         ["ServiceTimes - OPTIONAL: your measured stage times (minutes), if you have them."],
         [""],
@@ -436,6 +466,13 @@ def build_template() -> Workbook:
     ac.append(["acuity", "share"])
     for i in range(1, 6):
         ac.append([f"Acuity {i}", ""])
+
+    inv = wb.create_sheet("Investigations")
+    inv.append(["modality", "per_attendance", "note"])
+    inv.append(["ct", "", "CT scans per attendance (e.g. 0.18 = 18 scans per 100 attendances)"])
+    inv.append(["xray", "", "Plain X-rays per attendance"])
+    inv.append(["# WORKLOAD, not the share of patients imaged: a patient scanned", "", ""])
+    inv.append(["# twice counts twice. Blank keeps the model's assumed rates.", "", ""])
 
     co = wb.create_sheet("Costs")
     co.append(["item", "value", "note"])

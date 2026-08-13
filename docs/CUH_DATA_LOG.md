@@ -32,6 +32,34 @@ should stay inside CUH and on the machine of whoever needs it, nowhere else.
 | `Discharge Destinatoin.xlsx` | The same disposal table for the whole department | period average | Overall sanity check on the per-area tables (about 602 departures per weekday) |
 | `Patient moves 4 weeks (deidentified).xlsx` | 4,474 area-to-area moves for 3,960 visits, identifiers removed | 10 Jul to 9 Aug 2026 | Length of stay in SAU SDEC, Clinic 5 SDEC, EAU3 and EAU4, and ED-to-ward transfer timing. Feeds the downstream (bed) side checks; not yet auto-consumed |
 
+### Batch 2 (received 13 Aug 2026)
+
+| File in `data/cuh/` | What it holds | Period | Feeds |
+|---|---|---|---|
+| `Investigation types.xlsx` | Weekly counts per SNOMED-coded investigation (225,053 over the 14 complete weeks; CT 8,065, plain radiography 17,284) | w/e 3 May to 16 Aug 2026 | **`investigation_rates` in `rgt_published.json` — the only batch-2 file wired into the model.** CT 0.1828 and X-ray 0.3918 per attendance replace an invented `imaging_decision` routing |
+| `Procedure type.xlsx` | Weekly counts per SNOMED-coded procedure (80,079 over 14 complete weeks; drug administration 17,725 leads) | w/e 3 May to 16 Aug 2026 | Reference only. No procedure seam exists yet |
+| `4-hour perf.xlsx` | Weekly 4-hour performance, split CUH on-site vs MIU (50 weekly points each) | 7 Sep 2025 to 16 Aug 2026 | Validation. First real week-to-week spread the build has had: typical 60.9%, best 69.5%, worst 54.7% |
+| `12-hour perf.xlsx` | Weekly 12-hour performance, same split | 7 Sep 2025 to 16 Aug 2026 | Validation. Typical 10.0% over 12 hours, best 3.3%, worst 13.1% |
+| `MH Disposals.xlsx` | Daily mental-health disposal counts across 15 destinations (1,067 attendances) | 1 May to 12 Aug 2026 | Reference. MH admission rate 18.3%, did-not-wait 12.2%, 10.3 attendances/day. No MH-specific parameter exists to consume it |
+| `Discharges by day.xlsx` | Whole-trust inpatient discharges by day of week (19,352) | period total | **Not consumable.** The engine has no day-of-week dimension. Sunday is 29% of Monday |
+
+Two counting traps in batch 2, both easy to walk into:
+
+* `4-hour perf.xlsx` is CUH's **internal** basis. Its 60.9% mean sits about seven
+  points above the published Type 1 series (52.93%), the same gap already logged
+  for the Feb to Jul figure of 59.5%. Do not compare it with the published target.
+* `12-hour perf.xlsx` measures **12 hours from arrival**, the ECDS basis (11.32%),
+  not the decision-to-admit basis the model's `twelve_hour_pct` target uses (3.7%).
+  The two differ by roughly a factor of three; they are not interchangeable.
+
+The imaging rates are **workload** figures — investigations per attendance, so a
+patient scanned twice counts twice. That is the right basis for a capacity model,
+because it reproduces demand on the CT scanner and the X-ray room, but it is an
+upper bound on the proportion of patients imaged. Their denominator is the
+five-area front door (450.1/day, May to Jul 2026), which is the population the
+model's imaging step serves. If CUH's extract also counts SDEC activity the
+correct rates are CT 0.139 and X-ray 0.297; **CUH to confirm the footprint.**
+
 ## Reconciliation notes, written down so nobody trips on them later
 
 The extracts and the national publications count differently, and the gaps are
@@ -66,13 +94,30 @@ Departures per weekday in the disposal tables sum to about 602, above the
 arrival rate, most likely because a patient who moves between areas departs
 each area once. Treat those tables as destination shares, not volumes.
 
-## Still open after batch 1
+## Still open after batch 2
 
-Physical capacity counts (cubicles, trolleys, resus bays, SDEC chairs), the
-rota, and the opening hours of each area are not in this batch. They are the
-Capacity and Questions tabs of the collection workbook
-(`docs/cuh_minimum_data.xlsx`) that went to CUH, and until they come back the
-banner keeps flagging physical capacity as a template assumption. Ambulance
-handover times, internal mental-health activity, and imaging turnaround are
-also not covered; handover can come from the winter SitRep when it resumes,
-and the other two stay as labelled assumptions.
+Batch 2 closed the imaging gap and gave the build its first real validation
+spread, but it did **not** touch the things that actually block a defensible
+Cambridge run. Still outstanding, in priority order:
+
+1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,
+   CDU and FAU beds. Every one is still a size-scaled template guess. In a
+   queueing model these set the queues, so they bound how much anything else
+   is worth. Capacity tab of `docs/cuh_minimum_data.xlsx`.
+2. **Which areas CUH actually runs, and their opening hours** — the seed
+   workbook's Areas tab is entirely blank, so the build runs on the template's
+   area list. Whether CUH has a UTC, a fit-to-sit area, an EEMAC or a frailty
+   unit, and what hours SDEC and paeds keep, changes the routing before any
+   number matters.
+3. **Ambulance handover times** — no source yet; the winter SitRep can supply
+   it when it resumes.
+4. **Day-of-week variation** — batch 2 proves it is large (Sunday discharges
+   are 29% of Monday's) and the engine cannot represent it. This is an engine
+   change, not a data gap.
+5. **Service times per stage** — never published and not derivable from the
+   extracts; they stay auto-calibrated against the observed 4-hour figure.
+
+The rota stays out of scope by agreement. Internal mental-health activity is
+now covered as reference data (`MH Disposals.xlsx`) but has no parameter to
+land in, and imaging *turnaround* (as opposed to imaging *volume*, which
+batch 2 supplied) is still uncovered.

@@ -79,6 +79,64 @@ def derive_patch(df: pd.DataFrame) -> tuple[dict, list]:
     return patch, summary
 
 
+def _apply_imaging(raw: dict, imaging: dict) -> None:
+    """Move the imaging_decision routing onto an observed CT / X-ray workload.
+
+    The trust's extract gives one department-wide rate per modality (imaging
+    events per attendance), with no acuity breakdown - so the assumed CLINICAL
+    GRADIENT across acuity is what we keep, and only its level is calibrated:
+    every class's probability for that modality is scaled by a single factor
+    that puts the acuity-mix-weighted average onto the observed rate. Sicker
+    patients stay imaged more often than minors; the department as a whole now
+    images as much as the trust really does.
+
+    Mutates ``raw`` in place (the caller has already deep-copied it).
+    """
+    node = next((n for n in raw.get("nodes", []) if n.get("id") == "imaging_decision"), None)
+    if not node or "routes_by_class" not in node:
+        return
+    routes = node["routes_by_class"]
+    mix = (raw.get("arrivals", {}) or {}).get("acuity_mix") or {}
+    total_mix = sum(float(v) for v in mix.values()) or 0.0
+
+    def weight(cls):
+        # weight classes by the (already calibrated) acuity mix; fall back to an
+        # equal split so a pathway without a mix still calibrates sensibly
+        if total_mix <= 0:
+            return 1.0 / max(1, len(routes))
+        return float(mix.get(cls, 0.0)) / total_mix
+
+    for modality, target in imaging.items():
+        target = float(target)
+        current = sum(weight(cls) * dict((t, p) for t, p in lst).get(modality, 0.0)
+                      for cls, lst in routes.items())
+        if current <= 0 or target <= 0:
+            continue
+        k = target / current
+        for cls, lst in routes.items():
+            by_target = dict((t, p) for t, p in lst)
+            if modality not in by_target:
+                continue
+            # scale this modality, then give/take the difference from the
+            # straight-to-disposition remainder so each class still sums to 1
+            scaled = min(1.0, by_target[modality] * k)
+            delta = scaled - by_target[modality]
+            by_target[modality] = scaled
+            rest = [t for t in by_target if t != modality and t != "disposition"]
+            slack = by_target.get("disposition", 0.0) - delta
+            if slack < 0:
+                # not enough room in disposition: take the shortfall off the
+                # other imaging modality rather than letting the split exceed 1
+                by_target["disposition"] = 0.0
+                for t in rest:
+                    take = min(by_target[t], -slack)
+                    by_target[t] -= take
+                    slack += take
+            else:
+                by_target["disposition"] = slack
+            routes[cls] = [[t, round(p, 4)] for t, p in by_target.items()]
+
+
 def apply_patch(raw: dict, patch: dict) -> dict:
     """Apply a derived calibration patch to any pathway raw (deep-copied)."""
     from .streams import skew_stream_mixes
@@ -100,6 +158,9 @@ def apply_patch(raw: dict, patch: dict) -> dict:
         target = float(patch["attributes"]["ambulance"])
         if current > 0:
             scale_stream_share(arrivals, "ambulance", target / current)
+    imaging = patch.get("imaging") or {}
+    if imaging:
+        _apply_imaging(raw, imaging)
     rates = patch.get("admission_rates") or {}
     if rates:
         node = next((n for n in raw.get("nodes", []) if n.get("id") == "disposition_general"), None)

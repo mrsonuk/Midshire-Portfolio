@@ -48,15 +48,18 @@ def find_seed_workbook(ods_code: str) -> Path | None:
 
 def _merge_patch(base: dict, overlay: dict) -> dict:
     """Merge two calibration patches; the overlay (workbook) wins per key."""
-    out = {"arrivals": {}, "attributes": {}, "admission_rates": {}}
+    out = {"arrivals": {}, "attributes": {}, "admission_rates": {}, "imaging": {}}
     for part in out:
         out[part].update((base or {}).get(part) or {})
         out[part].update((overlay or {}).get(part) or {})
     return out
 
 
+PATCH_PARTS = ("arrivals", "attributes", "admission_rates", "imaging")
+
+
 def _patch_is_empty(patch: dict) -> bool:
-    return not any((patch or {}).get(k) for k in ("arrivals", "attributes", "admission_rates"))
+    return not any((patch or {}).get(k) for k in PATCH_PARTS)
 
 
 def seed(ods_code: str, warm: bool = False) -> dict:
