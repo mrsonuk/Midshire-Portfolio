@@ -108,20 +108,50 @@ batches onto the nine numbered items of the request, so the residue is explicit:
 | 5 | Stage timings, monthly, median + 95th/max | **Most** | No split of initial **nursing** vs initial **medical** assessment (one combined "Arr to Init Asst"). 95th/max exist for time-in-department only, not per stage |
 | 6 | CT / X-ray counts **split by area**, plus **number per visit** | **Half** | Delivered department-wide only. Neither the area split nor the per-visit count came, which is exactly what would settle the denominator and the workload-vs-proportion question |
 | 7 | MH presentations and disposal split | **Covered, better than asked** | Daily rather than monthly, full 15-way disposal split |
-| 8 | Monthly 12 months: 4-hour, 12-hour, handovers >30/>60, LWBS | **Half** | 4-hour and 12-hour came weekly for 50 weeks (better than asked). **Ambulance handover >30/>60 did not come at all.** No standalone LWBS series |
+| 8 | Monthly 12 months: 4-hour, 12-hour, handovers >30/>60, LWBS | **Half, now topped up from public data** | 4-hour and 12-hour came weekly for 50 weeks (better than asked). Handover >30/>60 did not come from CHEQS but has been filled from the NHSE UEC SitRep (see below). No standalone LWBS series, and none is published nationally |
 | 9 | Trust discharges by hour of day **and** day of week | **Half** | Day of week only. **Hour of day did not come** |
 
-Four items would close nearly everything, and all four are small:
+### Ambulance handover: filled from public data, not CHEQS
 
-1. **Ambulance handover >30 / >60 minutes, monthly.** The single field in
-   `rgt_published.json` still explicitly `null`. Nothing else can substitute.
-2. **Attendances by triage category.** Until this arrives, `acuity_mix_pct` is
+CUH did not send handover times, but NHS England publishes them per trust in the
+UEC Daily SitRep ambulance collection, so **this gap is closed without going back
+to CUH**. Committed as `data/Web-File-Timeseries-Ambulance-Collection-dpkj63.xlsx`:
+
+| Measure | RGT, winter 2025-26 |
+|---|---|
+| Handovers (known time) | 11,028 of 11,571 |
+| Over 30 minutes | 22.45% |
+| Over 45 minutes | 15.81% |
+| Over 60 minutes | 13.14% |
+| **Within 45 minutes** | **84.19%** — the figure the control tower's handover tile is judged against |
+| Handovers per day | 91.8 |
+
+Two things to hold onto. The collection runs **24 Nov to 29 Mar only**, so these
+are winter figures at the tough end of the year and are not comparable
+like-for-like with the May-Aug CHEQS extracts. And the file repeats its column
+labels — counts sit at block offsets 0-6, proportions at 9-13 — so reading by
+label alone silently returns proportions; read the count columns.
+
+Volume cross-check: 91.8 ambulance arrivals/day here against 19.14% x 450.1/day
+= 86/day from CHEQS. Consistent, and higher in winter as expected.
+
+Three items would close nearly everything else, and all three are small:
+
+1. **Attendances by triage category.** Until this arrives, `acuity_mix_pct` is
    an area-proxy: resus→Acuity 1, trolleys→2, majors ambulant→3, minors→4, and
    Acuity 5 is set to zero rather than invented.
-3. **CT / X-ray split by area, and distinct visits with at least one scan.**
+2. **CT / X-ray split by area, and distinct visits with at least one scan.**
    Turns the imaging figures from a workload rate into a true per-patient
-   probability and settles whether SDEC sits in the denominator.
-4. **Trust discharges by hour of day.** The day-of-week half is already here.
+   probability and settles whether SDEC sits in the denominator. The NHSE
+   Diagnostic Imaging Dataset publishes provider-level CT and plain-radiography
+   counts by referral source, which can corroborate the ED total, but it cannot
+   supply the per-area or per-visit split — only CUH can.
+3. **Trust discharges by hour of day.** The day-of-week half is already here.
+   Not published nationally at trust level; CUH only.
+
+None of the three is available from any national publication, so all three have
+to come from CUH. By contrast the handover gap above did NOT need CUH, and it is
+worth checking a national source first before adding to a trust's data burden.
 
 ### Footprint question — answered
 

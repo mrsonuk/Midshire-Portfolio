@@ -76,10 +76,14 @@
     "source": "data/Beds-Open-Overnight-Web_File-Q4-2025-26.xlsx, 'NHS Trust by Sector', row RGT."
   },
   "ambulance_handover_over_30_min_pct": {
-    "value": null,
-    "period": "",
-    "note": "Not in the publications or in CHEQS batch 1 - real data only (winter SitRep, or a follow-up CHEQS extract).",
-    "source": "NHSE UEC Daily SitRep (winter) / Ambulance Quality Indicators, or CHEQS monthly performance."
+    "value": 22.45,
+    "period": "24 Nov 2025 - 29 Mar 2026 (126 days, winter collection)",
+    "over_45_min_pct": 15.81,
+    "over_60_min_pct": 13.14,
+    "within_45_min_pct": 84.19,
+    "handovers_per_day": 91.8,
+    "note": "REAL, and it closes the last null field in this file. VALIDATION TARGET, not an input - nothing in the model consumes it; the control tower's ambulance-handover tile measures 'handed over within 45 minutes', so within_45_min_pct (84.19%) is the figure to judge that tile against. WINTER CAVEAT: the SitRep ambulance collection only runs 24 Nov - 29 Mar, so these are winter figures and sit at the tough end of the year, not a 12-month average - do not compare them with the May-Aug CHEQS extracts without saying so. Denominators are handovers with a KNOWN handover time (11,028 of 11,571; the 543 unknown are excluded rather than assumed on-time). Cross-check on volume: 91.8 ambulance arrivals/day here against 19.14% x 450.1/day = 86/day from the CHEQS extract - consistent, and higher in winter as expected.",
+    "source": "NHS England UEC Daily SitRep, ambulance handovers time series: data/Web-File-Timeseries-Ambulance-Collection-dpkj63.xlsx, sheet 'Handovers', row RGT. Counts summed across all 126 daily blocks (each block is 14 columns: counts at offsets 0-6, proportions at 9-13 - read the COUNT columns, the proportion columns carry the same labels). https://www.england.nhs.uk/statistics/statistical-work-areas/uec-sitrep/urgent-and-emergency-care-daily-situation-reports-2025-26/"
   },
   "cuh_extracts": {
     "note": "Reference blocks below are transcribed from CHEQS batch 1 for validation and manual calibration. They are NOT auto-consumed by the calibration patch (patch_from_aggregates reads only the blocks above); the engine's service times are tuned against the observed 4-hour figure via auto-calibration, with these medians as the sense-check.",
