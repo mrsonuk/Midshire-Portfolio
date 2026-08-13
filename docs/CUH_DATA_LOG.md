@@ -94,30 +94,65 @@ Departures per weekday in the disposal tables sum to about 602, above the
 arrival rate, most likely because a patient who moves between areas departs
 each area once. Treat those tables as destination shares, not volumes.
 
-## Still open after batch 2
+## Batch 2 against what was actually asked for
 
-Batch 2 closed the imaging gap and gave the build its first real validation
-spread, but it did **not** touch the things that actually block a defensible
-Cambridge run. Still outstanding, in priority order:
+CUH's covering note said "not all available quite as asked". Mapping the two
+batches onto the nine numbered items of the request, so the residue is explicit:
+
+| # | Asked for | Status | What is actually missing |
+|---|---|---|---|
+| 1 | Arrivals by hour, split ambulance / walk-in / other | **Covered** (batch 1) | Nothing material. The exact date range is not stamped in the files |
+| 2 | Arrivals into each ED **area** by hour | **Not delivered** | `Arrivals area by hour.xlsx` has no hourly split — it is six rows of average departures per area. The model therefore applies ONE department-wide arrival shape to every area |
+| 3 | Discharge destination per area, plus attendances by **triage category** | **Half** | Area × destination is complete. **Triage category is absent from both batches** — no file anywhere carries one |
+| 4 | Patient moves, 4 full weeks, pseudonymised | **Covered** (batch 1) | — |
+| 5 | Stage timings, monthly, median + 95th/max | **Most** | No split of initial **nursing** vs initial **medical** assessment (one combined "Arr to Init Asst"). 95th/max exist for time-in-department only, not per stage |
+| 6 | CT / X-ray counts **split by area**, plus **number per visit** | **Half** | Delivered department-wide only. Neither the area split nor the per-visit count came, which is exactly what would settle the denominator and the workload-vs-proportion question |
+| 7 | MH presentations and disposal split | **Covered, better than asked** | Daily rather than monthly, full 15-way disposal split |
+| 8 | Monthly 12 months: 4-hour, 12-hour, handovers >30/>60, LWBS | **Half** | 4-hour and 12-hour came weekly for 50 weeks (better than asked). **Ambulance handover >30/>60 did not come at all.** No standalone LWBS series |
+| 9 | Trust discharges by hour of day **and** day of week | **Half** | Day of week only. **Hour of day did not come** |
+
+Four items would close nearly everything, and all four are small:
+
+1. **Ambulance handover >30 / >60 minutes, monthly.** The single field in
+   `rgt_published.json` still explicitly `null`. Nothing else can substitute.
+2. **Attendances by triage category.** Until this arrives, `acuity_mix_pct` is
+   an area-proxy: resus→Acuity 1, trolleys→2, majors ambulant→3, minors→4, and
+   Acuity 5 is set to zero rather than invented.
+3. **CT / X-ray split by area, and distinct visits with at least one scan.**
+   Turns the imaging figures from a workload rate into a true per-patient
+   probability and settles whether SDEC sits in the denominator.
+4. **Trust discharges by hour of day.** The day-of-week half is already here.
+
+### Footprint question — answered
+
+CUH confirmed (13 Aug 2026) that **paediatrics are included in the CHEQS
+dataset**, as its own area rather than as a separate return. That matches how
+the build already reads the extracts: `Performance Paeds.xlsx` is one of the
+five front-door areas, `acuity_mix_pct` is computed over the four ADULT areas
+only, and paediatric arrivals are routed separately by `paediatric_share`
+(13.35%). No change needed.
+
+It does **not** settle whether SDEC activity sits inside the investigations
+extract, which is the open question on the imaging denominator (see above).
+
+## Still open, and not from CHEQS
 
 1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,
    CDU and FAU beds. Every one is still a size-scaled template guess. In a
    queueing model these set the queues, so they bound how much anything else
-   is worth. Capacity tab of `docs/cuh_minimum_data.xlsx`.
+   is worth. Capacity tab of `docs/cuh_minimum_data.xlsx`, with the ops team.
 2. **Which areas CUH actually runs, and their opening hours** — the seed
    workbook's Areas tab is entirely blank, so the build runs on the template's
    area list. Whether CUH has a UTC, a fit-to-sit area, an EEMAC or a frailty
    unit, and what hours SDEC and paeds keep, changes the routing before any
-   number matters.
-3. **Ambulance handover times** — no source yet; the winter SitRep can supply
-   it when it resumes.
-4. **Day-of-week variation** — batch 2 proves it is large (Sunday discharges
+   number matters. Same workbook.
+3. **Day-of-week variation** — batch 2 proves it is large (Sunday discharges
    are 29% of Monday's) and the engine cannot represent it. This is an engine
    change, not a data gap.
-5. **Service times per stage** — never published and not derivable from the
+4. **Service times per stage** — never published and not derivable from the
    extracts; they stay auto-calibrated against the observed 4-hour figure.
 
-The rota stays out of scope by agreement. Internal mental-health activity is
-now covered as reference data (`MH Disposals.xlsx`) but has no parameter to
-land in, and imaging *turnaround* (as opposed to imaging *volume*, which
-batch 2 supplied) is still uncovered.
+Beds and occupancy are deliberately NOT coming from CHEQS: the published KH03
+return supplies both on a consistent national definition (1,068 G&A beds,
+89.26% occupancy, Q4 2025-26), which is what the build already uses. The rota
+stays out of scope by agreement.

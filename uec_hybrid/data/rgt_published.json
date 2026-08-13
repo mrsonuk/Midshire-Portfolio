@@ -47,7 +47,7 @@
   "paediatric_share": {
     "value": 0.1335,
     "period": "Feb-Jul 2026",
-    "note": "CUH's own paediatric ED area: 10,781 of 80,771 front-door attendances. The PUBLISHED age-based figure is higher (2,420 of 12,280 T1&2 = 19.71%, June 2026 ECDS) because children treated outside the paeds area still count by age; the model routes by AREA, so the extract figure drives routing and the published figure stays here as the age-based cross-check.",
+    "note": "CUH's own paediatric ED area: 10,781 of 80,771 front-door attendances. CONFIRMED by CUH 13 Aug 2026: CHEQS includes paediatrics as its own area, not as a separate return - so the area-based routing below is the right reading and the CHEQS and published Type 1 footprints agree. The PUBLISHED age-based figure is higher (2,420 of 12,280 T1&2 = 19.71%, June 2026 ECDS) because children treated outside the paeds area still count by age; the model routes by AREA, so the extract figure drives routing and the published figure stays here as the age-based cross-check.",
     "source": "CUH CHEQS extract: data/cuh/Performance Paeds.xlsx, Total Att summed Feb-Jul 2026 / all five front-door areas. Published cross-check: data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Paediatric Performance', row RGT."
   },
   "mental_health_share": {
