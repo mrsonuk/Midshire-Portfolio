@@ -165,6 +165,24 @@ only, and paediatric arrivals are routed separately by `paediatric_share`
 It does **not** settle whether SDEC activity sits inside the investigations
 extract, which is the open question on the imaging denominator (see above).
 
+## Public cross-checks (three national files, none of them model inputs)
+
+| Source | What it settled |
+|---|---|
+| **Diagnostic Imaging Dataset**, Table 1 modality × provider | CUH's ED imaging is ~⅓ of ALL trust imaging on both modalities (CT 32.3%, plain radiography 33.2%) — internally consistent, so `investigation_rates` is the right order of magnitude. It does **not** resolve the SDEC denominator: both readings land near a third. Also an adjacent-year comparison (DID is FY 2025/26, CHEQS is May–Aug 2026), so a magnitude check, not a reconciliation |
+| **ECDS Activity**, Frailty tabs | **Dead end.** RGT records *no* Clinical Frailty Scale score at all — "No CFS Score Recorded" is 100% on both tabs (3,230 T1&2 and 4,160 all-types eligible attendances). The model's frailty area cannot be calibrated from ECDS and stays a template assumption. This is a CUH data-quality gap, not a modelling choice, and no other national file will fix it |
+| **UEC SitRep beds**, Apr–Jun 2026 | Adds two things KH03 does not carry: **11.76 escalation beds** on top of 1,086.67 core, and the **length-of-stay mix** — 60% of occupied beds held by 7+ day stayers, 38% by 14+, 27% by 21+. Occupancy 0.90 corroborates the KH03 89.26% the model uses |
+
+The length-of-stay mix is the significant one. The SD model has a single
+`ward_discharge_capacity_per_hour` (template default 6.4) and no long-stay
+compartment, so it cannot represent a ward where 60% of beds are held by
+patients who will not leave this week. That is the real brake on bed turnover
+at CUH, and it is invisible to the model today — the same shape of gap as the
+day-of-week one, and it wants the same fix in the SD bed model.
+
+Beds and occupancy deliberately stay on KH03 by agreement (one consistent
+national definition); the SitRep figures corroborate but do not override them.
+
 ## Still open, and not from CHEQS
 
 1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,

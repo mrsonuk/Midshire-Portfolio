@@ -63,6 +63,40 @@
     "note": "REAL, and it replaces a pure assumption: the model's imaging_decision routing (CT/X-ray probability by acuity) was invented. These are WORKLOAD rates - investigations per attendance, so a patient imaged twice counts twice. That is the right basis for a capacity model (it reproduces the demand on the CT scanner and X-ray room), but it is an upper bound on the PROPORTION of patients imaged, so do not read it as '39% of patients get an X-ray'. apply_patch scales the per-acuity probabilities by a single factor to hit this acuity-weighted average, keeping the assumed clinical gradient across acuity (sicker patients imaged more) because the extract has no acuity breakdown. DENOMINATOR CAVEAT: computed against the 5-area front door (450.1/day, May-Jul 2026), which is the population the model's imaging_decision serves. If CUH's investigations extract also counts SDEC activity, the correct rates are the all-areas figures ct 0.139 / xray 0.297 - CUH to confirm which footprint the extract covers.",
     "source": "CUH CHEQS extract: data/cuh/Investigation types.xlsx - 'Computerized axial tomography (procedure) (77477000)' 8,065 and 'Plain radiography (procedure) (168537006)' 17,284 over the 14 complete weeks 10 May-9 Aug 2026 (the part-weeks ending 03/05/26 and 16/08/26 are excluded). Denominator 3,151 attendances/week = 41,413 front-door attendances May-Jul 2026 / 92 days x 7 (data/cuh/Performance Resus/Majors Trolleys/Majors Ambulant/Minors/Paeds.xlsx)."
   },
+  "public_cross_checks": {
+    "note": "Published sources used to CHECK the CHEQS extracts rather than to feed the model. Nothing here is consumed by patch_from_aggregates; beds and occupancy deliberately stay on KH03 (the agreed single national definition) and are NOT overridden by the SitRep figures below.",
+    "imaging_vs_diagnostic_imaging_dataset": {
+      "trust_ct_per_month": 7739,
+      "trust_plain_radiography_per_month": 16142,
+      "ed_share_of_trust_ct_pct": 32.3,
+      "ed_share_of_trust_plain_radiography_pct": 33.2,
+      "verdict": "CORROBORATES MAGNITUDE, DOES NOT RESOLVE THE DENOMINATOR. CUH's ED imaging is about a third of all trust imaging on BOTH modalities (32.3% and 33.2%), which is a plausible and internally consistent ED share, so the investigation_rates figures are the right order of magnitude. But a front-door-only reading and a front-door-plus-SDEC reading would both land near a third, so this cannot settle whether SDEC sits inside CUH's investigations extract - only CUH can. PERIOD MISMATCH: DID covers financial year 2025/26 (Apr 2025-Mar 2026) while the CHEQS investigations cover 10 May-9 Aug 2026, so these are adjacent years, not the same window - a magnitude check, not a reconciliation.",
+      "source": "NHS England Diagnostic Imaging Dataset, Table 1 modality x provider: data/DID-Table1-2025-26-Modality-Provider-Counts-20260723.xlsx, sheet 'Provider', rows RGT (CT 92,865/yr, plain radiography 193,700/yr). https://www.england.nhs.uk/statistics/statistical-work-areas/diagnostic-imaging-dataset/"
+    },
+    "frailty_scoring": {
+      "no_cfs_score_recorded_pct": 100.0,
+      "eligible_attendances_type_1_and_2": 3230,
+      "eligible_attendances_all_types": 4160,
+      "verdict": "DEAD END, AND WORTH TELLING CUH. Every frailty band is blank for RGT and 'No CFS Score Recorded' is 1.0 - CUH records NO Clinical Frailty Scale score in ECDS for any eligible attendance, on both the all-types and Type 1&2 tabs. The model's frailty area (fau_bed, frailty_pract, the fau node) therefore CANNOT be calibrated from ECDS and stays a template assumption. This is a data-quality gap at CUH, not a modelling choice, and it will not resolve by pulling a different national file.",
+      "source": "data/ECDS_Activity_Provisional_Jun_26_2026-07-03_093356_B7TCZU.xlsx, sheets 'Frailty' and 'Frailty T1', row RGT (June 2026)."
+    },
+    "beds_sitrep": {
+      "period": "Apr-Jun 2026 (monthly values)",
+      "g_and_a_beds_available": 1104.88,
+      "g_and_a_core_beds_available": 1086.67,
+      "g_and_a_escalation_beds_available": 11.76,
+      "g_and_a_beds_occupied": 989.63,
+      "occupancy_rate": 0.90,
+      "occupied_beds_los_7_plus_days": 559.05,
+      "occupied_beds_los_14_plus_days": 358.83,
+      "occupied_beds_los_21_plus_days": 249.30,
+      "pct_occupied_los_7_plus": 60.0,
+      "pct_occupied_los_14_plus": 38.0,
+      "pct_occupied_los_21_plus": 27.0,
+      "note": "REAL, and it adds two things KH03 does not carry. (1) ESCALATION BEDS: 11.76 surge beds on top of 1,086.67 core - the model has a single flat inpatient_beds number with no surge tier. (2) LENGTH-OF-STAY MIX: 60% of occupied beds are held by patients staying 7+ days and 27% by 21+ day stayers. That is the real constraint on bed TURNOVER - a ward that looks like it has 1,068 beds does not release them at anything like 1,068/mean-LOS, and the SD model's ward_discharge_capacity_per_hour (template default 6.4) has no long-stay compartment to represent it. NOT CONSUMED for that reason. Occupancy 0.90 here corroborates the KH03 89.26% the model actually uses; beds stay on KH03 by agreement, so these figures do not override it.",
+      "source": "NHS England UEC Daily SitRep beds collection: data/202604-April-2026-beds-sitrep-data-finalversion.csv, data/202605-May-2026-beds-sitrep-data-finalversion.csv, data/202606-June-2026-beds-sitrep-data-provisionalversion.csv, rows Org Code = RGT."
+    }
+  },
   "bed_occupancy": {
     "value": 0.8926,
     "period": "Q4 2025-26 (quarter ending March 2026)",
