@@ -426,8 +426,29 @@ def main():
     assert rgt_agg["four_hour_pct"]["value"] == 52.93, \
         "validation target must be the real published figure"
     assert not any("SYNTHETIC" in s for s in rgt_summary), rgt_summary
+    # CHEQS batch 2: real CT / X-ray workload replaces the invented imaging
+    # routing. The patch carries the rates; apply_patch must move the
+    # imaging_decision split so its acuity-weighted average hits them, while
+    # keeping the assumed gradient (sicker patients imaged more) and leaving
+    # every class summing to 1.
+    assert rgt_patch["imaging"] == {"ct": 0.1828, "xray": 0.3918}, rgt_patch["imaging"]
+    assert "data/cuh/Investigation types.xlsx" in rgt_agg["investigation_rates"]["source"]
+    iraw = apply_patch(build_dept(rgt_dept_for_imaging := to_department(get_profile("RGT"))),
+                       rgt_patch)
+    inode = next(n for n in iraw["nodes"] if n["id"] == "imaging_decision")
+    imix = iraw["arrivals"]["acuity_mix"]; itot = sum(imix.values())
+    for modality, target in (("ct", 0.1828), ("xray", 0.3918)):
+        got = sum(imix.get(cls, 0) / itot * dict((t, p) for t, p in lst).get(modality, 0)
+                  for cls, lst in inode["routes_by_class"].items())
+        assert abs(got - target) < 0.002, f"{modality}: weighted {got} vs target {target}"
+    for cls, lst in inode["routes_by_class"].items():
+        assert abs(sum(p for _, p in lst) - 1.0) < 1e-6, (cls, lst)
+    r2c = {t: p for t, p in inode["routes_by_class"]["Acuity 2"]}
+    r4c = {t: p for t, p in inode["routes_by_class"]["Acuity 4"]}
+    assert r2c["ct"] > r4c["ct"], "the acuity gradient must survive calibration"
     print("Published aggregates OK: shares -> patch maths check out; RGT distributions "
-          "come from the CUH extracts and cite their files.")
+          "come from the CUH extracts and cite their files; CT/X-ray workload "
+          "calibrates the imaging split onto CUH's real rates.")
 
     # --- Cambridge (RGT) registry row + committed seed: reproducible set-up ---
     assert "RGT" in codes, "Cambridge University Hospitals must be in the registry"
@@ -682,6 +703,9 @@ def main():
         "selecting RGT must load the CUH extract calibration"
     cal_rgt = store.get_calibration("your_department")
     assert cal_rgt and cal_rgt["patch"]["attributes"]["ambulance"] == 0.1914
+    # batch-2 imaging workload must ride the same drop-down path, not just the seed
+    assert cal_rgt["patch"]["imaging"] == {"ct": 0.1828, "xray": 0.3918}
+    assert any("Imaging workload" in s for s in sel_rgt["calibration_summary"])
     ds_rgt = client.get("/api/data-status").get_json()
     assert "arrival profile & acuity mix" not in ds_rgt["assumed"], ds_rgt["assumed"]
     # a trust with NO committed aggregates still starts clean

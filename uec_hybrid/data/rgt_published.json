@@ -47,14 +47,21 @@
   "paediatric_share": {
     "value": 0.1335,
     "period": "Feb-Jul 2026",
-    "note": "CUH's own paediatric ED area: 10,781 of 80,771 front-door attendances. The PUBLISHED age-based figure is higher (2,420 of 12,280 T1&2 = 19.71%, June 2026 ECDS) because children treated outside the paeds area still count by age; the model routes by AREA, so the extract figure drives routing and the published figure stays here as the age-based cross-check.",
+    "note": "CUH's own paediatric ED area: 10,781 of 80,771 front-door attendances. CONFIRMED by CUH 13 Aug 2026: CHEQS includes paediatrics as its own area, not as a separate return - so the area-based routing below is the right reading and the CHEQS and published Type 1 footprints agree. The PUBLISHED age-based figure is higher (2,420 of 12,280 T1&2 = 19.71%, June 2026 ECDS) because children treated outside the paeds area still count by age; the model routes by AREA, so the extract figure drives routing and the published figure stays here as the age-based cross-check.",
     "source": "CUH CHEQS extract: data/cuh/Performance Paeds.xlsx, Total Att summed Feb-Jul 2026 / all five front-door areas. Published cross-check: data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Paediatric Performance', row RGT."
   },
   "mental_health_share": {
     "value": 0.0257,
     "period": "June 2026, Type 1 & 2",
-    "note": "REAL: 315 MH attendances / 12,280 T1&2. Not covered by CHEQS batch 1, so the published figure stands.",
-    "source": "data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Mental Health', row RGT."
+    "note": "REAL: 315 MH attendances / 12,280 T1&2. The published figure stays the input; CHEQS batch 2 now corroborates it from CUH's own records at 2.28% (1,067 MH attendances over 104 days = 10.3/day, against the 450.1/day front door) - see cuh_extracts.mental_health below for the disposal split.",
+    "source": "data/ECDS_Performance_Provisional_Jun_26_2026-07-03_091942_VZF6MT.xlsx, 'Mental Health', row RGT. Internal corroboration: data/cuh/MH Disposals.xlsx."
+  },
+  "investigation_rates": {
+    "values": {"ct": 0.1828, "xray": 0.3918},
+    "period": "14 full weeks, 10 May - 9 Aug 2026",
+    "granularity": "provided (CUH extract, department total, no acuity breakdown)",
+    "note": "REAL, and it replaces a pure assumption: the model's imaging_decision routing (CT/X-ray probability by acuity) was invented. These are WORKLOAD rates - investigations per attendance, so a patient imaged twice counts twice. That is the right basis for a capacity model (it reproduces the demand on the CT scanner and X-ray room), but it is an upper bound on the PROPORTION of patients imaged, so do not read it as '39% of patients get an X-ray'. apply_patch scales the per-acuity probabilities by a single factor to hit this acuity-weighted average, keeping the assumed clinical gradient across acuity (sicker patients imaged more) because the extract has no acuity breakdown. DENOMINATOR CAVEAT: computed against the 5-area front door (450.1/day, May-Jul 2026), which is the population the model's imaging_decision serves. If CUH's investigations extract also counts SDEC activity, the correct rates are the all-areas figures ct 0.139 / xray 0.297 - CUH to confirm which footprint the extract covers.",
+    "source": "CUH CHEQS extract: data/cuh/Investigation types.xlsx - 'Computerized axial tomography (procedure) (77477000)' 8,065 and 'Plain radiography (procedure) (168537006)' 17,284 over the 14 complete weeks 10 May-9 Aug 2026 (the part-weeks ending 03/05/26 and 16/08/26 are excluded). Denominator 3,151 attendances/week = 41,413 front-door attendances May-Jul 2026 / 92 days x 7 (data/cuh/Performance Resus/Majors Trolleys/Majors Ambulant/Minors/Paeds.xlsx)."
   },
   "bed_occupancy": {
     "value": 0.8926,
@@ -103,6 +110,34 @@
       "four_hour_within_pct": 48.99,
       "period": "Feb-Jul 2026",
       "source": "CUH CHEQS extract: data/cuh/Performance SDEC.xlsx (26,022 attendances / 181 days; 4,179 admitted; breaches 51.01%)."
+    },
+    "weekly_performance": {
+      "note": "VALIDATION TARGETS, and the first REAL week-to-week spread the build has had: 50 consecutive weeks, 7 Sep 2025 - 16 Aug 2026, so the good/tough week bands on the control tower can be checked against what CUH actually experienced instead of resting on simulated replications alone. COUNTING BASIS: this is CUH's internal CHEQS basis (mean 60.9% in 4 hours), NOT the published Type 1 series (52.93%) - the same ~7-point gap already logged for the Feb-Jul figure of 59.5%. The 12-hour column is the 12-hours-FROM-ARRIVAL measure (mean 10.0% over 12 hours), which is the ECDS basis (11.32%), NOT the DTA basis the model's twelve_hour_pct target uses (3.7%). Compare like with like.",
+      "four_hour_within_pct": {"mean": 60.88, "median": 59.91, "best_week": 69.49, "worst_week": 54.70,
+                               "best_week_ending": "2025-12-28", "worst_week_ending": "2026-06-28"},
+      "twelve_hour_over_pct": {"mean": 9.98, "median": 10.10, "best_week": 3.31, "worst_week": 13.13,
+                               "best_week_ending": "2025-12-28", "worst_week_ending": "2026-02-15"},
+      "miu": "The co-located MIU runs 99.4% in 4 hours and 100% under 12 hours - it is a separate, uncongested stream and is NOT part of the modelled front door.",
+      "source": "CUH CHEQS extracts: data/cuh/4-hour perf.xlsx and data/cuh/12-hour perf.xlsx, rows Site='CUH on-site' (50 weekly points each)."
+    },
+    "mental_health": {
+      "attendances_per_day": 10.26,
+      "admission_rate": 0.1828,
+      "did_not_wait_rate": 0.1218,
+      "left_without_treatment_rate": 0.1396,
+      "period": "1 May - 12 Aug 2026 (104 days)",
+      "note": "REAL. 1,067 MH attendances: 195 admitted, 443 discharged with no follow-up, 144 GP follow-up, 130 did-not-wait, 19 refused treatment and left. The did-not-wait rate matters because 'walked out unseen' (LWBS) is a headline control-tower tile with no real anchor anywhere else in the build - MH patients leave before being seen at ~12%, far above any department-wide assumption. NOT auto-consumed: the model has no MH-specific admission or LWBS parameter yet (mh_liaison is a single service node), so this is calibration reference until that seam exists.",
+      "source": "CUH CHEQS extract: data/cuh/MH Disposals.xlsx (daily disposal counts, 104 days)."
+    },
+    "trust_discharges_by_weekday": {
+      "values": {"Mon": 3500, "Tue": 3409, "Wed": 3061, "Thu": 3029, "Fri": 3227, "Sat": 2106, "Sun": 1020},
+      "index_vs_mean": {"Mon": 1.266, "Tue": 1.233, "Wed": 1.107, "Thu": 1.096, "Fri": 1.167, "Sat": 0.762, "Sun": 0.369},
+      "note": "REAL and material, but NOT CONSUMED - the engine has no day-of-week dimension at all (arrivals are a 24-hour profile repeated identically every day, and bed releases are a flow rate). Sunday discharges are 29% of Monday's; that weekend collapse in bed releases is a principal driver of Monday exit-block, 12-hour DTA waits and ambulance handover delay, and the model currently cannot reproduce any of it. Wiring a day-of-week dimension into the SD bed model is the single highest-value engine change this batch points to.",
+      "source": "CUH CHEQS extract: data/cuh/Discharges by day.xlsx (whole-trust inpatient discharges by day of week, 19,352 total)."
+    },
+    "investigation_and_procedure_mix": {
+      "note": "REFERENCE, not consumed. Per-week counts by SNOMED-coded investigation and procedure type, 16 weeks (14 complete) May-Aug 2026. Top investigations per week: complete blood count 1,706, CRP 1,418, serum lactate 1,309, venous blood gas 1,268, hepatic panel 1,263, plain radiography 1,235, ECG 903, CT 576. Top procedures per week: drug administration 1,266, written advice 951, IV infusion 851, IV push 670, IV cannulation 605. Only the CT and plain-radiography lines feed the model today (see investigation_rates); the rest is available for a future pathology/turnaround seam, which is where the 'treatment to departure' tail at CUH most likely sits.",
+      "source": "CUH CHEQS extracts: data/cuh/Investigation types.xlsx, data/cuh/Procedure type.xlsx."
     },
     "disposal_mix": "Per-area destination-on-leaving tables (Discharge, Admit, EAU3/EAU4, GP, OP clinic, DNW...) are committed as data/cuh/Discharges *.xlsx and data/cuh/Discharge Destinatoin.xlsx - see docs/CUH_DATA_LOG.md for the admission-route reading.",
     "patient_moves": "data/cuh/Patient moves 4 weeks (deidentified).xlsx - 4,474 area moves for 3,960 visits, 10 Jul-9 Aug 2026, mostly SAU SDEC / Clinic 5 SDEC / EAU3 / EAU4 stays and ED-to-ward transfers. Identifiers (CSN, MRN) were REMOVED before committing; visits carry sequential ids. Feeds SDEC/assessment-unit length-of-stay checks."

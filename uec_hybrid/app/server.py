@@ -217,7 +217,8 @@ def api_trust_import():
         apatch, asummary = published.patch_from_aggregates(agg, dept.attendances_per_day)
         patch = _merge_patch(apatch, patch or {})
         summary += asummary
-    if patch and any(patch.get(k) for k in ("arrivals", "attributes", "admission_rates")):
+    from ..ingest.seed import PATCH_PARTS
+    if patch and any(patch.get(k) for k in PATCH_PARTS):
         store.save_calibration("your_department", patch, summary)
     else:
         store.clear_calibration("your_department")

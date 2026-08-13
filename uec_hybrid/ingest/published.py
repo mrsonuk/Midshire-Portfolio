@@ -55,10 +55,14 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
       ambulance STREAM share, so conveyance genuinely changes who arrives how)
     * ``admission_rate_by_acuity`` -> ``admission_rates``
     * ``paediatric_share`` / ``mental_health_share`` -> attributes
+    * ``investigation_rates`` (CT / X-ray per attendance) -> ``imaging``, which
+      scales the imaging_decision routing (apply_patch keeps the assumed
+      gradient across acuity and moves its weighted average onto the observed
+      workload - see ecds_seam.apply_patch)
 
     Returns (patch, summary). Blocks that are null are skipped and reported.
     """
-    patch: dict = {"arrivals": {}, "attributes": {}, "admission_rates": {}}
+    patch: dict = {"arrivals": {}, "attributes": {}, "admission_rates": {}, "imaging": {}}
     summary: list[str] = []
     skipped: list[str] = []
 
@@ -119,6 +123,25 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
             summary.append(f"{label.capitalize()} {v*100:.1f}%. {src}".strip())
         else:
             skipped.append(label)
+
+    imaging, src = _block(agg, "investigation_rates")
+    if imaging:
+        clean = {}
+        for k in ("ct", "xray"):
+            v = imaging.get(k)
+            if v is None:
+                continue
+            v = float(v)
+            if v > 1.5:                # entered as a percent
+                v = v / 100.0
+            clean[k] = round(v, 4)
+        if clean:
+            patch["imaging"] = clean
+            bits = ", ".join(f"{k.upper() if k == 'ct' else 'X-ray'} {v*100:.0f}%"
+                             for k, v in clean.items())
+            summary.append(f"Imaging workload per attendance applied ({bits}). {src}".strip())
+    else:
+        skipped.append("imaging (CT / X-ray) rates")
 
     rates, src = _block(agg, "admission_rate_by_acuity")
     if rates:
