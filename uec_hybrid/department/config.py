@@ -118,7 +118,7 @@ class Department:
                 n = int(v)
             except (TypeError, ValueError):
                 continue
-            if n > 0:                      # 0/negative not representable - drop
+            if n >= 0:                     # 0 is meaningful ("we don't have this"); drop only negatives
                 capacity[str(k)] = n
         return cls(name=d.get("name", base.name),
                    attendances_per_day=float(d.get("attendances_per_day", base.attendances_per_day)),

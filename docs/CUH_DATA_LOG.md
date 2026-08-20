@@ -183,6 +183,108 @@ day-of-week one, and it wants the same fix in the SD bed model.
 Beds and occupancy deliberately stay on KH03 by agreement (one consistent
 national definition); the SitRep figures corroborate but do not override them.
 
+## The ops return (20 Aug 2026) — the biggest single change to the build
+
+CUH's operational team returned the capacity template, plus an SDEC capacity
+analysis. Committed as `data/cuh/CUH_ED_Operational_Inputs.xlsx` and
+`data/cuh/SDEC_Capacity_and_ED_Streaming.pptx`. This closed the three red rows
+that had been bounding everything else.
+
+**Areas — three the model was running are not real.** EEMAC is a trial only
+(piloted 08:00–00:00, 22 spaces, needs a staffing uplift), CUH runs **no CDU**,
+and there is **no dedicated mental-health area** (one assessment room exists,
+but no area). Six areas are live: RAT, UTC, fit-to-sit, paeds, SDEC, frailty.
+
+**Hours — the template was wrong on three of them.** Fit-to-sit, paeds and SDEC
+all run **24/7**, against template assumptions of 08–22, 08–22 and 08–20. UTC
+runs two streams: minor injuries 08:00–00:30 and GP stream 08:00–22:30.
+
+**Capacity — real counts at last:**
+
+| Resource | Template | CUH real |
+|---|---|---|
+| Majors cubicles / trolleys | 24 | **34** (excl. resus and ambulance bay) |
+| Resus bays | 5 | **6** |
+| UTC rooms | 8 | **15** (not all staffed simultaneously) |
+| Paediatric cubicles | 10 | **12** |
+| Fit-to-sit chairs | 12 | **8** |
+| CT scanners | 2 | **3** (shared with all inpatients, not ED-exclusive) |
+| X-ray rooms | 3 | **3** |
+| Handover bays | 5 | **3** |
+| CDU beds | 8 | **0** |
+| EEMAC spaces | 10 | **0** |
+| Community / virtual ward | 60/day | **1/day** |
+
+That community figure is not a typo. CUH's note: the number is virtual ward
+only, and the virtual ward is mostly step-down after discharge rather than
+admission avoidance from ED — so ED-facing community capacity is effectively
+nil.
+
+### What it did to the simulation
+
+| | 4-hour | 12-hour | LWBS |
+|---|---|---|---|
+| Before (template areas/capacity) | 51.0% | 18.7% | 10.2% |
+| After (real CUH ops data) | **61.9%** | 19.1% | **1.2%** |
+| Published / internal target | 52.93% / **60.88%** | 3.7% (DTA) | — |
+
+The 4-hour result is the striking one. Configured with CUH's own areas, hours
+and capacity, the model lands at **61.9% against CUH's own internal 4-hour
+basis of 60.88%** — a point apart. It sits ~9 points above the *published* Type
+1 figure (52.93%), which is the same ~7-point counting gap already logged
+between the two bases. The model is now reproducing the basis it is actually
+configured to represent.
+
+LWBS collapsing from 10.2% to 1.2% is real capacity relieving a queue that was
+an artefact of under-stating the department by ten cubicles and seven UTC rooms.
+
+**12-hour did not move** (18.7% → 19.1%) and remains far above the 3.7% DTA
+target. That is the expected result and it localises the problem: 12-hour waits
+are driven by bed availability and exit block, not by ED floor space, and the
+engine still has no day-of-week dimension and no long-stay bed compartment —
+the two gaps already logged above.
+
+### SDEC: the model independently reproduced CUH's own finding
+
+`sdec_chair` is set to **60** (EAU3 30 + SAU 30). EAU4 is excluded at 93–96%
+occupied continuously, and Clinic 5 is excluded because only **0.5%** of its
+attendances arrive from ED (40 of 7,896 over six months). Full per-unit detail
+is in the workbook's `SDEC_Detail` tab.
+
+Two checks worth recording. Sixty chairs at the observed ~4.4h median SDEC stay
+implies roughly 327/day of theoretical throughput against 143.8 observed
+attendances/day — about 44% utilisation, sitting squarely inside the 35–69% the
+deck measures. And rerunning with `sdec_chair` back at 12 moved the 4-hour
+figure by **0.0 points**: SDEC chairs are not the binding constraint in the
+model either. That is the deck's own conclusion — "there is some capacity but
+it's not consistent, and operational issues stop effective streaming" — arrived
+at independently.
+
+### Left deliberately unset
+
+CUH answered **0** for ED minor-injury spaces: minor injuries are physically
+seen in the UTC. That cell is left BLANK rather than set to 0, on purpose. The
+model streams 35% of Acuity 4 and 30% of Acuity 5 to `ed_minor_injury`, and the
+builder floors a 0 to 1, so entering the real answer would build a fake
+single-space queue instead of modelling reality (tested: LWBS jumps to 26%).
+What it needs is those streaming splits re-pointed at the UTC — a routing
+change, not a capacity number, and one worth making deliberately.
+
+An explicit zero is now kept rather than dropped (`Department.from_dict` and
+`_read_capacity` both used to discard it), because "0" and "blank" are
+different claims: CUH runs no CDU beds, which is not the same as CUH not having
+told us.
+
+### Still outstanding from the ops side
+
+* **Frailty / FAU beds** — marked `***`, needs the frailty team.
+* **Frailty opening hours** — CUH to cross-check.
+* **Clinic 23, Clinic 24 and PSU SDEC capacity** — marked `***`. These are in
+  operation with real hours, so excluding them understates SDEC.
+* **EAU3 capacity is stated three ways** — 26 core / 30 extended on one slide,
+  "36-chair capacity confirmed" on another, and 30 in the ops template. The
+  build uses 30; CUH to reconcile.
+
 ## Still open, and not from CHEQS
 
 1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,

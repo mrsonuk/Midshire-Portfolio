@@ -344,10 +344,17 @@ def main():
     # counts for a disabled area are inert (its resource is already gone)...
     off = Department.default(); off.capacity = {"cdu_bed": 6}
     assert "cdu_bed" not in build_dept(off)["resources"]
-    # ...and capacity survives the JSON round-trip the store uses (0 dropped)
+    # ...and capacity survives the JSON round-trip the store uses. An explicit
+    # ZERO is KEPT: a trust answering "0" is stating the thing does not exist
+    # (CUH runs no CDU beds and no EEMAC spaces), which is a different claim
+    # from leaving the cell blank to keep the template estimate. Only negatives
+    # are dropped.
     rt = Department.from_dict({**cap_dept.to_dict(),
-                               "capacity": {"cdu_bed": 6, "sdec_chair": 0}})
-    assert rt.capacity == {"cdu_bed": 6}, rt.capacity
+                               "capacity": {"cdu_bed": 6, "sdec_chair": 0, "cubicle": -3}})
+    assert rt.capacity == {"cdu_bed": 6, "sdec_chair": 0}, rt.capacity
+    assert wbk._read_capacity([["resource_key", "your_count"], ["cdu_bed", 0],
+                               ["cubicle", 34], ["resus_bay", -1]]) == \
+        {"cdu_bed": 0, "cubicle": 34}, "explicit 0 kept, negative dropped"
     # workbook Capacity sheet round-trips, and the ODS code stays in the name
     wb3 = load_workbook(_io.BytesIO(wb_bytes))
     assert "Capacity" in wb3.sheetnames, wb3.sheetnames
@@ -475,12 +482,23 @@ def main():
     v1 = seeded["version"]
     assert run_seed("RGT")["version"] == v1 + 1, "re-seeding appends a version"
     # real extracts have replaced the placeholders: the banner must stop calling
-    # the calibration synthetic (physical capacity stays a template assumption)
+    # the calibration synthetic. Physical capacity is no longer assumed either -
+    # CUH's ops team supplied real counts (34 majors cubicles, 6 resus bays,
+    # 15 UTC rooms...), so it must have DROPPED off the assumed list; service
+    # times stay assumed because they are never published.
     from ..app.server import app as _seed_app
     ds_seed = _seed_app.test_client().get("/api/data-status").get_json()
     assert not any("SYNTHETIC" in w for w in ds_seed["warnings"]), ds_seed["warnings"]
     assert not any("SYNTHETIC" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
-    assert any("capacity" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
+    assert not any("capacity" in a for a in ds_seed["assumed"]), \
+        f"capacity is real now, it must not be listed as assumed: {ds_seed['assumed']}"
+    assert any("service times" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
+    _seed_dept = Department.from_dict(store.load_department())
+    assert _seed_dept.capacity["cubicle"] == 34 and _seed_dept.capacity["resus_bay"] == 6
+    assert _seed_dept.capacity["cdu_bed"] == 0, "CUH runs no CDU - the explicit 0 must survive"
+    assert set(_seed_dept.enabled) == {"rat", "utc", "fit_to_sit", "paeds", "sdec", "frailty"}, \
+        f"CUH runs no EEMAC, CDU or MH area: {_seed_dept.enabled}"
+    assert _seed_dept.community_capacity == 1, "virtual ward only, not 60/day"
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted).")
 

@@ -231,7 +231,13 @@ def _capacity_catalogue() -> list[dict]:
 
 def _read_capacity(rows):
     """Optional Capacity sheet (resource_key/your_count): the trust's REAL
-    physical counts (cubicles, CDU beds, resus bays…). Returns dict or None."""
+    physical counts (cubicles, CDU beds, resus bays…). Returns dict or None.
+
+    An explicit ZERO is kept, not dropped: a trust answering "0" is telling us
+    the thing does not exist (CUH runs no CDU beds, and its minor-injury
+    capacity sits in the UTC rather than in the ED), which is different from
+    leaving the cell blank to keep the template estimate. Only blank and
+    negative counts are ignored."""
     body = [r for r in rows[1:] if r and r[0] not in (None, "")]
     valid = {c["key"] for c in _capacity_catalogue()}
     out = {}
@@ -240,7 +246,7 @@ def _read_capacity(rows):
         if key.startswith("#") or key not in valid:
             continue
         v = _num(r[1]) if len(r) > 1 else None
-        if v is None or v <= 0:
+        if v is None or v < 0:
             continue
         out[key] = int(v)
     return out or None
