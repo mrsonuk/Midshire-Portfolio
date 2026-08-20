@@ -339,6 +339,51 @@ longer offered. "Add 2 minor-injury spaces" was being simulated against a
 Cambridge build with no minors node, then reported as "+0.0, within the noise" —
 which reads as a considered rejection rather than an impossible move.
 
+### Whole-flow sweep (20 Aug 2026) — two more found, and the build validated
+
+Fixing one visible number twice in a row is not a method, so every node was
+swept for implausible waits, growing queues and saturated resources, and every
+model output compared against a CUH figure. Two more real defects surfaced.
+
+**Ambulatory capacity was half the story.** `fit_to_sit_chair` was set to 8 from
+CUH's "fit-to-sit chairs", while their "ambulatory majors consultation rooms: 9"
+had been filed as having no model equivalent. It has one — `ed_ambulatory` IS
+the ambulatory majors area, and the model holds that space from entering the
+area until the clinical decision (through imaging). With 8, the mean wait to
+*enter* ambulatory was **642 min — longer than CUH's entire 254-min median stay
+for majors ambulant**, against a real 163/day. Both numbers are CUH's own, so
+the pool is 8 + 9 = **17**; wait falls to 46 min. Flagged for CUH to confirm the
+two are one pool.
+
+**"Seen within 15 min" had no observed target**, while the answer sat unused in
+the extracts: the Performance files carry `Arr-Init Ass <=15` / `>15` columns
+giving **41.8%** across the front door (resus 80.3%, trolleys 77.6%, paeds
+44.8%, ambulant 41.8%, minors 20.9%). Now recorded. The steep gradient — fast
+for resus, slow for minors — is something the model does *not* reproduce,
+because its streaming step treats the front door as a single queue.
+
+With real capacity the model then ran *optimistic on every metric at once*,
+which is the signature of uncalibrated service times rather than a new bug.
+Running the documented auto-calibration (service scale x1.05) lands the build
+here:
+
+| Tile | Model | Observed |
+|---|---|---|
+| 4-hour | 59% | 52.9% |
+| Seen within 15 min | 46% | 41.8% |
+| Over 12 hours | 3% | 3.7% |
+| Ambulance handover within 45 min | 81% | 84.2% |
+
+Every one within about six points, and 12-hour and handover close to exact.
+That is the first time the build has agreed with CUH across the board.
+
+Checks that came back clean: admitted rate 14.9% against an observed 14.1%;
+ambulance share 19.9% against 19.1%; paediatric share 13.5% against 13.4%; no
+queue growing without clearing; no area from a component CUH does not run. One
+known discrepancy is benign — throughput reads ~374/day against 400.5
+configured because patients still in the department when the run ends are not
+counted as completed.
+
 ### Left deliberately unset
 
 CUH answered **0** for ED minor-injury spaces: minor injuries are physically

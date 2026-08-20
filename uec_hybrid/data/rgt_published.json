@@ -149,6 +149,13 @@
       "period": "Feb-Jul 2026",
       "source": "CUH CHEQS extract: data/cuh/Performance SDEC.xlsx (26,022 attendances / 181 days; 4,179 admitted; breaches 51.01%)."
     },
+    "initial_assessment_within_15_min_pct": {
+      "value": 41.8,
+      "period": "Feb-Jul 2026, five front-door areas",
+      "by_area": {"resus": 80.3, "majors_trolleys": 77.6, "paeds": 44.8, "majors_ambulant": 41.8, "minors": 20.9},
+      "note": "VALIDATION TARGET that had been sitting unused in the extracts. The control tower's 'seen within 15 min' tile had no observed figure to be judged against, and the model reads 57-63% - optimistic by 15-21 points. The gradient is the interesting part: resus and trolleys are assessed fast (80%, 78%) while minors wait (21%), which the model does not reproduce because its streaming step treats the front door as one queue.",
+      "source": "CUH CHEQS extracts: data/cuh/Performance Resus/Majors Trolleys/Majors Ambulant/Minors/Paeds.xlsx, columns 'Arr-Init Ass <=15' and 'Arr-Init Ass >15', summed Feb-Jul 2026 (9,920 within 15 min of 23,727 assessed)."
+    },
     "weekly_performance": {
       "note": "VALIDATION TARGETS, and the first REAL week-to-week spread the build has had: 50 consecutive weeks, 7 Sep 2025 - 16 Aug 2026, so the good/tough week bands on the control tower can be checked against what CUH actually experienced instead of resting on simulated replications alone. COUNTING BASIS: this is CUH's internal CHEQS basis (mean 60.9% in 4 hours), NOT the published Type 1 series (52.93%) - the same ~7-point gap already logged for the Feb-Jul figure of 59.5%. The 12-hour column is the 12-hours-FROM-ARRIVAL measure (mean 10.0% over 12 hours), which is the ECDS basis (11.32%), NOT the DTA basis the model's twelve_hour_pct target uses (3.7%). Compare like with like.",
       "four_hour_within_pct": {"mean": 60.88, "median": 59.91, "best_week": 69.49, "worst_week": 54.70,

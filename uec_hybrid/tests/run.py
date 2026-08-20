@@ -789,6 +789,19 @@ def main():
     assert set(_sel_dept.enabled) == {"rat", "utc", "fit_to_sit", "paeds", "sdec", "frailty"}, \
         _sel_dept.enabled
     assert "physical capacity" not in client.get("/api/data-status").get_json()["assumed"]
+    # Ambulatory capacity is BOTH figures CUH reported: 8 fit-to-sit chairs + 9
+    # ambulatory majors consultation rooms. The model holds that space from
+    # entering the area until the clinical decision (through imaging), so 8
+    # alone produced a 642-min mean wait just to ENTER ambulatory - longer than
+    # CUH's entire 254-min median stay for majors ambulant, against 163/day.
+    assert _sel_dept.capacity.get("fit_to_sit_chair") == 17, _sel_dept.capacity
+    # the "seen within 15 min" tile now has an observed figure to be judged
+    # against - it had none, and the model reads optimistic against it
+    import json as _json
+    from pathlib import Path as _Path
+    _ia = _json.load(open(_Path(__file__).resolve().parent.parent / "data" /
+                          "rgt_published.json"))["cuh_extracts"]["initial_assessment_within_15_min_pct"]
+    assert _ia["value"] == 41.8 and "Arr-Init Ass" in _ia["source"]
     ds_rgt = client.get("/api/data-status").get_json()
     assert "arrival profile & acuity mix" not in ds_rgt["assumed"], ds_rgt["assumed"]
     # a trust with NO committed aggregates still starts clean
