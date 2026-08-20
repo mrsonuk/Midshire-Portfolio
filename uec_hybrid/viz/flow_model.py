@@ -154,16 +154,24 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
     if not patients.empty:
         census = _occ_by_hour(patients["arrival"].to_numpy(), patients["exit"].to_numpy(), w, dur)
 
-    # per-area occupancy by hour, and the hour each area is busiest
+    # per-area occupancy by hour, and the hour each area is busiest. Occupancy
+    # runs from QUEUE ENTRY to service end: a patient waiting for a cubicle is
+    # in that area's count - counting only in-service patients hid every queue
+    # (RAT read "2" while a hundred waited) and left the map near-constant.
+    # waits_by_hour gives each area's mean queue wait by hour of arrival into
+    # it, so the wait caption follows the time slider instead of showing one
+    # whole-week mean at every hour.
     label_to_id = {n.get("label", i): i for i, n in pathway.nodes.items()}
-    by_hour = {}
+    by_hour, waits_by_hour = {}, {}
     if not events.empty:
         for n in data["nodes"]:
             nid = label_to_id.get(n["label"])
             sub = events[events["stage"] == nid] if nid else events.iloc[0:0]
             if len(sub):
-                by_hour[n["label"]] = _occ_by_hour(sub["service_start"].to_numpy(),
+                by_hour[n["label"]] = _occ_by_hour(sub["queue_entry"].to_numpy(),
                                                    sub["service_end"].to_numpy(), w, dur)
+                wh = sub.groupby((sub["queue_entry"] / 60 % 24).astype(int))["wait"].mean()
+                waits_by_hour[n["label"]] = [round(float(wh.get(h, 0.0))) for h in range(24)]
 
     # Operational bottleneck: the busiest pinch-point across the WORKING DAY
     # (08:00-22:00, when ops teams act), not an overnight low-volume artefact.
@@ -223,6 +231,7 @@ def control_tower(result: dict, pathway: Pathway) -> dict:
     data["bottleneck"] = op_bottleneck
     data["census_by_hour"] = census
     data["area_by_hour"] = by_hour
+    data["waits_by_hour"] = waits_by_hour
     data["arrivals_by_hour"] = arrivals_by_hour
     data["exits_by_hour"] = exits_by_hour
     data["bottleneck_peak_hours"] = peak_hours

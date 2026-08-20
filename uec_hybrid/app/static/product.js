@@ -386,6 +386,11 @@ function updateHour(){
   const now=arr[H], peak=Math.max(...arr,1);
   const v=node.querySelector('[data-vol]');if(v)v.textContent=Math.round(now).toLocaleString();
   if(node.classList.contains('source')||node.classList.contains('admitted')||node.classList.contains('discharged'))return;
+  // the wait caption follows the slider: mean queue wait for patients arriving
+  // into this area at hour H (whole-week mean stays the fallback)
+  const wbh=(TOWER.waits_by_hour||{})[lab];
+  const wEl=node.querySelector('.wt');
+  if(wEl&&wbh&&wbh.length)wEl.textContent='wait '+Math.round(wbh[H])+'m at '+HH(H);
   const r=now/peak;node.classList.remove('green','amber','red');
   node.classList.add(r>=0.8?'red':r>=0.45?'amber':'green');
  });

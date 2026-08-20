@@ -158,6 +158,9 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
         se = float(d4.std(ddof=1) / np.sqrt(len(d4))) if len(d4) > 1 else 0.0
         tcrit = float(_st.t.ppf(0.95, df=max(1, len(d4) - 1)))
         lo = mean - tcrit * se                      # one-sided 95% lower bound (Student t)
+        # gate on the ROUNDED bound the user is shown: a raw lo of +0.04 would
+        # otherwise be recommended as "at least +0.0 with 95% confidence"
+        lo = round(lo, 1)
         lwbs_d = (float(cand["lwbs"].mean() - base_tab["lwbs"].mean())
                   if "lwbs" in cand and "lwbs" in base_tab else 0.0)
         fin = business_case(

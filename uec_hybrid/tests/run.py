@@ -522,8 +522,24 @@ def main():
     assert _utc.get("closed_fallback") == "ed_ambulatory", _utc.get("closed_fallback")
     # ...while a department WITHOUT the explicit 0 keeps the template node
     assert any(n["id"] == "ed_minor_injury" for n in build_dept(Department.default())["nodes"])
+    # RAT is AMBULANCE-ONLY (CUH ops: "assessment of patients arriving by
+    # ambulance only"). Routing every walk-in Acuity 1-3 through RAT made its
+    # queue unstable at Cambridge's real acuity mix (63% of adults into ~127
+    # patients/day of capacity -> 20-hour mean waits on the front page).
+    # Ambulance patients route to rat by ATTRIBUTE; walk-ins go direct to the
+    # same downstream mix (composed through RAT's old onward splits); RAT
+    # covers every acuity because ambulance A4/A5 are assessed there too.
+    assert _stream["routes_by_attribute"]["ambulance"] == [["rat", 1.0]]
+    assert list(_stream["routes_by_attribute"]) == ["paediatric", "ambulance"], \
+        "paediatric must stay first: an ambulance-arriving child belongs in paeds"
+    for cls, lst in _stream["routes_by_class"].items():
+        assert all(t != "rat" for t, _ in lst), f"walk-in {cls} must not route to RAT"
+    _rat = next(n for n in _craw["nodes"] if n["id"] == "rat")
+    assert set(_rat["routes_by_class"]) == {f"Acuity {i}" for i in range(1, 6)}, \
+        "RAT must route every acuity - ambulance A4/A5 are assessed there too"
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
-          f"department up reproducibly (v{v1}, provenance persisted).")
+          f"department up reproducibly (v{v1}, provenance persisted); RAT is "
+          f"ambulance-only per the CUH ops return.")
 
     # --- editable role rates: an override changes the pay-bill (no code edit) ---
     base_cost = weekly_cost(Department.default().rota)
@@ -879,8 +895,17 @@ def main():
     assert len(set(active)) > 1, f"pinch should move through the day, got: {set(active)}"
     assert sum(ct["arrivals_by_hour"]) > 100
     assert ct["exits_by_hour"].get("Discharged") and sum(ct["exits_by_hour"]["Discharged"]) > 50
+    # the map's numbers must MOVE with the slider: in-area counts include the
+    # queue (not just in-service patients), and each area carries a 24-hour
+    # wait series so the wait caption follows the hour instead of showing one
+    # whole-week mean everywhere
+    cub = ct["area_by_hour"].get("ED cubicles")
+    assert cub and max(cub) > min(cub), "per-hour occupancy should vary through the day"
+    wbh = ct["waits_by_hour"].get("ED cubicles")
+    assert wbh and len(wbh) == 24, "each area needs a 24-hour wait series"
     print(f"Hourly pinch OK: moves through {len(set(active))} areas across the day "
-          f"(day-wide pinch: {ct['bottleneck']}); outcomes update by hour.")
+          f"(day-wide pinch: {ct['bottleneck']}); outcomes and per-area waits "
+          f"update by hour.")
 
     print("\nAll checks passed.")
 

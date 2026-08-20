@@ -328,13 +328,23 @@
                         "paeds_assessment",
                         1.0
                     ]
+                ],
+                "ambulance": [
+                    [
+                        "rat",
+                        1.0
+                    ]
                 ]
             },
             "routes_by_class": {
                 "Acuity 1": [
                     [
-                        "rat",
-                        0.85
+                        "ed_resus",
+                        0.68
+                    ],
+                    [
+                        "ed_cubicles",
+                        0.17
                     ],
                     [
                         "direct_specialty_bypass",
@@ -343,14 +353,22 @@
                 ],
                 "Acuity 2": [
                     [
-                        "rat",
-                        1.0
+                        "ed_resus",
+                        0.3
+                    ],
+                    [
+                        "ed_cubicles",
+                        0.7
                     ]
                 ],
                 "Acuity 3": [
                     [
-                        "rat",
-                        1.0
+                        "ed_cubicles",
+                        0.6
+                    ],
+                    [
+                        "ed_ambulatory",
+                        0.4
                     ]
                 ],
                 "Acuity 4": [
@@ -441,6 +459,30 @@
                     [
                         "ed_ambulatory",
                         0.4
+                    ]
+                ],
+                "Acuity 4": [
+                    [
+                        "utc_minor_illness",
+                        0.45
+                    ],
+                    [
+                        "ed_minor_injury",
+                        0.35
+                    ],
+                    [
+                        "ed_ambulatory",
+                        0.2
+                    ]
+                ],
+                "Acuity 5": [
+                    [
+                        "utc_minor_illness",
+                        0.7
+                    ],
+                    [
+                        "ed_minor_injury",
+                        0.3
                     ]
                 ]
             }

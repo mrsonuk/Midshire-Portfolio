@@ -260,6 +260,37 @@ model either. That is the deck's own conclusion — "there is some capacity but
 it's not consistent, and operational issues stop effective streaming" — arrived
 at independently.
 
+### RAT made ambulance-only — a 20-hour queue artefact removed
+
+The ops return's one-line definition — *"at CUH this [RAT] is for assessment of
+patients arriving by ambulance only"* — turned out to matter more than it
+looked. The template routed **every** Acuity 1–3 patient through RAT. At the
+template's acuity mix that was borderline; at Cambridge's real mix (A2 18.9% +
+A3 42.2%) it pushed ~63% of adults (~250/day) into a step staffed for ~127/day.
+The queue grew for four simulated days without clearing, priority let sicker
+patients overtake, and the starving low-acuity tail produced a **20-hour mean
+RAT wait on the control tower** — while polluting the 12-hour figure upward.
+
+The fix routes ambulance patients to RAT by **attribute** (the same mechanism
+that routes children to paeds — paediatric stays first, so an ambulance-arriving
+child still goes to the paeds area) and sends walk-ins directly to the same
+downstream mix, composed through RAT's old onward splits — no new numbers
+invented. RAT covers all five acuities because ambulance A4/A5 are assessed
+there too.
+
+After the fix, on the full Cambridge build: RAT wait mean **6 min** (median 0,
+p95 29, max 167) — which is what CUH's own CHEQS medians say (arrival to initial
+assessment 0.5–2.3 min in the ambulance-fed areas). The 12-hour figure fell from
+19.1% to **8.0%** against the observed from-arrival ~10% — the old figure was
+mostly the artefact. 4-hour moved 61.9% → 65.6% (internal basis 60.9%); the
+residual is service-time calibration, which is what auto-calibration is for.
+
+The control-tower map was also made honest by the same investigation: per-area
+counts now include patients **waiting** in the area (in-service-only counts had
+hidden every queue and left the map near-constant), and each area carries a
+24-hour wait series so the wait caption follows the time slider instead of
+repeating one whole-week mean at every hour.
+
 ### Left deliberately unset
 
 CUH answered **0** for ED minor-injury spaces: minor injuries are physically
