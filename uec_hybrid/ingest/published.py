@@ -62,7 +62,8 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
 
     Returns (patch, summary). Blocks that are null are skipped and reported.
     """
-    patch: dict = {"arrivals": {}, "attributes": {}, "admission_rates": {}, "imaging": {}}
+    patch: dict = {"arrivals": {}, "attributes": {}, "admission_rates": {}, "imaging": {},
+                   "area_routing": {}, "service_means": {}}
     summary: list[str] = []
     skipped: list[str] = []
 
@@ -123,6 +124,29 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
             summary.append(f"{label.capitalize()} {v*100:.1f}%. {src}".strip())
         else:
             skipped.append(label)
+
+    routing, src = _block(agg, "area_routing")
+    if routing:
+        clean = {}
+        for k, v in routing.items():
+            if not v:
+                continue
+            label = k if str(k).lower().startswith("acuity") else f"Acuity {k}"
+            clean[label] = str(v)
+        if clean:
+            patch["area_routing"] = clean
+            summary.append(f"Acuity-to-area routing applied ({len(clean)} bands sent to the "
+                           f"trust's own areas). {src}".strip())
+    else:
+        skipped.append("acuity-to-area routing")
+
+    svc, src = _block(agg, "area_service_mins")
+    if svc:
+        clean = {str(k): float(v) for k, v in svc.items() if v}
+        if clean:
+            patch["service_means"] = clean
+            summary.append(f"Per-area treatment times applied ({len(clean)} areas, calibrated "
+                           f"to the trust's observed time in department). {src}".strip())
 
     imaging, src = _block(agg, "investigation_rates")
     if imaging:

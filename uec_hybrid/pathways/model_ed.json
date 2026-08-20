@@ -810,12 +810,6 @@
             "type": "process",
             "label": "Clinical decision (4h)",
             "band": "core_0_4h",
-            "release": [
-                "cubicle",
-                "resus_bay",
-                "fit_to_sit_chair",
-                "paeds_cubicle"
-            ],
             "service": {
                 "dist": "lognormal",
                 "mean": 18,
@@ -844,6 +838,9 @@
                     "disposition_general",
                     1.0
                 ]
+            ],
+            "release": [
+                "fit_to_sit_chair"
             ]
         },
         {
@@ -973,6 +970,11 @@
                     "eemac_outcome",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "paeds_cubicle",
+                "resus_bay"
             ]
         },
         {
@@ -1017,6 +1019,11 @@
                     "sdec_outcome",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "paeds_cubicle",
+                "resus_bay"
             ]
         },
         {
@@ -1059,7 +1066,10 @@
                 "stdev": 140
             },
             "release": [
-                "cdu_bed"
+                "cdu_bed",
+                "cubicle",
+                "paeds_cubicle",
+                "resus_bay"
             ],
             "routes": [
                 [
@@ -1088,7 +1098,10 @@
                 "stdev": 70
             },
             "release": [
-                "fau_bed"
+                "cubicle",
+                "fau_bed",
+                "paeds_cubicle",
+                "resus_bay"
             ],
             "routes_by_signal": [
                 {
@@ -1123,7 +1136,10 @@
                 "stdev": 30
             },
             "release": [
-                "mh_assessment_room"
+                "cubicle",
+                "mh_assessment_room",
+                "paeds_cubicle",
+                "resus_bay"
             ],
             "routes": [
                 [
@@ -1170,6 +1186,11 @@
                     "admitted_mh",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "paeds_cubicle",
+                "resus_bay"
             ]
         },
         {
@@ -1186,6 +1207,11 @@
                     "discharged_community",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "paeds_cubicle",
+                "resus_bay"
             ]
         },
         {
@@ -1202,6 +1228,11 @@
                     "discharged",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "resus_bay",
+                "paeds_cubicle"
             ]
         },
         {
@@ -1243,6 +1274,11 @@
                     "admitted",
                     1.0
                 ]
+            ],
+            "release": [
+                "cubicle",
+                "resus_bay",
+                "paeds_cubicle"
             ]
         },
         {

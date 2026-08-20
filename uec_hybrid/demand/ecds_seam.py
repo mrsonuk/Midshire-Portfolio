@@ -79,6 +79,38 @@ def derive_patch(df: pd.DataFrame) -> tuple[dict, list]:
     return patch, summary
 
 
+def _apply_area_routing(raw: dict, routing: dict) -> None:
+    """Send each acuity band to the treatment area the trust actually uses for it.
+
+    Where a trust's acuity bands ARE its areas (CUH derives its acuity mix from
+    per-area attendance counts), the Model ED template's crossover splits are
+    invented and measurably wrong - they gave resus 1.77x and majors ambulant
+    0.50x of CUH's observed volumes. This replaces the class splits on the
+    front-door nodes with the trust's own mapping.
+
+    Applied to every node that already routes by acuity into a treatment area
+    (streaming for walk-ins, RAT for ambulance arrivals), so both front doors
+    reach the same places. Targets the trust does not run are skipped, leaving
+    the builder's disabled-area rewrite to handle them. Mutates ``raw``.
+    """
+    present = {n["id"] for n in raw.get("nodes", [])}
+    live = {cls: tgt for cls, tgt in routing.items() if tgt in present}
+    if not live:
+        return
+    for node in raw.get("nodes", []):
+        rbc = node.get("routes_by_class")
+        if not rbc:
+            continue
+        # only rewrite front-door nodes: those whose class routes currently lead
+        # into the treatment areas this mapping covers
+        targets = {t for lst in rbc.values() for t, _ in lst}
+        if not (targets & set(routing.values())):
+            continue
+        for cls, tgt in live.items():
+            if cls in rbc:
+                rbc[cls] = [[tgt, 1.0]]
+
+
 def _apply_imaging(raw: dict, imaging: dict) -> None:
     """Move the imaging_decision routing onto an observed CT / X-ray workload.
 
@@ -158,6 +190,19 @@ def apply_patch(raw: dict, patch: dict) -> dict:
         target = float(patch["attributes"]["ambulance"])
         if current > 0:
             scale_stream_share(arrivals, "ambulance", target / current)
+            # the mix was fitted against the OLD stream weights; moving the
+            # ambulance share moves those weights, so re-fit or the department
+            # drifts off the calibrated mix (Cambridge landed on Acuity 1 2.0%
+            # against a calibrated 2.51%, and resus saw the shortfall)
+            if arrivals.get("acuity_mix"):
+                skew_stream_mixes(arrivals, dict(arrivals["acuity_mix"]))
+    routing = patch.get("area_routing") or {}
+    if routing:
+        _apply_area_routing(raw, routing)
+    for node_id, mean in (patch.get("service_means") or {}).items():
+        node = next((n for n in raw.get("nodes", []) if n.get("id") == node_id), None)
+        if node and isinstance(node.get("service"), dict) and mean:
+            node["service"] = {**node["service"], "mean": round(float(mean), 1)}
     imaging = patch.get("imaging") or {}
     if imaging:
         _apply_imaging(raw, imaging)

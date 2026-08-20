@@ -33,15 +33,68 @@ def daily_stream_split(arrivals: dict) -> dict:
 def skew_stream_mixes(arrivals: dict, new_mix: dict):
     """Move every stream's acuity mix in step with a change to the global mix
     (population determinants, ECDS calibration), preserving each stream's
-    relative case-mix character."""
+    relative case-mix character.
+
+    Two constraints have to hold at once, and scaling alone satisfies neither:
+
+    * each STREAM's mix must sum to 100 (it is a percentage split), and
+    * the SHARE-WEIGHTED mix across streams must equal the calibrated target.
+
+    A plain per-class multiply broke both - it left Cambridge's streams summing
+    to 145 / 71 / 136 / 84, and because the engine renormalises each stream on
+    the way in, the department actually ran at Acuity 1 1.3% / Acuity 4 51%
+    against a calibrated 2.5% / 36%. Resus then saw half the patients CUH sees.
+
+    Iterative proportional fitting satisfies both: alternately normalise each
+    stream to 100 (rows) and rescale each class so the weighted mix hits the
+    target (columns). Both margins are positive, so it converges - and each
+    stream keeps its character (ambulance stays sicker than walk-in).
+    """
     old = arrivals.get("acuity_mix") or {}
-    for s in arrivals.get("streams") or []:
-        m = s.get("acuity_mix")
-        if not m:
-            continue
+    streams = [s for s in (arrivals.get("streams") or []) if s.get("acuity_mix")]
+    if not streams:
+        arrivals["acuity_mix"] = dict(new_mix)
+        return
+    total = sum(new_mix.values()) or 100.0
+
+    for s in streams:                      # seed: keep each stream's character
+        m = s["acuity_mix"]
         for k in list(m):
             if old.get(k):
                 m[k] = m[k] * (new_mix.get(k, 0.0) / old[k])
+
+    shares = daily_stream_split(arrivals)
+    wsum = sum(shares.get(s["name"], 0.0) for s in streams) or 1.0
+    for _ in range(200):
+        for s in streams:                                  # rows -> sum to 100
+            m = s["acuity_mix"]; t = sum(m.values())
+            if t > 0:
+                for k in m:
+                    m[k] = m[k] / t * total
+        overall = {}                                       # columns -> target
+        for s in streams:
+            w = shares.get(s["name"], 0.0) / wsum
+            for k, v in s["acuity_mix"].items():
+                overall[k] = overall.get(k, 0.0) + w * v
+        err = 0.0
+        for k, tgt in new_mix.items():
+            cur = overall.get(k, 0.0)
+            if tgt <= 0:
+                for s in streams:
+                    s["acuity_mix"][k] = 0.0
+            elif cur > 0:
+                f = tgt / cur
+                err = max(err, abs(f - 1.0))
+                for s in streams:
+                    if k in s["acuity_mix"]:
+                        s["acuity_mix"][k] *= f
+        if err < 1e-9:
+            break
+    for s in streams:
+        m = s["acuity_mix"]; t = sum(m.values())
+        if t > 0:
+            for k in m:
+                m[k] = round(m[k] / t * total, 4)
     arrivals["acuity_mix"] = dict(new_mix)
 
 

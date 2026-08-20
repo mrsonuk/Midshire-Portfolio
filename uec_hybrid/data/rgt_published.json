@@ -97,6 +97,19 @@
       "source": "NHS England UEC Daily SitRep beds collection: data/202604-April-2026-beds-sitrep-data-finalversion.csv, data/202605-May-2026-beds-sitrep-data-finalversion.csv, data/202606-June-2026-beds-sitrep-data-provisionalversion.csv, rows Org Code = RGT."
     }
   },
+  "area_routing": {
+    "values": {"Acuity 1": "ed_resus", "Acuity 2": "ed_cubicles", "Acuity 3": "ed_ambulatory",
+               "Acuity 4": "utc_minor_illness", "Acuity 5": "utc_minor_illness"},
+    "period": "Feb-Jul 2026",
+    "note": "REAL, and it follows by construction rather than by assumption: acuity_mix_pct above was DERIVED by mapping CUH's treatment areas onto acuity bands (resus=1, majors trolleys=2, majors ambulant=3, minors=4). Routing each band back to the area it came from therefore reproduces CUH's observed per-area volumes exactly, instead of the Model ED template's invented crossover splits (which sent 30% of Acuity 2 to resus and split Acuity 3 across two areas, giving resus 1.77x and majors ambulant 0.50x of CUH's real volumes). Minors route to the UTC because CUH has NO ED minor-injury spaces; when the UTC is shut (00:30-08:00) the existing closed_fallback sends them to the 24/7 ambulatory area, which remains a labelled assumption. Applied to BOTH the streaming node and the RAT node, so ambulance patients reach the same areas after assessment.",
+    "source": "Derived from the same CUH CHEQS extracts as acuity_mix_pct: data/cuh/Performance Resus / Majors Trolleys / Majors Ambulant / Minors.xlsx, Total Att Feb-Jul 2026 (1,754 / 13,211 / 29,544 / 25,481)."
+  },
+  "area_service_mins": {
+    "values": {"await_inpatient_bed": 110.0},
+    "period": "June 2026",
+    "note": "ONE parameter, calibrated against real observed data: the post-DTA wait for an inpatient bed. CUH's dta_to_departure medians vary 3.5x by area (majors trolleys 460 min, majors ambulant 138, resus 131, paeds 83, minors 66); weighted by each area's admissions (7,404 / 1,251 / 1,304 / 1,444 / 14) that is 339 min for the average admitted patient. The template's 70-minute mean produced 205; 110 produces a 364-minute median, the closest to 339 on the tested sweep. NOT a direct copy of any single CHEQS figure - the node carries the whole DTA-to-departure delay, and the SD bed model multiplies it by occupancy pressure. STILL OPEN: per-area treatment times. Attempting to calibrate those against each area's TID median did not converge - majors trolleys needs a 725-minute stay that the model cannot reach by lengthening treatment (the queue collapses first), because at CUH that length is mostly waiting, not treating. Per-area DTA waits, rather than one pooled bed wait, are the next thing to wire.",
+    "source": "Calibrated against data/cuh/TID *.xlsx (June 2026 total_median) and the dta_to_departure column of data/cuh/Performance *.xlsx."
+  },
   "bed_occupancy": {
     "value": 0.8926,
     "period": "Q4 2025-26 (quarter ending March 2026)",

@@ -445,6 +445,70 @@ Effect on the simulated Cambridge build: 4-hour 59.1% (vs 61.9% before the
 re-route; CUH internal basis 60.88%), LWBS 0.4%, 12-hour unchanged — and no
 fake single-space minors queue.
 
+## Per-area validation (20 Aug 2026) — three real bugs, and what is still wrong
+
+Checking the model against CUH's **per-area** behaviour, rather than against
+headline KPIs, found three genuine defects. The headline KPIs had been agreeing
+all along *through compensating errors*.
+
+**1. The calibrated acuity mix never reached the department.**
+`skew_stream_mixes` multiplied each stream's acuity split by a per-class ratio
+but never renormalised, leaving Cambridge's four streams summing to 145 / 71 /
+136 / 84 instead of 100. The engine renormalises on the way in, so the
+department actually ran at **Acuity 1 1.3% / Acuity 4 51%** against a calibrated
+2.5% / 36% — and resus saw half the patients CUH sees. Fixed with iterative
+proportional fitting (rows sum to 100, share-weighted columns hit the target),
+plus a re-fit after the ambulance share moves, since that changes the weights the
+fit was solved against. **This bug affected every trust, not just Cambridge.**
+
+**2. Acuity was routed by template crossover, not to CUH's areas.**
+`acuity_mix_pct` is *derived* from CUH's per-area counts (resus→A1, trolleys→A2,
+ambulant→A3, minors→A4), so routing each band back to its own area is correct by
+construction. The template instead sent 30% of Acuity 2 to resus and split
+Acuity 3 across two areas, giving resus 1.77x and majors ambulant 0.50x of CUH's
+real volumes. Now a trust-level calibration (`area_routing`), not a template edit.
+
+**3. Admitted patients vacated their trolley before waiting for a bed.**
+The ED space was released at `disposition`, so a patient waiting hours for an
+inpatient bed occupied *nothing* — removing the single most important mechanism
+in ED crowding, and the one CUH's 12-hour DTA problem consists of. Bedded spaces
+(cubicle, resus bay, paeds cubicle) are now held until the patient physically
+leaves; ambulant space still frees at the decision, because `bedded_care=False`
+patients wait in a waiting area, not on a trolley.
+
+### Where it now stands (6 replications)
+
+| | Model | CUH observed |
+|---|---|---|
+| 4-hour | 54.4% ±4.0 | 52.93% |
+| 12-hour (DTA) | 6.9% ±1.2 | 3.7% |
+| Acuity mix | 2.67 / 18.8 / 41.5 / 37.0 | 2.51 / 18.88 / 42.21 / 36.41 |
+| Per-area volumes | 0.73–0.89x | — |
+
+Volumes and case-mix are now right. The residual ~0.85x on volumes is the
+documented counting-basis gap (model runs at the published 400.5/day, CUH's
+internal area counts total 446/day).
+
+### Still wrong, and stated plainly
+
+* **Per-area length of stay.** Majors trolleys 0.50x (365 vs 725 min), minors
+  0.55x, resus 1.59x, paeds 1.79x. Only majors ambulant (1.11x) is close.
+  Attempting to close this by lengthening treatment times does not work and
+  should not be tried: at CUH a 725-minute trolley stay is mostly *waiting*, and
+  inflating the service time collapses the queue instead. The fix is per-area
+  DTA waits rather than one pooled `await_inpatient_bed`, since CUH's own
+  dta_to_departure varies 3.5x by area (trolleys 460 min vs ambulant 138).
+* **Seen within 15 minutes: 65.9% modelled against 41.8% observed.** The model
+  streams patients faster than CUH does.
+* **Ambulance handover is structurally unreachable.** The tile reads ~99%
+  against CUH's real 84.19%, and no parameter will fix it: `handover_bay` is
+  released at `streaming`, so a crowded ED never backs up into the ambulance
+  queue. Real handover delay is caused by having nowhere to offload the patient.
+  Representing it needs the handover bay held until an ED space is available.
+
+None of these three needs anything further from CUH — the data to close them is
+already in `data/cuh/`.
+
 ## Still open, and not from CHEQS
 
 1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,
