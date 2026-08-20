@@ -565,9 +565,30 @@ def main():
     for _exit in ("discharge", "transfer_to_ward"):
         _n = next(n for n in _craw["nodes"] if n["id"] == _exit)
         assert "cubicle" in (_n.get("release") or []), f"{_exit} must free the trolley"
+    # a node that already carries a template service_by_class (ed_cubicles,
+    # paeds_assessment) must have the CALIBRATED level pushed into those class
+    # entries: the engine prefers service_by_class over service, so setting
+    # service alone was silently a no-op and the calibration tuned nothing.
+    _cal_raw = apply_patch(_craw, store.get_calibration("your_department")["patch"])
+    _cub = next(n for n in _cal_raw["nodes"] if n["id"] == "ed_cubicles")
+    _by = _cub.get("service_by_class")
+    assert _by, "ed_cubicles keeps its per-acuity service"
+    assert all(v["mean"] > 80 for v in _by.values()), \
+        f"calibrated level must reach the per-class entries, got {_by}"
+    assert _by["Acuity 1"]["mean"] > _by["Acuity 3"]["mean"], \
+        "the template's clinical gradient across acuity must survive calibration"
+    # the decision step holds NO resource, so it is where a trolley patient's
+    # wait-for-results time belongs - lengthening treatment instead ties up a
+    # doctor for the whole stay and saturates the pool
+    _disp2 = next(n for n in _cal_raw["nodes"] if n["id"] == "disposition")
+    assert not (_disp2.get("resource") or _disp2.get("resources") or _disp2.get("acquire")), \
+        "disposition must stay resource-free"
+    assert _disp2["service_by_class"]["Acuity 2"]["mean"] > \
+        _disp2["service_by_class"]["Acuity 4"]["mean"], \
+        "majors trolleys wait far longer for a decision than minors do"
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted); RAT is "
-          f"ambulance-only per the CUH ops return.")
+          f"ambulance-only and per-area times reach the engine.")
 
     # --- editable role rates: an override changes the pay-bill (no code edit) ---
     base_cost = weekly_cost(Department.default().rota)

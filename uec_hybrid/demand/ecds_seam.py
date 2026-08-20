@@ -213,6 +213,28 @@ def apply_patch(raw: dict, patch: dict) -> dict:
                 for cls, m in spec.items() if m}
         else:
             node["service"] = {**node["service"], "mean": round(float(spec), 1)}
+            # a node may ALREADY carry a template service_by_class (ed_cubicles,
+            # paeds_assessment do), and the engine prefers it over service - so
+            # setting service alone is silently a no-op. Scale the per-class
+            # entries onto the calibrated level instead, keeping the clinical
+            # gradient between bands exactly as the template had it.
+            by_cls = node.get("service_by_class")
+            if by_cls:
+                mix = (raw.get("arrivals", {}) or {}).get("acuity_mix") or {}
+                tot = sum(float(v) for v in mix.values())
+                def _w(cls):
+                    if tot <= 0:
+                        return 1.0 / max(1, len(by_cls))
+                    return float(mix.get(cls, 0.0)) / tot
+                cur = sum(_w(c) * float(s.get("mean", 0.0)) for c, s in by_cls.items())
+                # weights only cover the classes this node serves, so renormalise
+                cover = sum(_w(c) for c in by_cls) or 1.0
+                cur = cur / cover
+                if cur > 0:
+                    k = float(spec) / cur
+                    node["service_by_class"] = {
+                        c: {**s, "mean": round(float(s.get("mean", 0.0)) * k, 1)}
+                        for c, s in by_cls.items()}
     imaging = patch.get("imaging") or {}
     if imaging:
         _apply_imaging(raw, imaging)

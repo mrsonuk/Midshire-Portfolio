@@ -530,15 +530,64 @@ agree would mean modelling the wrong thing. Slowing the front door to hit the
 headline number was tested and rejected: it reaches 42% overall but drives
 Acuity 4 to 0% against CUH's 20.9% and collapses the 4-hour figure.
 
+### Third pass: per-area length of stay closed
+
+Two more defects, both of which made earlier calibration attempts meaningless:
+
+* **`ed_cubicles` and `paeds_assessment` already carried a template
+  `service_by_class`, and the engine prefers it over `service`.** Every
+  calibrated mean written to `service` was therefore a silent no-op - the
+  oscillation in those runs was pure noise on a parameter nothing read. The
+  calibrated level is now scaled into the per-class entries, keeping the
+  template's clinical gradient between bands.
+* **A trolley patient was tying up a doctor for their whole stay.**
+  `ed_cubicles` holds `ed_doctor` for its entire service, so reproducing CUH's
+  725-minute trolley stay by lengthening treatment saturated the doctor pool
+  (92%) and starved every other area - ambulant length of stay blew out to
+  2.7x and a quarter of the department walked out. The waiting-for-results and
+  senior-review time belongs on `disposition`, which holds **no resource**: the
+  patient keeps their trolley (it is released at departure) but not a
+  clinician. Moving it there drove majors trolleys from 0.63x to 1.00x with
+  LWBS unchanged at ~2%.
+
+Per-area length of stay, 8 replications, against CUH's TID medians:
+
+| Area | Model | CUH | |
+|---|---|---|---|
+| Resus | 342 | 324 | 1.06x |
+| Majors trolleys | 718 | 725 | **0.99x** |
+| Majors ambulant | 229 | 254 | 0.90x |
+| Minors | 172 | 164 | **1.05x** |
+| Paeds | 219 | 176 | 1.24x |
+
+All five areas are now within 0.90-1.24x, against 0.45-1.81x before this pass.
+4-hour 54.9% +-3.1 against 52.93% observed; LWBS 2.1%; per-area volumes
+0.76-0.91x (the counting-basis gap); acuity mix on target.
+
+### A correction: the 12-hour comparison was wrong, not the model
+
+`twelve_hour` is computed as `los > 720` - measured **from arrival**, like the
+ECDS basis. It had been compared against CUH's **decision-to-admit** figure of
+3.7%, which is a different measure entirely. Against the basis the model
+actually computes, CUH's own weekly series gives 9.98% typical:
+
+* model 10.8% vs from-arrival 9.98% = **1.08x** - a match
+* model 10.8% vs DTA 3.70% = 2.92x - the comparison previously reported
+
+The DTA figure in `twelve_hour_pct` stays as a published reference, but the
+control tower's 12-hour tile should be read against `weekly_performance.
+twelve_hour_over_pct`, not against it. This is the same class of mistake as the
+15-minute tile: comparing two series that count different things.
+
 ### Still wrong, and stated plainly
 
-* **Majors trolleys length of stay: 0.56x** (408 vs 725 min). The bed wait is
-  now right, so the shortfall is upstream - CUH's trolley patients spend longer
-  in the department before the decision than the model does. Lengthening
-  treatment further destabilises the queue before it closes the gap.
-* **Minors length of stay: 0.61x** (100 vs 164 min) and **paeds 1.29x**.
-* **12-hour waits: 6.9% against 3.7% observed** - still about double.
 * **Seen within 15 minutes** - a definition mismatch, see above. Do not quote.
+* **Ambulance handover reads ~92% against 84.19%** - the mechanism is right now
+  (it responds to crowding through the RAT queue) but it is optimistic by about
+  8 points.
+* **Paediatric length of stay 1.24x** and majors ambulant 0.90x.
+* **Per-area volumes run 0.76-0.91x**, which is the published-versus-internal
+  counting basis (400.5/day against CUH's own 446/day), not a model error.
 
 None of these three needs anything further from CUH — the data to close them is
 already in `data/cuh/`.

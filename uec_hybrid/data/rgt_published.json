@@ -107,8 +107,10 @@
   "area_service_mins": {
     "values": {"await_inpatient_bed": {"Acuity 1": 52.0, "Acuity 2": 148.0,
                                         "Acuity 3": 48.0, "Acuity 4": 38.0},
-               "ed_resus": 135.0, "ed_cubicles": 138.8, "ed_ambulatory": 56.4,
-               "utc_minor_illness": 54.2, "paeds_assessment": 22.1},
+               "ed_resus": 135.0, "ed_cubicles": 100.0, "ed_ambulatory": 56.4,
+               "utc_minor_illness": 110.0, "paeds_assessment": 40.0,
+               "disposition": {"Acuity 1": 40.0, "Acuity 2": 190.0, "Acuity 3": 25.0,
+                                "Acuity 4": 18.0, "Acuity 5": 18.0}},
     "period": "June 2026",
     "note": "PER-AREA post-DTA bed wait, calibrated against real observed data. One pooled figure could not represent CUH, whose dta_to_departure varies 3.5x by area (majors trolleys 460 min, majors ambulant 138, resus 131, minors 66). Because acuity maps 1:1 to area here (see area_routing), these are carried as service_by_class on await_inpatient_bed. The values are NOT the observed medians: the node's time is multiplied by the SD model's bed_wait_multiplier (occupancy pressure), so they were solved so the RESULTING medians reproduce the observed ones - the dominant band, Acuity 2 / majors trolleys, lands at ~453 against 460 observed. Paediatric patients keep their own acuity band rather than a paeds-specific wait, which is a known simplification.",
     "source": "Calibrated against data/cuh/TID *.xlsx (June 2026 total_median) and the dta_to_departure column of data/cuh/Performance *.xlsx."

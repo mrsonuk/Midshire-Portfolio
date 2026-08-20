@@ -12,6 +12,7 @@ from pathlib import Path
 from .config import AREAS, ZERO_CAPACITY_NODES, Department
 from ..workforce.rota import staffing_by_hour
 from ..workforce.roles import STAFF_RESOURCES
+from ..workforce.defaults import DEFAULT_ROTA
 
 BASE_RAW = json.load(open(Path(__file__).resolve().parent.parent / "pathways" / "model_ed.json"))
 BASELINE = 320.0
@@ -66,6 +67,15 @@ def build(dept: Department) -> dict:
         disabled_nodes.add(cfg["node"]); node_area[cfg["node"]] = key
         fallback[key] = fb; mode[key] = "reroute"
         zero_removed[cfg["node"]] = cfg
+        # NOTE: the removed node's STAFF are deliberately NOT moved to the
+        # fallback. Doing so was tried and reverted: giving CUH's minors ENPs to
+        # the UTC makes the ENP the binding constraint, and the template roster
+        # is sized for a department where minors split across two areas - the
+        # UTC then queues so hard that a quarter of the department walks out,
+        # which contradicts CUH's observed minors flow (61-minute wait to be
+        # treated). Sizing the roster properly needs CUH's UTC staffing, which
+        # they have not given: they said only that not all 15 rooms are staffed
+        # at once. Until that number arrives the UTC stays room-constrained.
 
     if disabled_nodes:
         for node in raw["nodes"]:
@@ -121,7 +131,15 @@ def build(dept: Department) -> dict:
             raw["resources"][r] = max(1, int(v))
 
     # --- workforce rota -> by-hour staffing for the staff areas present ---
-    staffing = staffing_by_hour(dept.rota)
+    # The TEMPLATE rota is written for a BASELINE-sized department, so a trust
+    # running 400/day against a 320/day roster was silently ~25% short of every
+    # staff group while its physical capacity had already been scaled up. Scale
+    # the template with the department; a rota the trust actually supplied is
+    # its real roster and is used exactly as given.
+    rota = dept.rota
+    if rota == DEFAULT_ROTA and scale != 1.0:
+        rota = [{**s, "count": max(1, int(round(s["count"] * scale)))} for s in rota]
+    staffing = staffing_by_hour(rota)
     for r in list(raw["resources"]):
         if r in STAFF_RESOURCES and r in staffing:
             raw["resources"][r] = list(staffing[r])
