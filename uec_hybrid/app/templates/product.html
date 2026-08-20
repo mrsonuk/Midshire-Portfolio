@@ -9,7 +9,12 @@
  *{box-sizing:border-box}
  body{margin:0;font-family:Frutiger,Arial,Helvetica,sans-serif;background:var(--page);color:var(--black);line-height:1.5}
  header{background:linear-gradient(90deg,var(--dark) 0%,var(--blue) 60%);color:#fff;padding:14px 24px;display:flex;align-items:center;gap:16px}
- .logo{background:#fff;color:var(--blue);font-weight:800;font-size:20px;padding:4px 10px;border-radius:4px;letter-spacing:1px}
+ /* the trust lockup is black + NHS blue on transparency, so it needs the white
+    panel to stay legible against the dark blue header gradient */
+ .logo{background:#fff;padding:7px 12px;border-radius:4px;display:flex;align-items:center;flex:0 0 auto}
+ /* 64px keeps the "NHS Foundation Trust" line legible; below that it turns to mush */
+ .logo img{height:64px;width:auto;display:block}
+ @media(max-width:640px){.logo img{height:44px}}
  header h1{font-size:19px;margin:0}header p{margin:2px 0 0;font-size:12.5px;color:#CFE6F7}
  nav{background:#fff;border-bottom:1px solid var(--line);padding:0 24px;display:flex;gap:4px;flex-wrap:wrap;position:sticky;top:0;z-index:30;box-shadow:0 1px 4px rgba(16,37,62,.06)}
  nav a{padding:12px 16px;font-weight:700;font-size:14px;color:var(--grey);text-decoration:none;border-bottom:3px solid transparent;cursor:pointer}
@@ -137,9 +142,10 @@
 </style>
 </head>
 <body>
-<header><div class="logo">CUH</div><div>
+<header><div class="logo"><img src="/static/cuh-logo.png"
+  alt="Cambridge University Hospitals NHS Foundation Trust"></div><div>
  <h1>CUH ED Control Tower</h1>
- <p>Cambridge University Hospitals &middot; Addenbrooke's Emergency Department &middot; built on the NHS Model ED</p>
+ <p>Addenbrooke's Emergency Department &middot; built on the NHS Model ED</p>
 </div></header>
 <nav id="nav">
  <a class="active" data-tab="tower">Control tower</a>
