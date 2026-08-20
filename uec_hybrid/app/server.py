@@ -166,6 +166,36 @@ def api_trust_select():
         profile = trusts.get_profile(ods)
     except KeyError as e:
         return jsonify({"error": str(e)}), 404
+    # Picking a trust must give EXACTLY what `python -m uec_hybrid.ingest.seed`
+    # gives. When a committed set-up workbook exists for the trust, delegate to
+    # the seed path so the drop-down also loads the trust's real areas, opening
+    # hours, physical capacity, costs and service times - not just the published
+    # distributions. Reimplementing half of seed() here is what left Cambridge
+    # running on template capacity with fit-to-sit switched off, which piled
+    # every ambulatory patient into the cubicles and produced 7-hour waits.
+    from ..ingest.seed import find_seed_workbook, seed as _seed
+    if find_seed_workbook(ods) is not None:
+        try:
+            seeded = _seed(ods)
+        except Exception as e:                      # never leave the UI dead-ended
+            return jsonify({"error": f"could not load the committed set-up for {ods}: {e}"}), 500
+        dept = Department.from_dict(seeded["department"])
+        CURRENT["dept"] = dept
+        cal_summary = seeded["summary"]
+        version = seeded["version"]
+        store.save_setting("data_source", {
+            "kind": "trust", "ods": ods,
+            "label": f"{profile.name} ({ods}) - committed set-up"
+                     + (f" [{seeded['workbook']}]" if seeded.get("workbook") else ""),
+            "source": profile.source, "as_of": profile.as_of})
+        store.save_setting("provenance", {"rows": trusts.provenance(profile),
+                                          "notes": trusts.notes(profile)})
+        return jsonify({"ok": True, "department": dept.to_dict(), "version": version,
+                        "provenance": trusts.provenance(profile),
+                        "notes": trusts.notes(profile),
+                        "calibration_summary": cal_summary,
+                        "source": profile.source, "as_of": profile.as_of})
+
     dept = trusts.to_department(profile)
     CURRENT["dept"] = dept
     version = store.save_department(dept.to_dict())

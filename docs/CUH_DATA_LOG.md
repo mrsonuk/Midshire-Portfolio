@@ -291,6 +291,54 @@ hidden every queue and left the map near-constant), and each area carries a
 24-hour wait series so the wait caption follows the time slider instead of
 repeating one whole-week mean at every hour.
 
+### The picker and the seed CLI must produce the same department
+
+A 7-hour ED-cubicle wait on the control tower turned out not to be a modelling
+error at all: **"Use this trust → Cambridge" was not loading the CUH set-up.**
+`/api/trust/select` applied only the published aggregate distributions and
+reimplemented the rest of `seed()`, so it left the department on template
+capacity with `enabled = [rat, sdec, paeds, mh]`. Two consequences did the
+damage: `fit_to_sit` was OFF, so every ambulatory patient fell back into the
+cubicles, and `community_capacity` stayed at 60/day instead of CUH's 1.
+
+The banner said so all along — *"Still assumptions: physical capacity"* — while
+the map showed an ED minors node and an MH liaison node that Cambridge does not
+have. Selecting the trust now delegates to `seed()` whenever a committed set-up
+workbook exists, so the drop-down and `python -m uec_hybrid.ingest.seed RGT`
+give byte-identical departments.
+
+| ED cubicles, after picking Cambridge | Before | After |
+|---|---|---|
+| Mean wait | 454 min | **26 min** |
+| At 21:00 | 670 min | **28 min** |
+| `assumed` list | includes physical capacity | capacity is real |
+
+### What the search recommends, and why it is not always a nurse
+
+On the broken configuration the only move clearing the confidence gate was
+"add a triage nurse", which made the search look one-note. On the corrected
+Cambridge department the ranking is quite different:
+
+| Move | Δ 4-hour | 95% lower bound |
+|---|---|---|
+| **20 more community / virtual-ward discharge places** | **+5.1** | **+2.0** |
+| Add 1 triage nurse 10:00–14:00 | +2.5 | −0.3 |
+| Add 1 EM junior doctor 08:00–15:00 | **−1.9** | −3.5 |
+
+That top result is the model reading CUH's own data back: community capacity is
+**1/day**, so discharge places are the binding lever. And note the SHO scoring
+*worse* than baseline while `ed_doctor` sits at 94% utilisation — with the wards
+full, processing patients through the front door faster only moves them into the
+"wait for inpatient bed" queue. The pinch-point copy used to assert "add
+capacity here first" on the saturated resource; it now states where the queue
+forms and points at the ranked search, because the saturated resource is not
+always where the fix is.
+
+Also fixed: capacity moves for resources the department does not have are no
+longer offered. "Add 2 minor-injury spaces" was being simulated against a
+Cambridge build with no minors node, then reported as "+0.0, within the noise" —
+which reads as a considered rejection rather than an impossible move.
+
 ### Left deliberately unset
 
 CUH answered **0** for ED minor-injury spaces: minor injuries are physically

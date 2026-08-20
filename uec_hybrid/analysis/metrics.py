@@ -308,7 +308,16 @@ def diagnose(result: dict, pathway: Pathway) -> dict:
     headline = (f"Biggest delay: <b>{worst['stage_label']}</b> - mean wait "
                 f"{worst['mean_wait']:.0f} min ({worst['lost_hours']:.0f} patient-hours lost).")
     if constraint and cu >= 80:
-        rec = f"<b>{pretty}</b> is the binding constraint ({cu:.0f}% utilisation); add capacity here first."
+        # State the observation, not a remedy. A saturated resource is where the
+        # queue FORMS, which is not always where the fix is: when the wards are
+        # full, unblocking the front door just moves the queue to "wait for
+        # bed". At Cambridge ed_doctor runs at 94% yet adding one scores WORSE
+        # than baseline, while 20 more community discharge places is the single
+        # best move - so point at the ranked search rather than pre-judging it.
+        rec = (f"<b>{pretty}</b> is the binding constraint ({cu:.0f}% utilisation) - "
+               f"that is where this queue forms. Test relieving it in the search "
+               f"below, and compare it against the downstream moves: if beds are "
+               f"full, freeing this step can simply move the queue.")
     elif constraint and cu >= 60:
         rec = f"<b>{pretty}</b> is busy ({cu:.0f}% utilisation) and likely drives this queue."
     else:

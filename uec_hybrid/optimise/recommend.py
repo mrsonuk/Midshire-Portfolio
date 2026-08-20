@@ -89,6 +89,20 @@ def _candidates(dept, wf) -> list:
     return out
 
 
+def applicable_moves(moves: list, raw: dict) -> list:
+    """Drop moves that cannot apply to THIS department.
+
+    A capacity move whose resource is not in the built pathway is a guaranteed
+    no-op that still costs a full paired simulation and then reports "+0.0,
+    within the noise" - which reads as a considered rejection rather than an
+    impossible move. Cambridge has no ED minors node at all (its minor-injury
+    capacity is 0 because minors are seen in the UTC), so "Add 2 minor-injury
+    spaces" was being offered and silently doing nothing.
+    """
+    have = raw.get("resources", {}) or {}
+    return [m for m in moves if m["kind"] != "capacity" or m.get("resource") in have]
+
+
 def _apply(dept, move):
     d = copy.deepcopy(dept)
     if move["kind"] == "shift":
@@ -139,10 +153,11 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
     book = book or load_cost_book()
     wf = workforce_view(dept)
     moves = _candidates(dept, wf)
-    if limit:
-        moves = moves[:limit]
 
     base_raw = _raw_for(dept, None, calibration)
+    moves = applicable_moves(moves, base_raw)
+    if limit:
+        moves = moves[:limit]
     days = max(1.0, (base_raw.get("sim_duration_minutes", 10080)
                      - base_raw.get("warmup_minutes", 1440)) / 1440.0)
     base = _table(base_raw, reps, base_seed)

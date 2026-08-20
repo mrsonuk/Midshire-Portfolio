@@ -210,6 +210,20 @@ def main():
     for r in rec["recommendations"] + rec["rejected"]:
         assert {"delta_four_hour", "delta_low", "summary", "annual_benefit"} <= set(r)
     assert all(r["delta_low"] > 0 for r in rec["recommendations"]), "CI gate leaked noise"
+    # a capacity move whose resource does not exist in the built pathway must
+    # never be offered: it burns a paired simulation and then reports "+0.0,
+    # within the noise", which reads as a considered rejection rather than an
+    # impossible move (Cambridge has no ED minors node at all)
+    from ..optimise.recommend import applicable_moves
+    _moves = [{"kind": "capacity", "resource": "minor_injury_space", "add": 2},
+              {"kind": "capacity", "resource": "cubicle", "add": 2},
+              {"kind": "sd", "param": "inpatient_beds", "add": 10}]
+    _raw_no_minors = {"resources": {"cubicle": 30}}
+    _kept = applicable_moves(_moves, _raw_no_minors)
+    assert [m.get("resource") or m.get("param") for m in _kept] == ["cubicle", "inpatient_beds"], \
+        "capacity moves for absent resources must be dropped; non-capacity moves kept"
+    assert len(applicable_moves(_moves, {"resources": {"cubicle": 30,
+                                                       "minor_injury_space": 6}})) == 3
     print(f"Recommend OK: {rec['n_candidates']} candidates evaluated, "
           f"{len(rec['recommendations'])} confident, {len(rec['rejected'])} within noise.")
 
@@ -763,6 +777,18 @@ def main():
     # batch-2 imaging workload must ride the same drop-down path, not just the seed
     assert cal_rgt["patch"]["imaging"] == {"ct": 0.1828, "xray": 0.3918}
     assert any("Imaging workload" in s for s in sel_rgt["calibration_summary"])
+    # PICKING A TRUST MUST EQUAL SEEDING IT. The drop-down used to apply only the
+    # published distributions, leaving Cambridge on template capacity with
+    # fit-to-sit switched OFF - every ambulatory patient piled into the cubicles
+    # and the control tower showed 7-hour cubicle waits. The UI path and the CLI
+    # path must produce the same department.
+    _sel_dept = Department.from_dict(store.load_department())
+    assert _sel_dept.capacity.get("cubicle") == 34, _sel_dept.capacity
+    assert _sel_dept.capacity.get("minor_injury_space") == 0, _sel_dept.capacity
+    assert _sel_dept.community_capacity == 1, _sel_dept.community_capacity
+    assert set(_sel_dept.enabled) == {"rat", "utc", "fit_to_sit", "paeds", "sdec", "frailty"}, \
+        _sel_dept.enabled
+    assert "physical capacity" not in client.get("/api/data-status").get_json()["assumed"]
     ds_rgt = client.get("/api/data-status").get_json()
     assert "arrival profile & acuity mix" not in ds_rgt["assumed"], ds_rgt["assumed"]
     # a trust with NO committed aggregates still starts clean
