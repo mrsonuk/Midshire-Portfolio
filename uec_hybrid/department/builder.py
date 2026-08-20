@@ -9,7 +9,7 @@ import copy
 import json
 from pathlib import Path
 
-from .config import AREAS, Department
+from .config import AREAS, ZERO_CAPACITY_NODES, Department
 from ..workforce.rota import staffing_by_hour
 from ..workforce.roles import STAFF_RESOURCES
 
@@ -48,6 +48,25 @@ def build(dept: Department) -> dict:
             disabled_nodes.add(n); node_area[n] = a
         fallback[a] = AREAS[a]["fallback"]; mode[a] = AREAS[a]["mode"]
 
+    # --- core nodes declared out of existence via an explicit capacity of 0 ---
+    # (e.g. CUH has no ED minor-injury spaces - minors are seen in the UTC).
+    # Folded into the same disable/rewrite pass, keyed as a pseudo-area. Only
+    # applies when the inheriting fallback node itself survives; otherwise the
+    # template node stays (floored to 1 below) rather than routing into a void.
+    zero_removed = {}                     # removed node id -> its config entry
+    for res, cfg in ZERO_CAPACITY_NODES.items():
+        if (getattr(dept, "capacity", None) or {}).get(res) != 0:
+            continue
+        fb = cfg["fallback"]
+        fb_disabled = fb in disabled_nodes or any(
+            fb in AREAS[a]["nodes"] for a in disabled_areas)
+        if fb_disabled:
+            continue
+        key = f"zero:{cfg['node']}"
+        disabled_nodes.add(cfg["node"]); node_area[cfg["node"]] = key
+        fallback[key] = fb; mode[key] = "reroute"
+        zero_removed[cfg["node"]] = cfg
+
     if disabled_nodes:
         for node in raw["nodes"]:
             sid = node["id"]
@@ -72,6 +91,11 @@ def build(dept: Department) -> dict:
             continue                       # 24/7: nothing to gate
         entry = AREAS[a]["nodes"][0]       # the area's entry node
         fb = AREAS[a]["fallback"]
+        if fb in zero_removed:
+            # the area's usual closed-hours fallback was declared out of
+            # existence (capacity 0) - divert to its stated substitute instead
+            fb = next((s for s in zero_removed[fb].get("closed_substitute", [])
+                       if s in nodes_by_id), fb)
         node = nodes_by_id.get(entry)
         if node is not None and fb in nodes_by_id and fb != entry:
             node["open_hours"] = [int(o), int(c)]

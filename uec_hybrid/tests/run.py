@@ -495,10 +495,33 @@ def main():
     assert any("service times" in a for a in ds_seed["assumed"]), ds_seed["assumed"]
     _seed_dept = Department.from_dict(store.load_department())
     assert _seed_dept.capacity["cubicle"] == 34 and _seed_dept.capacity["resus_bay"] == 6
-    assert _seed_dept.capacity["cdu_bed"] == 0, "CUH runs no CDU - the explicit 0 must survive"
     assert set(_seed_dept.enabled) == {"rat", "utc", "fit_to_sit", "paeds", "sdec", "frailty"}, \
         f"CUH runs no EEMAC, CDU or MH area: {_seed_dept.enabled}"
     assert _seed_dept.community_capacity == 1, "virtual ward only, not 60/day"
+    # optional components stay selectable in Design my ED with data-backed
+    # defaults: EEMAC carries its REAL pilot size (22) while switched off, and
+    # CDU deliberately has NO count (the cdu:no toggle carries nonexistence; an
+    # explicit 0 would floor to a fake 1-bed queue if CDU were ever enabled)
+    assert _seed_dept.capacity["eemac_space"] == 22, _seed_dept.capacity
+    assert "cdu_bed" not in _seed_dept.capacity, _seed_dept.capacity
+    _later = Department.from_dict(_seed_dept.to_dict())
+    _later.enabled = list(_later.enabled) + ["eemac"]
+    assert build_dept(_later)["resources"]["eemac_space"] == 22, \
+        "enabling EEMAC in Design my ED must open it at the real pilot size"
+    # CUH has NO ED minor-injury spaces (minors are seen in the UTC): the
+    # explicit 0 removes the node, streams Acuity 4/5 to the UTC, and diverts
+    # overnight (UTC closed) minors to the 24/7 fit-to-sit area
+    assert _seed_dept.capacity["minor_injury_space"] == 0
+    _craw = build_dept(_seed_dept)
+    assert not any(n["id"] == "ed_minor_injury" for n in _craw["nodes"]), \
+        "an explicit 0 must remove the ED minors node for Cambridge"
+    _stream = next(n for n in _craw["nodes"] if n["id"] == "streaming")
+    _a4 = dict((t, p) for t, p in _stream["routes_by_class"]["Acuity 4"])
+    assert abs(_a4["utc_minor_illness"] - 0.8) < 1e-9, _a4
+    _utc = next(n for n in _craw["nodes"] if n["id"] == "utc_minor_illness")
+    assert _utc.get("closed_fallback") == "ed_ambulatory", _utc.get("closed_fallback")
+    # ...while a department WITHOUT the explicit 0 keeps the template node
+    assert any(n["id"] == "ed_minor_injury" for n in build_dept(Department.default())["nodes"])
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted).")
 

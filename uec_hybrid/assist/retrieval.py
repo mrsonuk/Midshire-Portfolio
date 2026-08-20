@@ -30,12 +30,12 @@ _CHUNK_CHARS = 700                       # cap per doc chunk (keeps replies read
 # what the product does and where - curated, kept in step with the UI
 PRODUCT_CARDS = [
     ("Start from your trust",
-     "On “Set up my ED” pick your trust from the registry and the whole model is "
+     "On “Design my ED” pick your trust from the registry and the whole model is "
      "pre-filled from its published NHS figures (attendances, beds, performance), "
      "with the source of every number shown. The registry lives in a CSV "
      "(uec_hybrid/data/nhs_trust_snapshot.csv) so new trusts are a data edit, not code."),
     ("Import your data from Excel",
-     "On “Set up my ED”, download the Excel template, fill in the tabs (Overview, "
+     "On “Design my ED”, download the Excel template, fill in the tabs (Overview, "
      "Areas, Rota, Arrivals, AcuityMix, Costs, ServiceTimes) and import it back - "
      "the entire department, rota, demand profile, costs and service times update "
      "in one go. CSV works too. Re-import any time to update."),
@@ -55,7 +55,7 @@ PRODUCT_CARDS = [
      "is a pathway stage - click one to drill into its queue and timings; the tiles "
      "above show the standards from simulated weeks; the slider replays the day "
      "hour by hour."),
-    ("Set up my ED",
+    ("Design my ED",
      "Where the department is configured without code: attendances per day, "
      "inpatient beds, community capacity, which areas you run (SDEC, RAT, UTC, "
      "frailty, paediatrics, mental health, CDU) and their opening hours - plus the "

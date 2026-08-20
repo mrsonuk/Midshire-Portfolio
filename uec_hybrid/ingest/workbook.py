@@ -1,6 +1,6 @@
 """
 Workbook ingest: a trust fills in one Excel (or CSV) template and uploads it,
-instead of anyone editing JSON/Python. The template mirrors the "Set up my ED"
+instead of anyone editing JSON/Python. The template mirrors the "Design my ED"
 model exactly, so a non-technical user configures the whole department from a
 spreadsheet:
 
@@ -414,7 +414,7 @@ def build_template() -> Workbook:
     intro.title = "Instructions"
     for i, line in enumerate([
         ["Model ED Optimiser - department set-up workbook"],
-        ["Fill in the tabs, then upload this file in 'Set up my ED'. No coding needed."],
+        ["Fill in the tabs, then upload this file in 'Design my ED'. No coding needed."],
         [""],
         ["Overview     - your department's headline figures (name, ODS code, attendances/day, beds)."],
         ["Areas        - tick (yes/no) the areas you run, and their opening hours (0-24)."],

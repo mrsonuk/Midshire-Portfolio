@@ -150,7 +150,7 @@ def _fmt_department(provider):
     return (f"{d.get('name', 'Your ED')}: about {d.get('attendances_per_day', 0):.0f} attendances/day, "
             f"{d.get('inpatient_beds', 0)} inpatient beds, community capacity "
             f"{d.get('community_capacity', 0)}. Areas switched on: {areas}. "
-            f"Change any of this in “Set up my ED”.")
+            f"Change any of this in “Design my ED”.")
 
 
 def _fmt_glossary(message):

@@ -285,6 +285,42 @@ told us.
   "36-chair capacity confirmed" on another, and 30 in the ops template. The
   build uses 30; CUH to reconcile.
 
+## Cambridge-first product (from the ops return)
+
+The front end is now CUH's: **CUH ED Control Tower** (text lockup in NHS blue —
+no trademark artwork is used or recreated), subtitle naming Cambridge University
+Hospitals / Addenbrooke's, and a fresh install auto-seeds the RGT build through
+the product's own seed path, so the product opens on Cambridge rather than the
+generic template. The trust picker and workbook import remain available on the
+**Design my ED** screen (renamed from "Set up my ED").
+
+The live patient flow shows only components CUH actually runs; Design my ED
+keeps the full nine-component catalogue as toggles, and enabling one re-runs the
+tower with it in the flow. Optional components carry data-backed defaults where
+data exists:
+
+* **EEMAC** — off, but its capacity is recorded as the REAL pilot (22 spaces,
+  08:00–00:00), so enabling it later starts from the pilot, not a guess.
+* **CDU** — off, with deliberately NO count (the `cdu: no` toggle carries
+  nonexistence; if ever enabled, the template default applies and is labelled an
+  assumption — no CUH figure exists).
+* **MH area** — off; the 1 real assessment room is recorded for if it opens.
+
+**Minors are re-routed.** CUH's explicit `minor_injury_space = 0` now REMOVES
+the ED minors node (new `ZERO_CAPACITY_NODES` seam in `department/config.py` /
+`builder.py` — an explicit 0 declares a core node out of existence, distinct
+from a blank which keeps the template estimate). Acuity 4/5 minors stream to the
+UTC in its open hours; overnight, with UTC minors shut, they divert to the 24/7
+fit-to-sit area — a **LABELLED ASSUMPTION**, since no data says where CUH's
+overnight minors actually go. That question joins the CUH ask list:
+
+* **Where are minor injuries seen between 00:30 and 08:00?** (UTC minors hours
+  are 08:00–00:30; arrivals data shows minors do arrive overnight.)
+
+Effect on the simulated Cambridge build: 4-hour 59.1% (vs 61.9% before the
+re-route; CUH internal basis 60.88%), LWBS 0.4%, 12-hour unchanged — and no
+fake single-space minors queue.
+
 ## Still open, and not from CHEQS
 
 1. **Physical capacity counts** — cubicles, trolleys, resus bays, SDEC chairs,

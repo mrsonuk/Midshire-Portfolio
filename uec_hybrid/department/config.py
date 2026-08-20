@@ -56,6 +56,20 @@ AREAS = {
            "why": "1-hour mental-health assessment that speeds the right onward care."},
 }
 
+# Core nodes a trust can declare OUT OF EXISTENCE by giving their physical
+# resource an explicit capacity of 0 (distinct from the AREAS toggles, which
+# cover optional areas - these are template nodes some trusts simply don't
+# have). ``fallback`` inherits the node's patients; ``closed_substitute`` is
+# tried in order when an enabled part-time area's closed-hours fallback pointed
+# at the removed node (e.g. the UTC's overnight fallback IS ed_minor_injury -
+# at CUH minors are seen in the UTC, so overnight minors divert to the 24/7
+# fit-to-sit area instead: a labelled assumption until the trust says where
+# overnight minors actually go).
+ZERO_CAPACITY_NODES = {
+    "minor_injury_space": {"node": "ed_minor_injury", "fallback": "utc_minor_illness",
+                           "closed_substitute": ["ed_ambulatory", "ed_cubicles"]},
+}
+
 # default opening hours [open, close] per area; [0, 24] == always open (24/7)
 DEFAULT_HOURS = {k: list(a.get("hours", [0, 24])) for k, a in AREAS.items()}
 

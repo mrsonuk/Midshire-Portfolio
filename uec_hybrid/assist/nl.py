@@ -144,7 +144,7 @@ def parse_question(question: str, raw: dict):
             if not _nurse_ready():
                 note = ("skipped nurses - no nurse-to-cubicle ratio is configured, so "
                         "nurses don't limit flow in this model (edit the rota on the "
-                        "rota in Set up my ED instead)")
+                        "rota in Design my ED instead)")
                 if note not in notes:
                     notes.append(note)
                 return

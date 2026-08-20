@@ -1,6 +1,6 @@
 """
 Flask app for the Model ED Optimiser, trimmed to two screens: the control
-tower (live flow map, standards, what-if, chatbot) and Set up my ED (pick a
+tower (live flow map, standards, what-if, chatbot) and Design my ED (pick a
 trust, import a workbook, or configure by hand). Everything runs offline.
 """
 from __future__ import annotations
@@ -40,8 +40,8 @@ def home():
 
 _FAVICON = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
             "<rect width='64' height='64' rx='12' fill='#005EB8'/>"
-            "<text x='32' y='43' font-family='Arial,Helvetica,sans-serif' font-size='26' "
-            "font-weight='bold' fill='#fff' text-anchor='middle'>ED</text></svg>")
+            "<text x='32' y='41' font-family='Arial,Helvetica,sans-serif' font-size='20' "
+            "font-weight='bold' fill='#fff' text-anchor='middle'>CUH</text></svg>")
 
 
 @app.route("/favicon.ico")
@@ -70,15 +70,23 @@ CURRENT = {"dept": None}
 
 
 def _dept() -> Department:
-    """The saved department, shared by the control tower and Set up my ED and
+    """The saved department, shared by the control tower and Design my ED and
     persisted across restarts. Reloads from the store when present so
     multi-worker deployments never serve a stale in-memory copy."""
     saved = store.load_department()
     if saved:
         CURRENT["dept"] = Department.from_dict(saved)
     elif CURRENT["dept"] is None:
-        CURRENT["dept"] = Department.default()
-        store.save_department(CURRENT["dept"].to_dict())
+        # Cambridge-first: a fresh install opens on the CUH (RGT) build, stood
+        # up through the product's own seed path (workbook + published figures
+        # + calibration). Any failure falls back to the generic template.
+        try:
+            from ..ingest.seed import seed as _run_seed
+            _run_seed("RGT")
+            CURRENT["dept"] = Department.from_dict(store.load_department())
+        except Exception:
+            CURRENT["dept"] = Department.default()
+            store.save_department(CURRENT["dept"].to_dict())
     return CURRENT["dept"]
 
 
@@ -259,7 +267,7 @@ def api_data_status():
     warnings = []
     if not src:
         warnings.append("The department is running on demonstration defaults - pick "
-                        "your trust or import your data on “Set up my ED” before "
+                        "your trust or import your data on “Design my ED” before "
                         "using any figure operationally.")
     if not cal:
         warnings.append("No attendance calibration is loaded - arrival patterns and "
