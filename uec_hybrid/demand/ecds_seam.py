@@ -199,10 +199,20 @@ def apply_patch(raw: dict, patch: dict) -> dict:
     routing = patch.get("area_routing") or {}
     if routing:
         _apply_area_routing(raw, routing)
-    for node_id, mean in (patch.get("service_means") or {}).items():
+    for node_id, spec in (patch.get("service_means") or {}).items():
         node = next((n for n in raw.get("nodes", []) if n.get("id") == node_id), None)
-        if node and isinstance(node.get("service"), dict) and mean:
-            node["service"] = {**node["service"], "mean": round(float(mean), 1)}
+        if not node or not isinstance(node.get("service"), dict) or not spec:
+            continue
+        if isinstance(spec, dict):
+            # per-acuity service: where a trust's acuity bands ARE its areas, a
+            # single pooled time cannot represent a department whose post-DTA
+            # wait runs 460 min on a majors trolley and 66 in minors
+            base = node["service"]
+            node["service_by_class"] = {
+                cls: {**base, "mean": round(float(m), 1)}
+                for cls, m in spec.items() if m}
+        else:
+            node["service"] = {**node["service"], "mean": round(float(spec), 1)}
     imaging = patch.get("imaging") or {}
     if imaging:
         _apply_imaging(raw, imaging)

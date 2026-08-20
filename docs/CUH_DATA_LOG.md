@@ -489,22 +489,56 @@ Volumes and case-mix are now right. The residual ~0.85x on volumes is the
 documented counting-basis gap (model runs at the published 400.5/day, CUH's
 internal area counts total 446/day).
 
+### Second pass (20 Aug 2026): two of the three closed
+
+**Per-area bed waits — closed.** One pooled `await_inpatient_bed` could not
+represent a trust whose post-DTA wait runs 460 min on a majors trolley and 66 in
+minors. Because acuity maps 1:1 to area here, the per-area waits are now carried
+as `service_by_class` (the engine already supported it). Result against CUH's
+observed `dta_to_departure`:
+
+| Band / area | Model | CUH | |
+|---|---|---|---|
+| Acuity 1 / resus | 130 | 131 | 0.99x |
+| Acuity 2 / majors trolleys | 457 | 460 | 0.99x |
+| Acuity 3 / majors ambulant | 117 | 138 | 0.85x |
+| Acuity 4 / minors | 73 | 66 | 1.12x |
+
+**Ambulance handover — closed, and it needed a structural fix, not a number.**
+Two things were wrong. The bay was released at `streaming`, so a crowded ED
+never backed up into the ambulance queue; and CUH's own note ("RAT is for
+assessment of patients arriving by ambulance only") means ambulance patients are
+assessed *on arrival*, not queued through the walk-in streaming desk. Ambulance
+arrivals now route handover -> RAT directly, and the crew holds the bay until
+RAT accepts the patient. Handover is now **88.1% within 45 min against CUH's
+84.19%**, and it responds to crowding through the RAT queue as it should.
+
+Per-area treatment times were then calibrated against each area's observed TID
+median. Length of stay improved from (1.59 / 0.50 / 1.11 / 0.55 / 1.79) to
+**(1.01 / 0.56 / 1.22 / 0.61 / 1.29)** for resus / trolleys / ambulant / minors
+/ paeds.
+
+**Seen within 15 minutes — NOT closed, and it should not be quoted.** The model
+reads ~77% against CUH's 41.8%, and the gap is a definition mismatch rather than
+a tuning error. The model's `initial_assessment` is the front-door event
+(streaming for walk-ins, RAT for ambulance arrivals). CUH's recorded
+"Arr-Init Ass" is that same event for the ambulance-fed areas — trolleys 0.5 min,
+resus 2.3, which the model now reproduces — but for minors it is a *clinician*
+assessment 37 min into the visit, inside the minors area, not triage. The two
+series measure different events for low-acuity patients, so forcing them to
+agree would mean modelling the wrong thing. Slowing the front door to hit the
+headline number was tested and rejected: it reaches 42% overall but drives
+Acuity 4 to 0% against CUH's 20.9% and collapses the 4-hour figure.
+
 ### Still wrong, and stated plainly
 
-* **Per-area length of stay.** Majors trolleys 0.50x (365 vs 725 min), minors
-  0.55x, resus 1.59x, paeds 1.79x. Only majors ambulant (1.11x) is close.
-  Attempting to close this by lengthening treatment times does not work and
-  should not be tried: at CUH a 725-minute trolley stay is mostly *waiting*, and
-  inflating the service time collapses the queue instead. The fix is per-area
-  DTA waits rather than one pooled `await_inpatient_bed`, since CUH's own
-  dta_to_departure varies 3.5x by area (trolleys 460 min vs ambulant 138).
-* **Seen within 15 minutes: 65.9% modelled against 41.8% observed.** The model
-  streams patients faster than CUH does.
-* **Ambulance handover is structurally unreachable.** The tile reads ~99%
-  against CUH's real 84.19%, and no parameter will fix it: `handover_bay` is
-  released at `streaming`, so a crowded ED never backs up into the ambulance
-  queue. Real handover delay is caused by having nowhere to offload the patient.
-  Representing it needs the handover bay held until an ED space is available.
+* **Majors trolleys length of stay: 0.56x** (408 vs 725 min). The bed wait is
+  now right, so the shortfall is upstream - CUH's trolley patients spend longer
+  in the department before the decision than the model does. Lengthening
+  treatment further destabilises the queue before it closes the gap.
+* **Minors length of stay: 0.61x** (100 vs 164 min) and **paeds 1.29x**.
+* **12-hour waits: 6.9% against 3.7% observed** - still about double.
+* **Seen within 15 minutes** - a definition mismatch, see above. Do not quote.
 
 None of these three needs anything further from CUH — the data to close them is
 already in `data/cuh/`.

@@ -229,7 +229,11 @@
         "mental_health_attr": "mental_health",
         "frailty_attr": "frailty",
         "eemac_node": "eemac",
-        "nurse_to_cubicle_ratio": 4
+        "nurse_to_cubicle_ratio": 4,
+        "initial_assessment_stages": [
+            "streaming",
+            "rat"
+        ]
     },
     "sd": {
         "inpatient_beds": 320,
@@ -305,7 +309,7 @@
             },
             "routes": [
                 [
-                    "streaming",
+                    "rat",
                     1.0
                 ]
             ]
@@ -326,12 +330,6 @@
                 "paediatric": [
                     [
                         "paeds_assessment",
-                        1.0
-                    ]
-                ],
-                "ambulance": [
-                    [
-                        "rat",
                         1.0
                     ]
                 ]
@@ -395,10 +393,7 @@
                         0.3
                     ]
                 ]
-            },
-            "release": [
-                "handover_bay"
-            ]
+            }
         },
         {
             "id": "direct_specialty_bypass",
@@ -485,7 +480,18 @@
                         0.3
                     ]
                 ]
-            }
+            },
+            "routes_by_attribute": {
+                "paediatric": [
+                    [
+                        "paeds_assessment",
+                        1.0
+                    ]
+                ]
+            },
+            "release": [
+                "handover_bay"
+            ]
         },
         {
             "id": "utc_minor_illness",

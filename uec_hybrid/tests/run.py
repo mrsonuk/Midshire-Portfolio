@@ -540,17 +540,31 @@ def main():
     # ambulance only"). Routing every walk-in Acuity 1-3 through RAT made its
     # queue unstable at Cambridge's real acuity mix (63% of adults into ~127
     # patients/day of capacity -> 20-hour mean waits on the front page).
-    # Ambulance patients route to rat by ATTRIBUTE; walk-ins go direct to the
-    # same downstream mix (composed through RAT's old onward splits); RAT
-    # covers every acuity because ambulance A4/A5 are assessed there too.
-    assert _stream["routes_by_attribute"]["ambulance"] == [["rat", 1.0]]
-    assert list(_stream["routes_by_attribute"]) == ["paediatric", "ambulance"], \
-        "paediatric must stay first: an ambulance-arriving child belongs in paeds"
+    # Ambulance patients reach RAT DIRECTLY from handover - they are assessed on
+    # arrival, not queued through the walk-in streaming desk first. CUH's own
+    # arrival-to-assessment medians are 0.5-2.3 min for the ambulance-fed areas
+    # against 27-37 for walk-ins, which routing them through streaming could not
+    # reproduce. RAT covers every acuity because ambulance A4/A5 arrive too.
+    _hand = next(n for n in _craw["nodes"] if n["id"] == "ambulance_handover")
+    assert _hand["routes"] == [["rat", 1.0]], _hand["routes"]
     for cls, lst in _stream["routes_by_class"].items():
         assert all(t != "rat" for t, _ in lst), f"walk-in {cls} must not route to RAT"
     _rat = next(n for n in _craw["nodes"] if n["id"] == "rat")
     assert set(_rat["routes_by_class"]) == {f"Acuity {i}" for i in range(1, 6)}, \
         "RAT must route every acuity - ambulance A4/A5 are assessed there too"
+    assert _rat["routes_by_attribute"]["paediatric"] == [["paeds_assessment", 1.0]], \
+        "an ambulance-arriving child still belongs in the paediatric area"
+    # the crew holds the ambulance bay until ED staff (RAT) accept the patient,
+    # so a crowded department backs up into the ambulance queue
+    assert _rat.get("release") == ["handover_bay"], _rat.get("release")
+    # a BEDDED patient keeps their trolley until they physically leave; ambulant
+    # space frees at the clinical decision (bedded_care=False: they wait in a
+    # waiting area, not on a trolley)
+    _disp = next(n for n in _craw["nodes"] if n["id"] == "disposition")
+    assert _disp.get("release") == ["fit_to_sit_chair"], _disp.get("release")
+    for _exit in ("discharge", "transfer_to_ward"):
+        _n = next(n for n in _craw["nodes"] if n["id"] == _exit)
+        assert "cubicle" in (_n.get("release") or []), f"{_exit} must free the trolley"
     print(f"Cambridge seed OK: RGT registry row + committed workbook stand the "
           f"department up reproducibly (v{v1}, provenance persisted); RAT is "
           f"ambulance-only per the CUH ops return.")

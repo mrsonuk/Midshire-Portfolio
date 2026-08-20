@@ -46,9 +46,15 @@ def kpis(result: dict, pathway: Pathway) -> dict:
             } for name, sub in patients.groupby("stream")}
 
     # initial assessment within 15 minutes (Model ED front-door standard)
-    node = pathway.uec.get("initial_assessment_node")
-    if node and not events.empty:
-        first = events[events["stage"] == node].groupby("pid")["service_start"].min()
+    # a department can have more than one front door: at CUH walk-ins are
+    # assessed at the streaming desk and ambulance arrivals by the RAT clinician
+    # on arrival, and the 15-minute clock starts from whichever the patient met
+    stages = pathway.uec.get("initial_assessment_stages")
+    if not stages:
+        one = pathway.uec.get("initial_assessment_node")
+        stages = [one] if one else []
+    if stages and not events.empty:
+        first = events[events["stage"].isin(stages)].groupby("pid")["service_start"].min()
         arr = patients.set_index("pid")["arrival"]
         ttia = (first - arr.reindex(first.index)).dropna()
         if len(ttia):

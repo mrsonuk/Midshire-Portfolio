@@ -142,7 +142,14 @@ def patch_from_aggregates(agg: dict, attendances_per_day: float | None = None
 
     svc, src = _block(agg, "area_service_mins")
     if svc:
-        clean = {str(k): float(v) for k, v in svc.items() if v}
+        clean = {}
+        for k, v in svc.items():
+            if isinstance(v, dict):        # per-acuity times (area-mapped bands)
+                per = {str(c): float(x) for c, x in v.items() if x}
+                if per:
+                    clean[str(k)] = per
+            elif v:
+                clean[str(k)] = float(v)
         if clean:
             patch["service_means"] = clean
             summary.append(f"Per-area treatment times applied ({len(clean)} areas, calibrated "
