@@ -143,7 +143,7 @@ def parse_question(question: str, raw: dict):
         if res == "ed_nurse":             # via the nurse-to-cubicle ratio, not a resource
             if not _nurse_ready():
                 note = ("skipped nurses - no nurse-to-cubicle ratio is configured, so "
-                        "nurses don't limit flow in this model (edit the rota on the "
+                        "nurses do not limit flow in this model (edit the rota on the "
                         "rota in Design my ED instead)")
                 if note not in notes:
                     notes.append(note)
@@ -276,14 +276,14 @@ def _narrate(notes, deltas, reps) -> str:
                for key, label, _, _ in ANSWER_KEYS
                if (d := deltas.get(key)) and abs(d["delta"]) >= 0.5]
     body = ("; ".join(changed) if changed
-            else "no standard moved by more than half a point - this change is within the model's noise at this demand")
+            else "no standard moved by more than half a point - this change is within the model noise at this demand")
     fh = deltas.get("four_hour")
     verdict = ""
     if fh and fh["delta"] >= 1:
         verdict = " Overall this change helps."
     elif fh and fh["delta"] <= -1:
         verdict = " Overall this change makes the 4-hour position worse."
-    return (f"I modelled: {'; '.join(notes)}. Across {reps} simulated weeks: {body}.{verdict} "
+    return (f"Modelled: {'; '.join(notes)}. Across {reps} simulated weeks: {body}.{verdict} "
             f"Differences under ~1 point may be Monte-Carlo noise.")
 
 
@@ -299,7 +299,7 @@ def run_what_if(question: str, raw: dict, reps: int = 6, use_llm: bool = True) -
             scenario, notes = parsed
             llm_used = True
     if scenario is None:
-        return {"error": "I couldn't turn that into a change I can simulate.",
+        return {"error": "Could not turn that into a change to simulate.",
                 "notes": notes, "supported": EXAMPLES}
 
     p = Pathway.from_dict(raw)

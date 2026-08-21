@@ -62,7 +62,7 @@ async function loadActions(){
   actions.forEach(a=>{
    const row=el('div','pinch');row.style.marginTop='6px';
    row.innerHTML='<b>'+a.at.slice(0,16).replace('T',' ')+'</b>'
-    +(a.author?' — '+a.author:'')+'<br>'+a.note
+    +(a.author?' - '+a.author:'')+'<br>'+a.note
     +'<span class="sub" style="display:block">model v'+(((a.context||{}).department||{}).version||'?')
     +' · '+((((a.context||{}).source)||{}).label||'demo data')+'</span>';
    box.append(row);
@@ -116,7 +116,7 @@ async function chatSend(){
   const r=await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
    body:JSON.stringify({message:q,history:CHAT.hist})});
   const d=await r.json();
-  wait.textContent=d.reply||'Sorry — something went wrong.';
+  wait.textContent=d.reply||'Sorry - something went wrong.';
   if(d.intent&&d.intent!=='help'){
    const t=el('span','tag',d.intent.replace(/_/g,' ')+(d.llm_used?' · AI wording':''));
    wait.appendChild(document.createElement('br'));wait.appendChild(t);
@@ -129,9 +129,9 @@ async function chatSend(){
 $('#chatFab').onclick=()=>{
  const p=$('#chatPanel');p.classList.toggle('open');
  if(p.classList.contains('open')){
-  if(!$('#chatMsgs').children.length)
-   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, “what if we add 3 nurses at 1pm?”, or “how do I import my data?”');
-  $('#chatIn').focus();
+  if(!$(‘#chatMsgs’).children.length)
+   chatAdd(‘bot’,’Hello - ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 3 nurses at 1pm?”’);
+  $(‘#chatIn’).focus();
  }
 };
 $('#chatClose').onclick=()=>$('#chatPanel').classList.remove('open');
@@ -184,7 +184,7 @@ async function runAsk(){
   $('#askOut').innerHTML='<div class="h">What the model says'+(d.llm_used?' <span class="advis">AI-assisted wording</span>':'')+'</div>'+
    '<p>'+d.answer+'</p>'+
    '<table class="rota"><tr><th>Standard</th><th style="text-align:right">Now</th><th style="text-align:right">With change</th><th style="text-align:right">Δ points</th></tr>'+rows+'</table>'+
-   '<p class="hint">Every number comes from the simulation (scenario vs baseline over paired simulated weeks). This is a what-if — it does not change your saved department.</p>';
+   '<p class="hint">Every number comes from the simulation (scenario vs baseline over paired simulated weeks). This is a what-if - it does not change your saved department.</p>';
  }catch(e){$('#askStatus').textContent='Error: '+e.message;}
 }
 $('#askBtn').onclick=runAsk;
@@ -237,13 +237,28 @@ function renderTower(d){
  ].join('');
  const ph=d.bottleneck_peak_hours||[];
  const when=ph.length?`worst around ${HH(Math.min(...ph))}-${HH((Math.max(...ph)+1)%24)}`:'';
+ const recsHTML=(d.recommendations||[]).length?'<div style="margin-top:10px"><b style="font-size:13px">What should change:</b>'+
+  d.recommendations.map(r=>{
+   const rejected=r.rejected||false;
+   const borderColor=rejected?'#cbd5e0':'var(--aqua)';
+   const bgColor=rejected?'#f7fafc':'#f0f9ff';
+   const rejectedBadge=rejected?'<span style="display:inline-block;margin-left:6px;font-size:10px;font-weight:600;color:#718096;background:#e2e8f0;padding:2px 6px;border-radius:3px">INCONCLUSIVE</span>':'';
+   return '<div style="margin:6px 0;padding:8px 10px;background:'+bgColor+';border-left:3px solid '+borderColor+';border-radius:6px'+(rejected?';opacity:0.85':'')+'>'+
+    '<div style="font-weight:700;font-size:12.5px">'+r.title+rejectedBadge+'</div>'+
+    '<div style="font-size:12px;color:var(--grey);margin-top:2px">'+r.summary+'</div>'+
+    (r.weekly_cost?'<div style="font-size:11px;color:var(--grey);margin-top:2px">~£'+r.weekly_cost.toLocaleString()+'/week</div>':'')
+   +'</div>';
+  }).join('')+'</div>':'<p style="font-size:12.5px;color:var(--grey);margin-top:8px">'+
+   (d.recommendation_note||'No statistically confident improvements found in the standard search.')+'</p>';
  $('#towerBody').innerHTML=`
   <div class="card"><h2>How your department is running</h2>
    <p class="sub">${Math.round(s.attendances_per_day)} attendances a day. Each dot shows a typical week on the good-to-tough range.</p>
    <div class="tiles">${tiles}</div></div>
   <div class="pinch"><div class="h">Your busiest pinch-point: ${strip(d.bottleneck)} ${when?'('+when+')':''}</div>
-   <p>${d.headline_bottleneck||''}</p><p>${d.recommendation||''}</p>
-   <button id="recBtn" class="sec" style="margin-top:10px">What should we change? Search staffing, capacity and hours</button>
+   <p>${d.headline_bottleneck||''}</p>
+   ${d.diagnostic?'<p style="font-size:12.5px;color:var(--grey)">'+d.diagnostic+'</p>':''}
+   ${recsHTML}
+   <button id="recBtn" class="sec" style="margin-top:10px">Search all staffing, capacity and hours changes</button>
    <div class="status" id="recStatus"></div><div id="recOut"></div></div>
   <div class="card"><h2>Live flow through your department</h2>
    <p class="sub">Each box is an area; the number is how many patients are in it right now (or
@@ -320,6 +335,10 @@ function renderFlow(data){
     (n.caption?`<div class="cap">${n.caption}</div>`:'')+
     `<div class="vol" data-vol>${Math.round(n.volume).toLocaleString()}</div>`+
     (n.kind==='process'?`<div class="wt">wait ${Math.round(n.mean_wait)}m</div>`:'');
+  if(n.severe_wait){
+   c.classList.add('severe');
+   c.style.animation='pulse 1.6s infinite';
+  }
   c.onclick=()=>{SEL=n;markSelected();drill(n);};
   c.onmouseenter=()=>highlight(n.id,true);
   c.onmouseleave=()=>highlight(null,false);

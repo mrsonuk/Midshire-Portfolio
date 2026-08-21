@@ -771,7 +771,7 @@ def main():
              "what if we add 2 doctors": ("what_if", "simulated"),
              "what if we add 3 nurses at 1pm?": ("what_if", "simulated"),
              # a near-miss what-if explains itself instead of shrugging
-             "what if we add 2 unicorns?": ("what_if_help", "couldn't set it up"),
+             "what if we add 2 unicorns?": ("what_if_help", "setup failed"),
              # how-to questions the router can't match come from retrieval (RAG)
              "how do I import my data from excel?": ("knowledge", "template"),
              # "calibration" must not substring-match the glossary term "rat"

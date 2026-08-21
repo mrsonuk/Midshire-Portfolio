@@ -262,11 +262,11 @@ def sd_interpretation(result: dict) -> dict:
         f"Inpatient bed occupancy averaged {occ.mean():.0f}% (peak {occ.max():.0f}%) and sat "
         f"above the 92% exit-block line {over92:.0f}% of the week; mental-health bed occupancy "
         f"averaged {mh.mean():.0f}%. The orange ED-crowding index (mean {crowd.mean():.0f}%) rises "
-        f"as those stocks fill — the fuller and longer occupancy stays above 92%, the more "
+        f"as those stocks fill - the fuller and longer occupancy stays above 92%, the more "
         f"admissions stall and patients board in the ED.")
     feedback = (
         f"The red bed-wait multiplier averaged ×{bwm.mean():.1f} (peak ×{bwm.max():.1f}): that is how "
-        f"much a full hospital stretches the wait for an inpatient bed — the exit-block that roughly "
+        f"much a full hospital stretches the wait for an inpatient bed - the exit-block that roughly "
         f"doubles admitted length-of-stay. The green community-pull line (mean {pull.mean():.2f} of 1) "
         f"is the opposite force: community/virtual-ward headroom that discharges the ward faster and "
         f"relieves the ED. When red is high and green is low, the ED is being squeezed from downstream.")

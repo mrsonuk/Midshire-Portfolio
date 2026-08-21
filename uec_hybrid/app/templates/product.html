@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>CUH ED Control Tower</title>
+<title>Emergency Department Control Tower</title>
 <style>
  :root{--dark:#003087;--blue:#005EB8;--bright:#0072CE;--aqua:#00A9CE;--green:#009639;
   --yellow:#FFB81C;--orange:#ED8B00;--red:#DA291C;--grey:#425563;--black:#231F20;--line:#E8EDEE;--page:#EEF2F4;}
@@ -55,6 +55,7 @@
  .fmnode.bottleneck{border:2px solid var(--red);animation:pulse 1.6s infinite}
  .fmnode .flag{position:absolute;top:-9px;right:-7px;background:var(--red);color:#fff;font-size:8.5px;font-weight:800;padding:1px 5px;border-radius:8px}
  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(218,41,28,.45)}70%{box-shadow:0 0 0 9px rgba(218,41,28,0)}100%{box-shadow:0 0 0 0 rgba(218,41,28,0)}}
+ .fmnode.severe{border:2px solid var(--red);border-top-width:4px}
  .drill{margin-top:14px;background:#f7fafc;border:1px solid var(--line);border-left:5px solid var(--aqua);border-radius:9px;padding:14px 16px;font-size:13.5px;display:none}
  .drill .dhead{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
  .drill .dhead .t{font-size:15.5px;font-weight:800;color:var(--dark)}
@@ -143,9 +144,9 @@
 </head>
 <body>
 <header><div class="logo"><img src="/static/cuh-logo.png"
-  alt="Cambridge University Hospitals NHS Foundation Trust"></div><div>
- <h1>CUH ED Control Tower</h1>
- <p>Addenbrooke's Emergency Department &middot; built on the NHS Model ED</p>
+  alt="Cambridge University Hospitals NHS Foundation Trust" style="display:none"></div><div>
+ <h1>ED Control Tower</h1>
+ <p>Your Emergency Department &middot; built on the NHS Model ED</p>
 </div></header>
 <nav id="nav">
  <a class="active" data-tab="tower">Control tower</a>
@@ -156,13 +157,12 @@
  <section class="panel active" id="panel-tower">
   <div id="dataStatus" role="status" aria-live="polite" style="display:none;margin:0 0 10px;padding:8px 12px;border-radius:6px;font-size:13px"></div>
   <div id="towerBody"><div class="loading"><span class="spin"></span> Running your department...</div></div>
-  <div class="card"><h2>Ask a what-if</h2>
-   <p class="sub">Type a change in plain English and the model will run it against your department —
-    e.g. “add 2 doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more attendances”,
-    “40 more ward beds”, “divert 20% of minors” — or a goal like “what would it take to reach 90% in 4 hours?”. Time windows like “from 8pm to 8am” apply the
-    change to just those hours.</p>
-   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="What if we add 3 nurses at 1pm?">
-   <button id="askBtn" class="sec" style="margin-top:8px">Run what-if</button>
+  <div class=”card”><h2>What-if scenarios</h2>
+   <p class=”sub”>Simulate changes to capacity, staffing, demand, or bed availability.
+    Examples: “add 2 doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more attendances”,
+    “40 more ward beds”, “divert 20% of minors”. Goal queries: “what would it take to reach 90% in 4 hours?”. Time windows: “from 8pm to 8am” apply changes to specific hours.</p>
+   <input type=”text” id=”askQ” style=”width:100%;max-width:640px” placeholder=”add 3 nurses at 1pm”>
+   <button id=”askBtn” class=”sec” style=”margin-top:8px”>Run scenario</button>
    <div class="status" id="askStatus"></div>
    <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
   </div>
@@ -170,7 +170,7 @@
 
  <section class="panel" id="panel-setup">
   <div class="card"><h2>Decision log</h2>
-   <p class="sub">Record what the team decided and why — each entry is stamped with the model
+   <p class="sub">Record what the team decided and why - each entry is stamped with the model
     state it was decided against, and entries can never be edited or deleted (audit-safe).</p>
    <input type="text" id="actAuthor" placeholder="Your name / role (optional)" style="max-width:260px" aria-label="Author">
    <input type="text" id="actNote" placeholder="e.g. Opened escalation cubicles from 14:00 based on today's projection" style="width:100%;max-width:640px;margin-top:6px" aria-label="Decision note">
@@ -180,7 +180,7 @@
   </div>
   <div class="card"><h2>Start from your trust</h2>
    <p class="sub">Skip the manual set-up: load your trust's published figures, or import a filled-in
-    spreadsheet. Either way the fields below fill in automatically — you can then fine-tune and re-run.</p>
+    spreadsheet. Either way the fields below fill in automatically - you can then fine-tune and re-run.</p>
    <label>Load a trust's published figures</label>
    <select id="trustPick" style="min-width:340px;max-width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:6px;font-size:14px">
     <option value="">Select your NHS trust…</option></select>
@@ -190,7 +190,7 @@
    <hr style="border:0;border-top:1px solid var(--line);margin:16px 0">
    <label>Or import an Excel workbook</label>
    <p class="sub"><a id="dlTemplate" href="/api/trust/template">Download the template</a>,
-    fill in the tabs (areas, beds, rota, optional arrivals), then upload it here — no coding needed.</p>
+    fill in the tabs (areas, beds, rota, optional arrivals), then upload it here - no coding needed.</p>
    <input type="file" id="trustFile" accept=".xlsx,.csv" style="font-size:13px">
    <button id="importTrust" class="sec">Import workbook</button>
    <div class="status" id="importStatus"></div>
@@ -216,13 +216,13 @@
 
 <button id="chatFab">💬 Ask your ED</button>
 <div id="chatPanel">
- <div id="chatHead"><span>Ask your ED — answers from your model</span><span class="x" id="chatClose">✕</span></div>
+ <div id="chatHead"><span>Ask your ED - answers from your model</span><span class="x" id="chatClose">✕</span></div>
  <div id="chatMsgs"></div>
  <div id="chatBar">
-  <input type="text" id="chatIn" placeholder="e.g. where is demand? where should I deploy?">
+  <input type="text" id="chatIn" placeholder="e.g. where is demand? which areas are bottlenecks?">
   <button id="chatSend">Send</button>
  </div>
- <div id="chatHint">Every number comes from your department's simulation — nothing is invented.</div>
+ <div id="chatHint">Every number comes from your department's simulation - nothing is invented.</div>
 </div>
 
 <script src="/static/provenance.js"></script>

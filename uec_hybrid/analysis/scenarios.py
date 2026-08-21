@@ -173,22 +173,22 @@ def interpret(rows: list[dict], tor: dict | None = None) -> str:
         d = [(r["scenario"], r["four_hour"] - base["four_hour"]) for r in rows[1:]]
         best, worst = max(d, key=lambda x: x[1]), min(d, key=lambda x: x[1])
         if best[1] >= 0.5:
-            out.append(f"‘{best[0]}’ improves the 4-hour standard most: +{best[1]:.1f} points "
+            out.append(f"'{best[0]}' improves the 4-hour standard most: +{best[1]:.1f} points "
                        f"on the {base['four_hour']:.0f}% baseline.")
         else:
             out.append(f"No scenario materially lifts the 4-hour standard above the "
                        f"{base['four_hour']:.0f}% baseline.")
         if worst[1] <= -0.5 and worst[0] != best[0]:
-            out.append(f"‘{worst[0]}’ is the biggest risk ({worst[1]:.1f} points).")
+            out.append(f"'{worst[0]}' is the biggest risk ({worst[1]:.1f} points).")
     if "twelve_hour" in base:
         d12 = min(((r["scenario"], r["twelve_hour"] - base["twelve_hour"]) for r in rows[1:]),
                   key=lambda x: x[1])
         if d12[1] <= -0.5:
-            out.append(f"12-hour waits fall most under ‘{d12[0]}’ ({d12[1]:.1f} points).")
+            out.append(f"12-hour waits fall most under '{d12[0]}' ({d12[1]:.1f} points).")
     if tor and tor.get("bars"):
         top = tor["bars"][0]
         out.append(f"Sensitivity: the {tor.get('metric', 'four_hour').replace('_', ' ')} result is "
-                   f"most sensitive to ‘{top['lever']}’ ({top['delta']:+.1f} points) — the lever that "
+                   f"most sensitive to '{top['lever']}' ({top['delta']:+.1f} points) - the lever that "
                    f"moves the number most.")
     out.append("Bracketed figures are change vs baseline; each is a Monte-Carlo mean, so "
                "small differences may be within noise.")

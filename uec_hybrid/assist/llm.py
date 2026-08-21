@@ -67,8 +67,8 @@ def parse_with_llm(question: str, raw: dict):
         resp = _client().messages.create(
             model=MODEL,
             max_tokens=2048,
-            system=("You translate a plain-English NHS emergency-department what-if "
-                    "question into a structured change set for a simulation. Only "
+            system=("Translate plain-English NHS emergency-department what-if "
+                    "questions into structured change sets for simulation. Only "
                     "capture changes the question actually asks for; use null for "
                     "anything not mentioned. 'understood' restates the change in "
                     "one short plain sentence."),
@@ -119,10 +119,10 @@ def narrate(payload: dict):
         resp = _client().messages.create(
             model=MODEL,
             max_tokens=1024,
-            system=("You narrate results from an NHS emergency-department simulation "
-                    "for a non-technical operations audience. Write 2-4 plain "
-                    "sentences. Use ONLY the numbers present in the JSON you are "
-                    "given (you may round to one decimal). Never invent, extrapolate "
+            system=("Narrate results from NHS emergency-department simulation "
+                    "for non-technical operations audience. Write 2-4 plain "
+                    "sentences. Use ONLY the numbers present in the JSON provided "
+                    "(round to one decimal). Never invent, extrapolate "
                     "or compute new figures. Mention that differences under about one "
                     "percentage point may be simulation noise. British English."),
             messages=[{"role": "user", "content": json.dumps(payload)}],

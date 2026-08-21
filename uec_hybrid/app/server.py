@@ -40,8 +40,8 @@ def home():
 
 _FAVICON = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
             "<rect width='64' height='64' rx='12' fill='#005EB8'/>"
-            "<text x='32' y='41' font-family='Arial,Helvetica,sans-serif' font-size='20' "
-            "font-weight='bold' fill='#fff' text-anchor='middle'>CUH</text></svg>")
+            "<text x='32' y='41' font-family='Arial,Helvetica,sans-serif' font-size='22' "
+            "font-weight='bold' fill='#fff' text-anchor='middle'>ED</text></svg>")
 
 
 @app.route("/favicon.ico")
@@ -424,7 +424,9 @@ def _chat_provider() -> dict:
         return {"bottleneck": ct.get("bottleneck"),
                 "peak_hours": ct.get("bottleneck_peak_hours"),
                 "headline": ct.get("headline_bottleneck"),
-                "recommendation": ct.get("recommendation")}
+                "diagnostic": ct.get("diagnostic"),
+                "recommendations": ct.get("recommendations", []),
+                "recommendation_note": ct.get("recommendation_note", "")}
 
     return {
         "department": lambda: {
@@ -501,8 +503,23 @@ def _control_tower_payload(seed=2):
         ct = control_tower(res, p)
         diag = diagnose(res, p)
         ct["standards"] = _standards(d)
-        ct["recommendation"] = diag["recommendation"]
+        ct["diagnostic"] = diag["recommendation"]
         ct["headline_bottleneck"] = diag["headline"]
+
+        # Add CI-gated actionable recommendations
+        from ..optimise.recommend import recommend
+        patch = _calibration_patch("your_department")
+        book = load_cost_book()
+        rec = recommend(d, calibration=patch, book=book, reps=4, limit=3)
+
+        # Surface both approved and rejected recommendations
+        approved = rec.get("recommendations", [])[:3]
+        rejected = rec.get("rejected", [])[:3] if not approved else []
+        ct["recommendations"] = approved if approved else [
+            {**r, "rejected": True} for r in rejected
+        ]
+        ct["recommendation_note"] = rec.get("note", "")
+
         return ct
     return store.cached_or_compute("control_tower", {"raw": raw, "seed": seed}, compute)
 

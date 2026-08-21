@@ -41,6 +41,10 @@ PHYSICAL_MOVES = [
      "title": "Add 2 minor-injury spaces", "cost_band": "Low"},
     {"kind": "capacity", "resource": "handover_bay", "add": 1,
      "title": "Add an ambulance handover bay", "cost_band": "Low"},
+    {"kind": "capacity", "resource": "fit_to_sit_chair", "add": 4,
+     "title": "Add 4 fit to sit chairs (ED ambulatory)", "cost_band": "Low"},
+    {"kind": "capacity", "resource": "paeds_cubicle", "add": 2,
+     "title": "Add 2 paediatric assessment spaces", "cost_band": "Moderate"},
 ]
 
 # fallbacks matching the what-if defaults, for a raw built without an sd block
@@ -189,6 +193,20 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
             weekly = (weekly or 0) + _shift_cost_per_week(
                 ws["role"], ws["start"], ws["end"], ws.get("count", 1))
         net = (fin["annual_benefit"] - weekly * 52) if weekly else None
+
+        # Generate why_rejected explanation for non-confident moves
+        why_rejected = None
+        if lo <= 0:
+            if mean < -1.0:
+                why_rejected = f"Makes performance worse ({mean:+.1f} points on 4-hour standard)"
+            elif abs(mean) < 0.5:
+                why_rejected = "Effect too small to distinguish from random variation"
+            else:
+                why_rejected = f"Improvement ({mean:+.1f} points) is within statistical noise"
+
+            if lwbs_d > 5.0:
+                why_rejected += f"; also increases LWBS by {lwbs_d:.1f}%"
+
         return {
             "move": move,
             "title": move["title"], "kind": move["kind"],
@@ -201,6 +219,7 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
             "summary": (f"+{mean:.1f} points on the 4-hour standard "
                         f"(at least +{lo:.1f} with 95% confidence)" if lo > 0 else
                         f"about +{mean:.1f} points, but within the noise - not recommended"),
+            "why_rejected": why_rejected,
         }
 
     results = [evaluate(move, base, reps) for move in moves]

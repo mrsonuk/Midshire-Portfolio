@@ -21,7 +21,7 @@ BAND_LABEL = {
 
 # Plain captions so the flow map distinguishes process steps from final outcomes.
 NODE_CAPTION = {
-    "Discharge": "In ED — final checks",
+    "Discharge": "In ED - final checks",
     "Discharged": "Went home",
     "Discharged to community": "To community / virtual ward",
     "Admitted": "To inpatient ward",
@@ -98,6 +98,7 @@ def flow_model_data(result: dict, pathway: Pathway) -> dict:
             u = max([util.get(r, 0.0) for r in res], default=0.0)
             w = float(waits.loc[n, "mean_wait"]) if n in waits.index else 0.0
             status = "green" if w < 15 else ("amber" if w < 60 else "red")
+            severe = w >= 120  # 2+ hour waits are severe
             nodes.append({
                 "id": n, "label": n,
                 "caption": NODE_CAPTION.get(n),
@@ -105,6 +106,7 @@ def flow_model_data(result: dict, pathway: Pathway) -> dict:
                 "y": 0.5 if k == 1 else 0.06 + 0.88 * (i / (k - 1)),
                 "volume": inflow[n], "mean_wait": round(w),
                 "utilisation": round(u), "kind": kind(n), "status": status,
+                "severe_wait": severe,
                 "band": node.get("band"), "is_bottleneck": n == diag.get("worst_stage")})
 
     links = [{"source": r["source"], "target": r["target"], "value": int(r["value"])}
