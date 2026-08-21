@@ -129,9 +129,9 @@ async function chatSend(){
 $('#chatFab').onclick=()=>{
  const p=$('#chatPanel');p.classList.toggle('open');
  if(p.classList.contains('open')){
-  if(!$(‘#chatMsgs’).children.length)
-   chatAdd(‘bot’,’Hello - ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 3 nurses at 1pm?”’);
-  $(‘#chatIn’).focus();
+  if(!$('#chatMsgs').children.length)
+   chatAdd('bot','Hello — ask me anything about your department. Try “where is demand?”, “where should I deploy staff?”, “what’s the pinch point?”, or “what if we add 3 nurses at 1pm?”');
+  $('#chatIn').focus();
  }
 };
 $('#chatClose').onclick=()=>$('#chatPanel').classList.remove('open');

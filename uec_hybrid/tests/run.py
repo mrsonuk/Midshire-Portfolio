@@ -793,7 +793,27 @@ def main():
     client = flask_app.test_client()
     for page in ("/", "/favicon.ico"):
         assert client.get(page, follow_redirects=True).status_code == 200, f"{page} failed"
-    print("Pages OK: the control tower (with Set up my ED) serves.")
+    # the browser-side scripts must PARSE. A curly quote pasted in as a string
+    # delimiter ($(‘#chatMsgs’)) is a SyntaxError that kills the whole file, so
+    # no JavaScript runs at all and the page hangs on "Running your
+    # department..." with a perfectly healthy 200 from every endpoint. Curly
+    # quotes inside display text are fine; used as delimiters they are not.
+    import subprocess as _sp
+    _static = Path(__file__).resolve().parent.parent / "app" / "static"
+    _js = sorted(_static.glob("*.js"))
+    assert _js, "no front-end scripts found"
+    for _f in _js:
+        _src = _f.read_text(encoding="utf-8")
+        for _bad in ("($‘", "(‘", "(’", ",‘", ",’", "=‘", "=’",
+                     "‘)", "’)", "‘;", "’;", "‘,", "’,"):
+            assert _bad not in _src, (
+                f"{_f.name}: curly quote used as a code delimiter ({_bad!r}) - "
+                "this is a SyntaxError and stops the whole page working")
+        if _sp.run(["node", "--version"], capture_output=True).returncode == 0:
+            _r = _sp.run(["node", "--check", str(_f)], capture_output=True, text=True)
+            assert _r.returncode == 0, f"{_f.name} does not parse:\n{_r.stderr[:400]}"
+    print(f"Pages OK: the control tower (with Design my ED) serves; "
+          f"{len(_js)} front-end scripts parse.")
 
     # --- data-driven set-up endpoints: pick a trust, download + import a workbook ---
     tl = client.get("/api/trusts").get_json()["trusts"]
