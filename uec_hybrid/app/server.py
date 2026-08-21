@@ -32,10 +32,25 @@ def _calibration_patch(scope):
     return cal["patch"] if cal else None
 
 
+def _asset_version() -> int:
+    """A version stamp for static assets, from their newest mtime. Appending it
+    as ?v= to every asset URL makes each deploy a NEW URL, so a browser can
+    never keep serving last week's product.js (or a stale broken logo) against
+    this week's page - a failure mode that has bitten this build three times."""
+    static = Path(__file__).resolve().parent / "static"
+    try:
+        return int(max(f.stat().st_mtime for f in static.iterdir() if f.is_file()))
+    except ValueError:
+        return 0
+
+
+ASSET_V = _asset_version()
+
+
 @app.route("/")
 def home():
     # The product: a flow-first control tower for designing/running the ED.
-    return render_template("product.html")
+    return render_template("product.html", asset_v=ASSET_V)
 
 
 _FAVICON = ("<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"

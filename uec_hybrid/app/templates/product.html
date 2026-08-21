@@ -143,7 +143,7 @@
 </style>
 </head>
 <body>
-<header><div class="logo"><img src="/static/cuh-logo.png"
+<header><div class="logo"><img src="/static/cuh-logo.png?v={{ asset_v }}"
   alt="Cambridge University Hospitals NHS Foundation Trust" style="display:none"></div><div>
  <h1>CUH ED Control Tower</h1>
  <p>Addenbrooke's Emergency Department &middot; built on the NHS Model ED</p>
@@ -157,12 +157,12 @@
  <section class="panel active" id="panel-tower">
   <div id="dataStatus" role="status" aria-live="polite" style="display:none;margin:0 0 10px;padding:8px 12px;border-radius:6px;font-size:13px"></div>
   <div id="towerBody"><div class="loading"><span class="spin"></span> Running your department...</div></div>
-  <div class=”card”><h2>What-if scenarios</h2>
-   <p class=”sub”>Simulate changes to capacity, staffing, demand, or bed availability.
+  <div class="card"><h2>What-if scenarios</h2>
+   <p class="sub">Simulate changes to capacity, staffing, demand, or bed availability.
     Examples: “add 2 doctors”, “add 3 nurses at 1pm”, “remove a doctor overnight”, “10% more attendances”,
     “40 more ward beds”, “divert 20% of minors”. Goal queries: “what would it take to reach 90% in 4 hours?”. Time windows: “from 8pm to 8am” apply changes to specific hours.</p>
-   <input type=”text” id=”askQ” style=”width:100%;max-width:640px” placeholder=”add 3 nurses at 1pm”>
-   <button id=”askBtn” class=”sec” style=”margin-top:8px”>Run scenario</button>
+   <input type="text" id="askQ" style="width:100%;max-width:640px" placeholder="add 3 nurses at 1pm">
+   <button id="askBtn" class="sec" style="margin-top:8px">Run scenario</button>
    <div class="status" id="askStatus"></div>
    <div id="askOut" class="pinch" style="display:none;border-left-color:var(--aqua)"></div>
   </div>
@@ -225,7 +225,7 @@
  <div id="chatHint">Every number comes from your department's simulation - nothing is invented.</div>
 </div>
 
-<script src="/static/provenance.js"></script>
-<script src="/static/product.js"></script>
+<script src="/static/provenance.js?v={{ asset_v }}"></script>
+<script src="/static/product.js?v={{ asset_v }}"></script>
 </body>
 </html>

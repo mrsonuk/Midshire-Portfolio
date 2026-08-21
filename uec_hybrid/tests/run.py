@@ -812,8 +812,38 @@ def main():
         if _sp.run(["node", "--version"], capture_output=True).returncode == 0:
             _r = _sp.run(["node", "--check", str(_f)], capture_output=True, text=True)
             assert _r.returncode == 0, f"{_f.name} does not parse:\n{_r.stderr[:400]}"
+    # the same disease hits HTML: curly quotes as ATTRIBUTE delimiters
+    # (id=”askBtn”) make the browser store the id with the curly quotes in it,
+    # so $('#askBtn') is null, the top-level wiring throws, and every statement
+    # after it - including `let LINKS` - never runs. The page then dies with
+    # "Cannot access 'LINKS' before initialization" while every API is healthy.
+    # Curly quotes in TEXT content are fine; as delimiters they are not.
+    _tpl_dir = Path(__file__).resolve().parent.parent / "app" / "templates"
+    for _t in sorted(_tpl_dir.glob("*.html")):
+        _h = _t.read_text(encoding="utf-8")
+        for _i, _line in enumerate(_h.split("\n"), 1):
+            assert "=\u201d" not in _line and "=\u2019" not in _line, (
+                f"{_t.name}:{_i}: curly quote used as an attribute delimiter - "
+                f"the browser will include it in the value: {_line.strip()[:90]}")
+    # and every element the page script wires AT TOP LEVEL must exist in the
+    # page - one missing id kills all wiring after it
+    import re as _re
+    _page = (_tpl_dir / "product.html").read_text(encoding="utf-8")
+    _pjs = (_static / "product.js").read_text(encoding="utf-8")
+    _depth = 0
+    for _i, _line in enumerate(_pjs.split("\n"), 1):
+        if _depth == 0:
+            for _m in _re.finditer(
+                    r"\$\('#([A-Za-z0-9_]+)'\)\s*\.(?:onclick|oninput|onchange|"
+                    r"addEventListener|value|textContent|innerHTML)", _line):
+                assert f'id="{_m.group(1)}"' in _page, (
+                    f"product.js:{_i} wires #{_m.group(1)} at top level but the "
+                    f"page has no such id - this throws and kills every "
+                    f"statement after it")
+        _depth += _line.count("{") - _line.count("}")
     print(f"Pages OK: the control tower (with Design my ED) serves; "
-          f"{len(_js)} front-end scripts parse.")
+          f"{len(_js)} scripts parse, attributes straight-quoted, "
+          f"top-level wiring matches the page.")
 
     # --- data-driven set-up endpoints: pick a trust, download + import a workbook ---
     tl = client.get("/api/trusts").get_json()["trusts"]
