@@ -312,7 +312,11 @@ let LINKS=[];
 function renderFlow(data){
  if(fmRAF){cancelAnimationFrame(fmRAF);fmRAF=null;}
  const host=$('#flow');host.innerHTML='';
- const W=host.clientWidth||1000,H=460,px=n=>60+n.x*(W-120),py=n=>40+n.y*(H-80);
+ // H follows the container: it was hard-coded to 460 while the CSS owned the
+ // real height, so giving the map more room did nothing and the busiest
+ // column drew ten boxes on top of each other.
+ const W=host.clientWidth||1000,H=host.clientHeight||460,
+       px=n=>60+n.x*(W-120),py=n=>40+n.y*(H-80);
  const byId={};data.nodes.forEach(n=>byId[n.id]=n);
  const maxV=Math.max(...data.links.map(l=>l.value),1);
  const svg=document.createElementNS(SVGNS,'svg');svg.setAttribute('width',W);svg.setAttribute('height',H);
