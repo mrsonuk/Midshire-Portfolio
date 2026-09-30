@@ -1,26 +1,37 @@
-"""Synthesize one wav per narration segment and record its exact duration."""
+# -*- coding: utf-8 -*-
+"""Speak every narration clip and record its exact duration.
+
+Kokoro (kokoro-onnx, onnx-community/Kokoro-82M-v1.0-ONNX), British voice
+bf_emma at speed 0.98. Every clip is generated up front so record.py knows how
+long each one runs before it starts driving the browser.
+"""
 import json, sys, wave
 from pathlib import Path
-from piper import PiperVoice
-from piper.config import SynthesisConfig
+import numpy as np
+from kokoro_onnx import Kokoro
 sys.path.insert(0, str(Path(__file__).parent))
-from narration import SEGMENTS
+from narration import SEGMENTS, STEPS
+
+MODEL  = "/tmp/kokoro/model.onnx"
+VOICES = "/tmp/kokoro/voices.npz"
+VOICE, SPEED = "bf_emma", 0.98
 
 OUT = Path(__file__).parent / "audio"; OUT.mkdir(exist_ok=True)
-voice = PiperVoice.load("/tmp/voices/en_GB-alan-medium.onnx")
-# a shade slower than default: this is a clinical audience reading figures
-cfg = SynthesisConfig(length_scale=1.06, volume=1.0)
+k = Kokoro(MODEL, VOICES)
 
 meta = []
-for i, (act, action, text) in enumerate(SEGMENTS):
-    f = OUT / f"seg{i:03d}.wav"
+for i, (step, action, text) in enumerate(SEGMENTS):
+    samples, sr = k.create(text, voice=VOICE, speed=SPEED, lang="en-gb")
+    pcm = (np.clip(samples, -1, 1) * 32767).astype("<i2")
+    f = OUT / f"clip{i:03d}.wav"
     with wave.open(str(f), "wb") as w:
-        voice.synthesize_wav(text, w, syn_config=cfg)
-    with wave.open(str(f)) as w:
-        dur = w.getnframes() / float(w.getframerate())
-    meta.append({"i": i, "act": act, "action": action, "text": text,
+        w.setnchannels(1); w.setsampwidth(2); w.setframerate(sr)
+        w.writeframes(pcm.tobytes())
+    dur = len(samples) / sr
+    meta.append({"i": i, "step": step, "title": STEPS.get(step, ""),
+                 "action": action, "text": text,
                  "wav": str(f), "dur": round(dur, 3)})
-    print(f"{i:3d} {dur:6.2f}s  {act[:28]:<28} {text[:50]}")
+    print(f"{i:3d} {dur:5.2f}s  step {step}  {text[:56]}")
 
 (Path(__file__).parent / "segments.json").write_text(json.dumps(meta, indent=1))
-print(f"\n{len(meta)} segments, speech total {sum(m['dur'] for m in meta)/60:.1f} min")
+print(f"\n{len(meta)} clips, {sum(m['dur'] for m in meta)/60:.1f} min of speech")

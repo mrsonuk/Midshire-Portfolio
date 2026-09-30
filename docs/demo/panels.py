@@ -27,7 +27,8 @@ def status_panel() -> str:
         out = ["<table>"]
         for r in chunk:
             cls, lbl = CHIP.get(r[2], ("n", r[2]))
-            out.append(f"<tr><td>{html.escape(r[0])}</td>"
+            tr = "<tr class='need'>" if cls == "r" else "<tr>"
+            out.append(f"{tr}<td>{html.escape(r[0])}</td>"
                        f"<td style='text-align:right'><span class='chip {cls}'>"
                        f"{html.escape(lbl)}</span></td></tr>")
         return "".join(out) + "</table>"
