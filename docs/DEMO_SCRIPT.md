@@ -144,11 +144,21 @@ Three practical notes:
 > *"Click any area and it tells you what that queue is waiting for: the spaces, the
 > staff, who is on at this hour, and where those patients came from and go to."*
 
-**Point at the pinch banner.**
+**Point at the pinch banner.** It carries *two* lines, and they name two different
+areas. Read both - someone will notice if you only read one.
 
-> *"And here is the headline. Biggest delay: ED ambulatory, fit-to-sit — mean wait
-> ninety-seven minutes, one thousand three hundred and fifty-seven patient-hours lost
-> in a week. That is the number I would take to a board."*
+> *"And here is the headline the banner gives you. Across the working day the pinch
+> point is the paediatric area - a mean wait of two hundred and forty-seven minutes,
+> biting hardest between eight and ten in the morning.*
+>
+> *ED ambulatory is the other half of the story. A shorter wait, ninety-seven minutes,
+> but eight hundred and forty-two patients a week pass through it, so it loses more
+> patient-hours than anywhere else in the department - one thousand three hundred and
+> fifty-seven of them in a week.*
+>
+> *Those are two different questions. Where does it hurt most sharply, and where does
+> it cost the most in total. The tool answers both, and they do not have to give the
+> same area."*
 
 ---
 
@@ -165,9 +175,16 @@ Three practical notes:
 > recommends one: add four fit-to-sit chairs, worth five point seven points on the
 > four-hour standard.*
 >
-> *Notice what just happened. It found the bottleneck independently — ED ambulatory —
-> and the change it recommends is chairs in that same area. Those two agreed without
-> being told to. And notice it is capacity, not staffing: the tool is not reaching for
+> *Notice where those chairs are. ED ambulatory - the area carrying the largest total
+> patient-hours lost. The recommender got there on its own, by simulation; nobody
+> pointed it at that area.*
+>
+> *And let me be precise, because it matters. The banner's working-day pinch is
+> paediatrics; the recommender's best move is in ambulatory. Those are two different
+> measures, and I would rather show you both than pick the one that tells the tidier
+> story.*
+>
+> *Notice too that it is capacity, not staffing: the tool is not reaching for
 > 'hire more people' as a reflex.*
 >
 > *The thirteen it rejected matter as much. A tool that recommends something every
@@ -184,16 +201,17 @@ Three practical notes:
 > the kind of thing that is very hard to see from a spreadsheet — the constraint was
 > never the doctors."*
 
-**Type:** `what would it take to reach 90% in 4 hours?` → Run. *(~33s — talk over it)*
+**Type:** `what would it take to reach 90% in 4 hours?` → Run. *(~33s cold, instant warm)*
 
-> *"While that runs — this one is a goal query. Instead of testing one change, it
-> stacks combinations until it either hits the target or runs out of things that
-> clear statistical significance.*
+> *"This one is a goal query. Instead of testing one change, it stacks combinations
+> until it either hits the target or runs out of things that clear statistical
+> significance.*
 >
 > *And I want to be straight with you about what it is about to say. It will not get
-> to ninety. It gets to about sixty-one, and then it tells you it cannot get further —
-> that even stacking every change that clears the confidence bar is not enough. A tool
-> that cheerfully told you ninety percent was two nurses away would be lying to you."*
+> to ninety. It reaches sixty point eight percent from a fifty-five point three
+> baseline, and then it tells you, in writing, that closing the rest needs levers
+> outside this search - demand diversion, or service-time change. A tool that
+> cheerfully told you ninety percent was two nurses away would be lying to you."*
 
 **Click:** the *Ask your ED* chat bubble → type `where is the pinch point?`
 
@@ -207,12 +225,13 @@ It answers: **"Pinch point: Paediatric area. Bites hardest 08:00–10:00."**
 * `where is demand?` → *"~400 attendances a day. Heaviest around 11:00–14:00, ~29/hour at peak."*
 * `what if we add 3 nurses at 1pm?` → it runs the scenario from the chat box.
 
-> ⚠️ **Know this before someone asks.** The chat says the pinch point is the
-> **paediatric area at 08:00–10:00**, while the banner above says the biggest delay is
-> **ED ambulatory**. Both are right and they measure different things: the chat gives
-> the worst *hour-by-hour* pinch, the banner gives the largest *total* patient-hours
-> lost across the week. If someone spots it, that is a good answer to have ready —
-> "one is the sharpest moment, the other is the biggest total cost".
+> ⚠️ **Know this before someone asks.** The chat, the banner's first line and the
+> recommender do not all name the same area, and that is correct rather than a bug.
+> The chat and the banner's pinch line both give the worst *hour-by-hour* pinch
+> (**paediatric area, 08:00-10:00**). The banner's second line and the recommender
+> both work from the largest *total* patient-hours lost across the week
+> (**ED ambulatory**). One is the sharpest moment, the other is the biggest total
+> cost. Read both lines of the banner aloud and the question does not arise.
 
 ---
 
