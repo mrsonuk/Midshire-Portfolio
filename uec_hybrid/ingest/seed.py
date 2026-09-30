@@ -150,10 +150,20 @@ def seed(ods_code: str, warm: bool = False) -> dict:
         # cache is hot and the product opens instantly
         from ..app.server import app
         client = app.test_client()
-        for method, url in (("post", "/api/control-tower"), ("get", "/api/exec"),
-                            ("post", "/api/gap")):
-            r = getattr(client, method)(url, json={} if method == "post" else None)
-            summary.append(f"warmed {url}: HTTP {r.status_code}")
+        # Warm what a DEMO actually touches, slowest first. /api/recommend is the
+        # expensive one (~30s cold, instant after) and was missing from this list,
+        # while /api/exec and /api/gap had not existed for some time and only ever
+        # warmed a 404. A non-200 here is reported, never swallowed.
+        for method, url, body in (
+                ("post", "/api/control-tower", {}),
+                ("post", "/api/recommend", {}),
+                ("get", "/api/data-status", None),
+                ("get", "/api/setup", None),
+                ("get", "/api/trusts", None)):
+            r = getattr(client, method)(url, json=body) if body is not None \
+                else getattr(client, method)(url)
+            flag = "" if r.status_code == 200 else "  <-- NOT WARM"
+            summary.append(f"warmed {url}: HTTP {r.status_code}{flag}")
     return out
 
 
