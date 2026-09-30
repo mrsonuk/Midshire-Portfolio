@@ -6,7 +6,7 @@ at which each caption appeared, and each wav is delayed to exactly that offset.
 If the app took longer on the day than the narration allowed, the words still
 land on the right screen.
 """
-import json, subprocess, sys
+import json, os, subprocess, sys
 from pathlib import Path
 
 HERE = Path(__file__).parent
@@ -34,7 +34,9 @@ parts.append("[mix]alimiter=limit=0.95,aresample=48000[aout]")
 
 cmd += ["-filter_complex", ";".join(parts),
         "-map", "0:v:0", "-map", "[aout]",
-        "-c:v", "libx264", "-crf", "21", "-preset", "medium",
+        # CRF 25 keeps the subtitles and the tile figures crisp while landing
+        # the 13-minute take near 30 MB, small enough to hand over directly.
+        "-c:v", "libx264", "-crf", os.environ.get("CRF", "25"), "-preset", "slow",
         "-pix_fmt", "yuv420p", "-r", "25",
         "-c:a", "aac", "-b:a", "160k",
         "-movflags", "+faststart", "-shortest", str(out)]
