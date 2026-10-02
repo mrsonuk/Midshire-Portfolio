@@ -54,45 +54,95 @@ class Simulation:
     event_log: list = field(default_factory=list)
     patient_log: list = field(default_factory=list)
     holds: list = field(default_factory=list)
+    # trace=True also records every patient's state intervals (queue / service
+    # at each node) and every arrival and departure, UNFILTERED by warm-up and
+    # including journeys still open when the run stops. It only logs - it draws
+    # nothing from the random stream - so a traced run is identical to an
+    # untraced one with the same seed.
+    trace: bool = False
 
     def __post_init__(self):
         self.rng = np.random.default_rng(self.seed)
         self.env = simpy.Environment()
         if self.state is None:
             self.state = SystemState()
-        # A capacity may be a fixed integer OR a 24-length by-hour roster (staffing
-        # that varies through the day). For a roster we build the resource at its
-        # peak and a shift-manager parks the off-shift units each hour.
+        # A capacity may be a fixed integer OR a roster: 24 values (by hour of
+        # day, repeating daily) or 168 values (by hour of week, Monday 00:00 =
+        # t 0). For a roster we build the resource at its peak and a
+        # shift-manager parks the off-shift units.
+        #
+        # ZERO MEANS ZERO. SimPy cannot build a resource of capacity 0, so a
+        # capacity of 0 (or a roster that is 0 at every hour) is built as ONE
+        # unit that the shift manager parks from t=0, before any patient can
+        # arrive. Patients routed there queue; nobody is served by a member of
+        # staff who is not on the rota.
         self.resources = {}
         self.rosters = {}
         for name, cap in self.pathway.resources.items():
             if isinstance(cap, (list, tuple)):
-                roster = [int(round(c)) for c in cap]
-                peak = max(1, max(roster))
-                self.rosters[name] = roster
-                self.resources[name] = simpy.PriorityResource(self.env, capacity=peak)
+                roster = [max(0, int(round(c))) for c in cap]
+            elif int(cap) <= 0:
+                roster = [0] * 24
             else:
                 self.resources[name] = simpy.PriorityResource(self.env, capacity=int(cap))
+                continue
+            if len(roster) not in (24, 168):
+                raise ValueError(f"{name}: a roster must have 24 (hour of day) or "
+                                 f"168 (hour of week) values, got {len(roster)}")
+            self.rosters[name] = roster
+            self.resources[name] = simpy.PriorityResource(self.env, capacity=max(1, max(roster)))
         self._pid = 0
+        self._open = {}                  # pid -> [node, phase, start] (trace only)
+        self.state_log = []
+        self.arrival_log = []
+        self.departure_log = []
 
     def _shift_manager(self, name, roster):
-        """Hold (peak - roster[hour]) units off-shift each hour via top-priority
-        dummy requests, so the available units track the staffing rota."""
+        """Hold (peak - roster[hour]) units off-shift via top-priority parking
+        requests, so the available units track the staffing rota.
+
+        All the parking requests a reduction needs are lodged AT ONCE, so every
+        unit that frees after a shift ends goes off shift before any patient can
+        take it. (Lodging them one at a time let freed units go back to the queue
+        while the first park was still pending, so a rota cut took effect slowly
+        and an "off-shift" clinician kept seeing patients.) Patients already in
+        service finish; nobody new starts with someone who is not on. When the
+        rota rises again, pending parks are cancelled before granted ones are
+        released."""
         res = self.resources[name]
         peak = res.capacity
-        held = []
+        period = len(roster)
+        held = []                                             # granted or pending
         while True:
-            hour = int((self.env.now / 60) % 24)
+            hour = int(self.env.now // 60) % period
             target = peak - max(0, min(peak, roster[hour]))   # units to park off-shift
             while len(held) < target:
-                req = res.request(priority=-10 ** 9)          # always wins a freed unit
-                yield req
-                held.append(req)
+                held.append(res.request(priority=-10 ** 9))   # always wins a freed unit
             while len(held) > target:
-                res.release(held.pop())
-            # re-evaluate every 15 min so staffing reductions take effect as units
-            # free, rather than only on the hour
+                req = held.pop()                              # newest (pending) first
+                if req.triggered:
+                    res.release(req)
+                else:
+                    req.cancel()
+            # re-evaluate every 15 min (rotas change on the hour; this also keeps
+            # the check cheap)
             yield self.env.timeout(15)
+
+    # -- trace (state intervals) ------------------------------------------- #
+    def _enter(self, pid, node_id, phase):
+        """Close the patient's open state interval and open a new one."""
+        now = self.env.now
+        cur = self._open.get(pid)
+        if cur is not None:
+            self.state_log.append((pid, cur[0], cur[1], cur[2], now))
+        self._open[pid] = [node_id, phase, now]
+
+    def _leave(self, pid, sink_id):
+        now = self.env.now
+        cur = self._open.pop(pid, None)
+        if cur is not None:
+            self.state_log.append((pid, cur[0], cur[1], cur[2], now))
+        self.departure_log.append((pid, now, sink_id))
 
 
     # -- arrivals ---------------------------------------------------------- #
@@ -204,6 +254,10 @@ class Simulation:
         clock_stop = None
         in_ed = False
         bands_seen = set()
+        tr = self.trace
+        if tr:
+            self.arrival_log.append((pid, arrival, acuity, stream,
+                                     ",".join(sorted(attrs))))
 
         while node_id is not None:
             node = self.pathway.nodes[node_id]
@@ -212,6 +266,8 @@ class Simulation:
                 for res, (req, start) in held.items():
                     self.resources[res].release(req)
                     self._hold(pid, res, start, self.env.now)
+                if tr:
+                    self._leave(pid, node_id)
                 if in_ed:
                     self.state.leave_ed()
                 stop = clock_stop if clock_stop is not None else self.env.now
@@ -232,13 +288,48 @@ class Simulation:
                 bands_seen.add(node["band"])
 
             node_entry = self.env.now
+            if tr:
+                self._enter(pid, node_id, "queue")
+
+            renege = node.get("renege")
+            # OPT-IN: a node with renege_includes_space applies the patience to
+            # the wait for its SPACE as well as its clinician (e.g. a patient
+            # waiting for an SDEC chair is redirected after a while, rather than
+            # waiting all night for a unit that has closed). Without the flag,
+            # behaviour is exactly as before - patience covers transient
+            # resources only - and the random draws happen in the same order.
+            deadline = None
+            if renege and node.get("renege_includes_space"):
+                deadline = self.env.now + max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
 
             # span-acquire: hold a space until a later node releases it
+            gave_up_space = False
+            acquired_here = []
             for res in [r for r in node.get("acquire", []) if r in self.resources]:
                 if res not in held:
                     req = self.resources[res].request(priority=prio)
-                    yield req
+                    if deadline is None:
+                        yield req
+                    else:
+                        remaining = deadline - self.env.now
+                        if remaining > 0 and not req.triggered:
+                            yield req | self.env.timeout(remaining)
+                        if not req.triggered:
+                            req.cancel()
+                            gave_up_space = True
+                            break
                     held[res] = (req, self.env.now)
+                    acquired_here.append(res)
+            if gave_up_space:
+                # leave via the renege route; spaces acquired AT THIS NODE in
+                # this attempt are handed back (spaces held from earlier nodes
+                # stay held, as for any onward route)
+                for res in acquired_here:
+                    req, start = held.pop(res)
+                    self.resources[res].release(req)
+                    self._hold(pid, res, start, self.env.now)
+                node_id = renege.get("to")
+                continue
 
             # transient seize: a space and/or clinician for this stage's service
             needed = node.get("resources") or (
@@ -246,11 +337,11 @@ class Simulation:
             needed = [r for r in needed if r in self.resources and r not in held]
             reqs = [self.resources[r].request(priority=prio) for r in needed]
             grant = {}                      # resource -> time it was observed granted
-            renege = node.get("renege")
             if renege and reqs:
                 # patients give up if the wait exceeds their patience (LWBS)
-                patience = max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
-                deadline = self.env.now + patience
+                if deadline is None:
+                    patience = max(1.0, dist.sample(self.rng, renege.get("patience", 60)))
+                    deadline = self.env.now + patience
                 gave_up = False
                 for r, req in zip(needed, reqs):
                     remaining = deadline - self.env.now
@@ -270,6 +361,12 @@ class Simulation:
                             self._hold(pid, r, grant.get(r, self.env.now), self.env.now)
                         else:
                             req.cancel()
+                    if node.get("renege_includes_space"):
+                        # redirected (not leaving): hand back this node's space
+                        for res in acquired_here:
+                            req, start = held.pop(res)
+                            self.resources[res].release(req)
+                            self._hold(pid, res, start, self.env.now)
                     node_id = renege.get("to")
                     continue
             else:
@@ -286,6 +383,8 @@ class Simulation:
             if cap is not None:                      # e.g. EEMAC: up to 12h IN the unit
                 service = max(0.0, min(service, cap - (self.env.now - node_entry)))
             service_start = self.env.now
+            if tr:
+                self._enter(pid, node_id, "service")
             yield self.env.timeout(service)
 
             for r, req in zip(needed, reqs):
@@ -354,9 +453,28 @@ class Simulation:
                 events = events[events["pid"].isin(keep)].reset_index(drop=True)
             if not holds.empty:
                 holds = holds[holds["pid"].isin(keep)].reset_index(drop=True)
-        return {"events": events, "patients": patients, "holds": holds,
-                "sd_history": list(self.state.history)}
+        out = {"events": events, "patients": patients, "holds": holds,
+               "sd_history": list(self.state.history)}
+        if self.trace:
+            # unfiltered by warm-up; a state still open at the end of the run has
+            # end = NaN (censored), so unfinished journeys stay visible
+            states = list(self.state_log) + [
+                (pid, c[0], c[1], c[2], float("nan")) for pid, c in self._open.items()]
+            out["trace"] = {
+                "arrivals": pd.DataFrame(self.arrival_log,
+                                         columns=["pid", "arrival", "acuity", "stream", "attrs"]),
+                "states": pd.DataFrame(states,
+                                       columns=["pid", "node", "phase", "start", "end"]),
+                "departures": pd.DataFrame(self.departure_log,
+                                           columns=["pid", "time", "sink"]),
+                # every completed resource hold, carry-in patients included
+                "holds": pd.DataFrame(self.holds, columns=["pid", "resource", "start", "end"]),
+                "end": float(self.env.now),
+                "warmup": float(self.pathway.warmup),
+            }
+        return out
 
 
-def run_pathway(pathway: Pathway, seed: int = 0, state: SystemState = None) -> dict:
-    return Simulation(pathway=pathway, seed=seed, state=state).run()
+def run_pathway(pathway: Pathway, seed: int = 0, state: SystemState = None,
+                trace: bool = False) -> dict:
+    return Simulation(pathway=pathway, seed=seed, state=state, trace=trace).run()

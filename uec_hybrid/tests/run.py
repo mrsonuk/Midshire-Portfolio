@@ -1031,6 +1031,10 @@ def main():
           f"(day-wide pinch: {ct['bottleneck']}); outcomes and per-area waits "
           f"update by hour.")
 
+    # --- the Midshire adult ED demonstrator (separate database and fixtures) ---
+    from . import midshire as _midshire
+    _midshire.main()
+
     print("\nAll checks passed.")
 
 

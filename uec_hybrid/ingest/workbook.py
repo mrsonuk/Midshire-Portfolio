@@ -135,27 +135,50 @@ def _read_areas(rows):
 
 
 def _read_rota(rows, summary):
-    """Header row then role/start/end/count. Returns a rota list or None."""
+    """Header row then role/start/end/count, plus OPTIONAL days and
+    unpaid_break_minutes columns (found by header name, so the legacy
+    four-column sheet still reads). A row without a days value repeats every
+    day - the documented legacy rule. Every row goes through the same
+    validation as the rota editor (workforce.rota.clean_shift): a blank count
+    is missing, not zero; negative counts and unreadable hours are rejected and
+    REPORTED, never silently dropped. Returns a rota list or None."""
+    from ..workforce.rota import clean_shift, RotaError
+    header = [_norm(c) for c in (rows[0] if rows else [])]
+    col = {name: header.index(name) for name in ("role", "start", "end", "count", "days",
+                                                  "unpaid_break_minutes", "area")
+           if name in header}
+    for name, pos in (("role", 0), ("start", 1), ("end", 2), ("count", 3)):
+        col.setdefault(name, pos)
     body = [r for r in rows[1:] if r and r[0] not in (None, "")]
     if not body:
         return None
-    rota, skipped = [], []
-    for r in body:
-        role = _norm(r[0])
+    rota, skipped, rejected = [], [], []
+
+    def cell(r, name):
+        i = col.get(name)
+        return r[i] if i is not None and i < len(r) else None
+
+    for n, r in enumerate(body, 2):
+        role = _norm(cell(r, "role"))
         if role.startswith("#"):        # helper/comment row in the template
             continue
         if role not in ROLES:
             skipped.append(str(r[0]))
             continue
-        start, end, count = (_num(r[1]) if len(r) > 1 else None,
-                             _num(r[2]) if len(r) > 2 else None,
-                             _num(r[3]) if len(r) > 3 else None)
-        if None in (start, end, count):
-            continue
-        rota.append({"role": role, "start": int(start), "end": int(end), "count": int(count)})
+        row = {"role": role, "start": cell(r, "start"), "end": cell(r, "end"),
+               "count": cell(r, "count"), "days": cell(r, "days"),
+               "unpaid_break_minutes": cell(r, "unpaid_break_minutes"),
+               "area": cell(r, "area")}
+        try:
+            rota.append(clean_shift(row))
+        except RotaError as e:
+            rejected.append(f"row {n} ({role}): {e}")
     if skipped:
         summary.append(f"Ignored {len(skipped)} rota row(s) with unknown roles: "
                        f"{', '.join(sorted(set(skipped)))}.")
+    if rejected:
+        summary.append(f"Rejected {len(rejected)} rota row(s): " + "; ".join(rejected[:8])
+                       + ("..." if len(rejected) > 8 else "") + ".")
     return rota or None
 
 
@@ -346,9 +369,12 @@ def read_workbook(file_or_bytes, filename: str | None = None) -> dict:
         summary.append("Areas kept at template default (no Areas sheet).")
     if rota is not None:
         base["rota"] = rota
+        base["rota_source"] = "supplied"          # the trust's roster, used as given
         summary.append(f"Rota set from workbook ({len(rota)} shifts).")
     else:
-        summary.append("Rota kept at template default (no Rota sheet).")
+        base["rota_source"] = "template"          # scaled to the department's size
+        summary.append("Rota kept at template default (no Rota sheet) - the Model ED "
+                       "template rota scaled to the department's attendances.")
     if capacity is not None:
         base["capacity"] = capacity
         summary.append(f"Physical capacity set from workbook ({len(capacity)} "

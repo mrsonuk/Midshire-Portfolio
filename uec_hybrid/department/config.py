@@ -96,6 +96,17 @@ class Department:
     # replace the scaled figure exactly (no open dataset publishes these, so they
     # can only come from the trust). Staff resources are rota-driven, not set here.
     capacity: dict = field(default_factory=dict)
+    # Where the rota came from - explicit provenance, not inferred from list
+    # equality: "template" = the Model ED template rota, written for a 320/day
+    # department and SCALED to this department's size by the builder;
+    # "supplied" = a rota the trust (or a scenario) gave, used EXACTLY as given.
+    rota_source: str = "template"
+    # Optional space-staffing table: which physical spaces open only when staff
+    # cover them, e.g. [{"space": "cubicle", "staff": "ed_nurse",
+    # "spaces_per_staff": 4}]. None = the pathway template's single
+    # nurse-to-cubicle ratio. Ratios are editable planning assumptions, not
+    # safe-staffing standards.
+    space_staffing: list | None = None
 
     @classmethod
     def default(cls):
@@ -104,7 +115,8 @@ class Department:
         # elements (co-located UTC, fit-to-sit, EEMAC, CDU, frailty unit) - so the
         # gap view has something to show.
         from ..workforce.defaults import DEFAULT_ROTA
-        return cls(enabled=["rat", "sdec", "paeds", "mh"], rota=list(DEFAULT_ROTA))
+        return cls(enabled=["rat", "sdec", "paeds", "mh"], rota=list(DEFAULT_ROTA),
+                   rota_source="template")
 
     def hours_for(self, area: str) -> list:
         """Opening hours for an area, falling back to the catalogue default."""
@@ -116,7 +128,10 @@ class Department:
                 "inpatient_beds": self.inpatient_beds, "community_capacity": self.community_capacity,
                 "hours": {k: list(v) for k, v in (self.hours or {}).items()},
                 "baseline_bed_occupancy": self.baseline_bed_occupancy,
-                "capacity": {k: int(v) for k, v in (self.capacity or {}).items()}}
+                "capacity": {k: int(v) for k, v in (self.capacity or {}).items()},
+                "rota_source": self.rota_source,
+                **({"space_staffing": [dict(e) for e in self.space_staffing]}
+                   if self.space_staffing is not None else {})}
 
     @classmethod
     def from_dict(cls, d):
@@ -134,10 +149,24 @@ class Department:
                 continue
             if n >= 0:                     # 0 is meaningful ("we don't have this"); drop only negatives
                 capacity[str(k)] = n
+        rota = d.get("rota", base.rota)
+        src = d.get("rota_source")
+        from ..workforce.defaults import DEFAULT_ROTA
+        if src not in ("template", "supplied"):
+            # MIGRATION RULE for departments saved before rota provenance
+            # existed: a rota identical to the Model ED template is the
+            # template; anything else was supplied. Stated once, here, and
+            # tested - new saves always carry rota_source explicitly.
+            src = "template" if rota == DEFAULT_ROTA else "supplied"
+        elif src == "template" and rota != DEFAULT_ROTA:
+            # an EDITED template is somebody's rota now: use it exactly as
+            # given rather than scaling their edits as if they were the template
+            src = "supplied"
         return cls(name=d.get("name", base.name),
                    attendances_per_day=float(d.get("attendances_per_day", base.attendances_per_day)),
                    enabled=d.get("enabled", base.enabled),
-                   rota=d.get("rota", base.rota),
+                   rota=rota, rota_source=src,
+                   space_staffing=d.get("space_staffing"),
                    inpatient_beds=int(d.get("inpatient_beds", base.inpatient_beds)),
                    community_capacity=int(d.get("community_capacity", base.community_capacity)),
                    hours=hours,

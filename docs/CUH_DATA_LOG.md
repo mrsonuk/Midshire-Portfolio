@@ -613,3 +613,51 @@ Beds and occupancy are deliberately NOT coming from CHEQS: the published KH03
 return supplies both on a consistent national definition (1,068 G&A beds,
 89.26% occupancy, Q4 2025-26), which is what the build already uses. The rota
 stays out of scope by agreement.
+
+## Engine 0.5.0 (2 Oct 2026) — shared fixes made while building the Midshire demonstrator
+
+Four defects in shared code were fixed. Each changes Cambridge numbers a little,
+so they are recorded here with the measured effect, not just the intent.
+
+1. **Shift changes now take effect at once.** The shift manager lodged one
+   "off shift" request at a time and waited for it to be granted before
+   lodging the next, so when a rota dropped (e.g. paediatric doctors 4 → 1 at
+   22:00) units freed in the meantime went back to the queue and **off-shift
+   staff kept seeing patients**. All the requests a reduction needs are now
+   lodged together. Patients already being seen still finish.
+2. **Zero staff stays zero.** `staffing_by_hour` floored every hour to one, so
+   an hour nobody was rostered for had a fictitious member of staff (Cambridge:
+   one SDEC doctor 23:00–08:00 that the template rota does not contain). The
+   builder's nurse-ratio and explicit-capacity floors went the same way. A real
+   zero now builds a parked unit the engine never serves from, and the builder
+   warns where a node has no capacity at any hour.
+3. **The recommender priced shifts at the default rates and silently un-scaled
+   the template rota.** `_shift_cost_per_week` read `ROLES[role]["cost"]` rather
+   than the editable `role_rates()` (now one cost service,
+   `workforce/costing.py`). And appending a candidate shift to the template rota
+   made it unequal to `DEFAULT_ROTA`, so the builder stopped scaling it: every
+   "add 1 shift" candidate was evaluated with the whole Cambridge rota sized for
+   320/day, ~25% short of every staff group. That is very likely why "adding an
+   ED doctor scores worse than baseline" (see "What the search recommends").
+   Rota provenance is now explicit (`Department.rota_source`), the workforce
+   view shows the rota the engine runs, and a candidate is added to the
+   resolved rota.
+4. Hour-of-week rosters (168 values) and an opt-in patience-for-a-space flag
+   were added; neither is used by the Cambridge build.
+
+**Measured effect on `python3 -m uec_hybrid.validation.against_trust RGT`**
+(24 seeds, old engine → new engine; ± is the standard error of the mean):
+
+| | old | new | trust |
+|---|---|---|---|
+| 4-hour % | 55.3 ± 0.9 | 53.8 ± 1.0 | 52.93 |
+| resus LOS | 346 (1.07x) | 355 (1.09x) | 324 |
+| majors trolleys LOS | 683 (0.94x) | 658 (0.91x) | 725 |
+| majors ambulant LOS | 226 (0.89x) | 238 (0.94x) | 254 |
+| minors LOS | 168 (1.02x) | 167 (1.02x) | 164 |
+| paeds LOS | 241 ± 23 (1.37x) | 254 ± 20 (1.44x) | 176 |
+
+The direction is the expected one (staff leave when their shift ends). Note the
+paediatric figure: the 5-seed validation run had shown 1.26x, but on 24 seeds
+it was already 1.37x before this change — five seeds are too few for the paeds
+median, and the paediatric staffing is still the template rota.

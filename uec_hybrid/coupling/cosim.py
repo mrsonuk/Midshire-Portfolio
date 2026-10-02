@@ -22,7 +22,8 @@ from .system_state import SystemState
 
 class CoSimulator:
     def __init__(self, pathway: Pathway, seed: int = 0, dt: float = 60.0,
-                 feedback: bool = True, sd_overrides: dict | None = None):
+                 feedback: bool = True, sd_overrides: dict | None = None,
+                 trace: bool = False):
         self.pathway = pathway
         self.dt = float(dt)
         self.state = SystemState()
@@ -32,7 +33,7 @@ class CoSimulator:
         if sd_overrides:
             cfg.update(sd_overrides)
         self.sd = SDModel(cfg, feedback=feedback)
-        self.sim = Simulation(pathway=pathway, seed=seed, state=self.state)
+        self.sim = Simulation(pathway=pathway, seed=seed, state=self.state, trace=trace)
         # seed the held signals so the very first hour already sees the SD state
         self.state.publish(0.0, dict(self.sd.signals))
 
@@ -50,6 +51,6 @@ class CoSimulator:
 
 
 def run_cosim(pathway: Pathway, seed: int = 0, feedback: bool = True,
-              sd_overrides: dict | None = None) -> dict:
+              sd_overrides: dict | None = None, trace: bool = False) -> dict:
     return CoSimulator(pathway, seed=seed, feedback=feedback,
-                       sd_overrides=sd_overrides).run()
+                       sd_overrides=sd_overrides, trace=trace).run()

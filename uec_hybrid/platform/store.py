@@ -22,7 +22,9 @@ import numpy as np
 from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
-ENGINE_VERSION = "0.4.2"
+# 0.5.0: shift changes take effect at once (all parking requests lodged
+# together), zero staffing stays zero, hour-of-week rosters, state trace.
+ENGINE_VERSION = "0.5.0"
 
 _DEFAULT_PATH = Path(__file__).resolve().parent.parent.parent / "uec_platform.sqlite3"
 

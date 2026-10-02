@@ -1,0 +1,153 @@
+{
+  "generated_from_commit": "8dd0117e9e0d460630bfefc4fb522eadca8b2436",
+  "engine_version": "0.5.0",
+  "fixture_version": "midshire-demo-2026-10-v1",
+  "label": "PRECOMPUTED demo results. Regenerate with python3 -m uec_hybrid.midshire.precompute",
+  "scenarios": [
+    {
+      "id": "pkg_combined_90",
+      "inputs": "pkg_combined_90_inputs.json.gz",
+      "name": "Combined package: +1 CT scanner, +4 fit-to-sit spaces (precomputed)",
+      "note": "PRECOMPUTED from the package search. +1 CT scanner; +4 fit-to-sit spaces",
+      "ids": [
+        "ct_1",
+        "f2s_4"
+      ]
+    },
+    {
+      "id": "pkg_workforce_90",
+      "inputs": "pkg_workforce_90_inputs.json.gz",
+      "name": "Workforce package: +1 RAT senior 10:00-22:00 (precomputed)",
+      "note": "PRECOMPUTED from the package search. +1 RAT senior 10:00-22:00",
+      "ids": [
+        "rat_day"
+      ]
+    },
+    {
+      "id": "pkg_estate_90",
+      "inputs": "pkg_estate_90_inputs.json.gz",
+      "name": "Estate package: +20 new inpatient beds, +1 CT scanner, +4 fit-to-sit spaces, +1 resus bay, +3 UTC rooms (precomputed)",
+      "note": "PRECOMPUTED from the package search. +20 new inpatient beds; +1 CT scanner; +4 fit-to-sit spaces; +1 resus bay (with any resus nurses needed); +3 UTC rooms (with any UTC practitioners needed)",
+      "ids": [
+        "beds_20",
+        "ct_1",
+        "f2s_4",
+        "resus_1",
+        "utc_rooms_3"
+      ]
+    }
+  ],
+  "runs": [
+    {
+      "kind": "run",
+      "file": "baseline_run.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "model_hash": "a70b4ba6de7bdbd4b51c",
+      "seeds": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "scenario": "baseline"
+    },
+    {
+      "kind": "run",
+      "file": "pkg_combined_90_run.json.gz",
+      "inputs": "pkg_combined_90_inputs.json.gz",
+      "model_hash": "92ba15890bcc2f010675",
+      "seeds": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "scenario": "pkg_combined_90"
+    },
+    {
+      "kind": "run",
+      "file": "pkg_workforce_90_run.json.gz",
+      "inputs": "pkg_workforce_90_inputs.json.gz",
+      "model_hash": "1e6b3f6a4cdd35d66df5",
+      "seeds": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "scenario": "pkg_workforce_90"
+    },
+    {
+      "kind": "run",
+      "file": "pkg_estate_90_run.json.gz",
+      "inputs": "pkg_estate_90_inputs.json.gz",
+      "model_hash": "247882ce108eb75d3143",
+      "seeds": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "scenario": "pkg_estate_90"
+    }
+  ],
+  "searches": [
+    {
+      "kind": "search",
+      "file": "pkg_combined_90_search.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "target": {
+        "pct": 90.0,
+        "minutes": 240
+      },
+      "mode": "combined",
+      "outcome": "not_reached",
+      "headline": "Target not reached within the tested options. The best tested package reaches 70.4% (baseline 66.5%), 19.6 percentage points short of 90%. This does not show the target is impossible in a real hospital - only that these changes, at these sizes, do not reach it in this model."
+    },
+    {
+      "kind": "search",
+      "file": "pkg_workforce_90_search.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "target": {
+        "pct": 90.0,
+        "minutes": 240
+      },
+      "mode": "workforce",
+      "outcome": "not_reached",
+      "headline": "Target not reached within the tested options. The best tested package reaches 68.5% (baseline 66.5%), 21.5 percentage points short of 90%. This does not show the target is impossible in a real hospital - only that these changes, at these sizes, do not reach it in this model."
+    },
+    {
+      "kind": "search",
+      "file": "pkg_estate_90_search.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "target": {
+        "pct": 90.0,
+        "minutes": 240
+      },
+      "mode": "estate",
+      "outcome": "not_reached",
+      "headline": "Target not reached within the tested options. The best tested package reaches 71.0% (baseline 66.5%), 19.0 percentage points short of 90%. This does not show the target is impossible in a real hospital - only that these changes, at these sizes, do not reach it in this model."
+    },
+    {
+      "kind": "search",
+      "file": "pkg_combined_70_search.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "target": {
+        "pct": 70.0,
+        "minutes": 240
+      },
+      "mode": "combined",
+      "outcome": "met",
+      "headline": "Lowest-cost package found within the tested options reaches 70.4% (baseline 66.5%) against the 70% target, for about \u00a3152,000 a year recurring and \u00a31,224,000 capital. On 8 separate validation weeks it reads 70.3%."
+    }
+  ],
+  "seconds": 670.2
+}

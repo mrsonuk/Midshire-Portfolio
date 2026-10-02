@@ -51,9 +51,13 @@ PHYSICAL_MOVES = [
 _SD_DEFAULTS = {"inpatient_beds": 320, "community_capacity": 60}
 
 
-def _shift_cost_per_week(role_id, start, end, count=1):
-    hours = (end - start) % 24 or 24
-    return int(ROLES[role_id]["cost"] * hours * count * 7)
+def _shift_cost_per_week(role_id, start, end, count=1, rates=None):
+    """Weekly cost of an added shift from the ONE cost service, at the same
+    editable rates the pay-bill uses (it used to read the hard-coded default
+    ROLES[role]["cost"], so a trust's own rates never reached the search)."""
+    from ..workforce.costing import shift_weekly_cost
+    c = shift_weekly_cost(role_id, start, end, count, rates=rates)
+    return None if c is None else int(round(c))
 
 
 def _candidates(dept, wf) -> list:
@@ -107,15 +111,28 @@ def applicable_moves(moves: list, raw: dict) -> list:
     return [m for m in moves if m["kind"] != "capacity" or m.get("resource") in have]
 
 
+def _add_shift(d, shift):
+    """Add a shift to the rota the engine RUNS. A template rota is resolved
+    (scaled) first and then becomes a supplied rota: appending to the raw
+    template used to make it unequal to DEFAULT_ROTA, so the builder stopped
+    scaling it and every "add 1 shift" candidate was silently evaluated with
+    the whole template rota ~25% smaller (at Cambridge, 400/day on a 320/day
+    roster) - which is why adding staff could score worse than baseline."""
+    from ..department.builder import resolved_rota
+    rota, _ = resolved_rota(d)
+    d.rota = list(rota) + [dict(shift)]
+    d.rota_source = "supplied"
+
+
 def _apply(dept, move):
     d = copy.deepcopy(dept)
     if move["kind"] == "shift":
-        d.rota = list(d.rota) + [{"role": move["role"], "start": move["start"],
-                                  "end": move["end"], "count": move["count"]}]
+        _add_shift(d, {"role": move["role"], "start": move["start"],
+                       "end": move["end"], "count": move["count"]})
     elif move["kind"] == "hours":
         d.hours = {**(d.hours or {}), move["area"]: [move["open"], move["close"]]}
     if move.get("with_shift"):
-        d.rota = list(d.rota) + [dict(move["with_shift"])]
+        _add_shift(d, move["with_shift"])
     return d
 
 
@@ -190,8 +207,8 @@ def recommend(dept, calibration=None, reps=4, base_seed=1200, limit=None,
         weekly = move.get("weekly_cost")
         ws = move.get("with_shift")
         if ws:
-            weekly = (weekly or 0) + _shift_cost_per_week(
-                ws["role"], ws["start"], ws["end"], ws.get("count", 1))
+            weekly = (weekly or 0) + (_shift_cost_per_week(
+                ws["role"], ws["start"], ws["end"], ws.get("count", 1)) or 0)
         net = (fin["annual_benefit"] - weekly * 52) if weekly else None
 
         # Generate why_rejected explanation for non-confident moves

@@ -20,10 +20,17 @@ from . import feedback as fb
 
 
 class _BedStock:
-    """A homeostatic bedded stock (acute or MH)."""
+    """A homeostatic bedded stock (acute or MH).
 
-    def __init__(self, name, beds, baseline, background_per_hour, discharge_cap_per_hour):
-        self.stock = Stock(name, level=baseline * beds, capacity=beds)
+    ``initial_occupied`` (optional) starts the stock with that many occupied
+    beds instead of ``baseline x beds``. A scenario that OPENS NEW beds sets it
+    to the occupied count of the original hospital, so the new beds start empty
+    rather than being born at the same occupancy fraction as the old ones."""
+
+    def __init__(self, name, beds, baseline, background_per_hour, discharge_cap_per_hour,
+                 initial_occupied=None):
+        level = baseline * beds if initial_occupied is None else min(beds, float(initial_occupied))
+        self.stock = Stock(name, level=level, capacity=beds)
         self.baseline = baseline
         self.background = background_per_hour / 60.0          # per minute
         self.discharge_cap = discharge_cap_per_hour / 60.0    # per minute, at baseline
@@ -55,7 +62,8 @@ class SDModel:
             "inpatient_beds", cfg.get("inpatient_beds", 320),
             cfg.get("baseline_bed_occupancy", 0.92),
             cfg.get("background_admissions_per_hour", 3.2),
-            cfg.get("ward_discharge_capacity_per_hour", 6.4))
+            cfg.get("ward_discharge_capacity_per_hour", 6.4),
+            cfg.get("initial_occupied_beds"))
         self.mh = _BedStock(
             "mh_beds", cfg.get("mh_beds", 22),
             cfg.get("baseline_mh_occupancy", 0.90),

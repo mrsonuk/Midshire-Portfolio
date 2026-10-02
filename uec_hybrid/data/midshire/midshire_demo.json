@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "fixture_version": "midshire-demo-2026-10-v1",
+  "demo_id": "MIDSHIRE-DEMO",
+  "demo_id_note": "An internal demonstration identifier. It is NOT an NHS ODS code and does not identify any real organisation.",
+  "product_title": "Midshire University Hospitals Trust Control Tower",
+  "positioning": "Adult ED simulation and planning demonstrator",
+  "status_line": "Adult ED planning demonstrator · simulated data, not a live patient feed.",
+  "disclaimers": [
+    "Midshire University Hospitals Trust is a fictional demonstration identity. It is not a real South East trust.",
+    "Every figure on screen is a simulation output or a labelled input assumption. Nothing here is a live patient feed or a connected digital twin.",
+    "Rota and cost inputs are illustrative. Staffing outputs are aggregate planning rotas, not a clinically approved or safe-staffing roster.",
+    "The adult-only, SDEC-extended build has NOT inherited the source model's validation. Treat results as directional."
+  ],
+
+  "foundation": {
+    "summary": "Cambridge-derived. The adult pathway, routing, service times, physical capacity, hospital bed model and demand shape are taken from the Cambridge University Hospitals (RGT) build of this tool, then changed: the paediatric cohort is removed, SDEC is reachable from streaming and RAT, a decision-to-admit milestone is added, and the rota, costs and SDEC size are illustrative. The front-facing name is fictional; the technical provenance is not anonymised by renaming.",
+    "source_ods": "RGT",
+    "source_files": [
+      "uec_hybrid/data/rgt_published.json",
+      "uec_hybrid/data/seeds/rgt_cuh_workbook.xlsx",
+      "uec_hybrid/pathways/model_ed.json"
+    ],
+    "source_commit": "8dd0117e9e0d460630bfefc4fb522eadca8b2436",
+    "validation_status": "The Cambridge build was validated per area against CUH's own data (see docs/CUH_DATA_LOG.md). This Midshire build changes the cohort, pathway and staffing, so that validation does not carry over. Its own conformance checks (python3 -m uec_hybrid.midshire.validate) confirm the pathway behaves as specified; nothing confirms it matches a real hospital."
+  },
+
+  "cohort": {
+    "name": "adult",
+    "label": "Adults only (the paediatric ED cohort is excluded)",
+    "all_ages_attendances_per_day": {
+      "value": 400.5, "kind": "published (source trust)",
+      "provenance": "Cambridge Type 1 attendances, June 2026 (rgt_published.json attendances_per_day)."
+    },
+    "paediatric_share_excluded": {
+      "value": 0.1335, "kind": "historical (source trust extract)",
+      "provenance": "Share of the source trust's front-door attendances seen in its paediatric ED area, Feb-Jul 2026 (rgt_published.json paediatric_share). The published age-based share is higher (19.7%); the area-based share is used because the model routes by area."
+    },
+    "adult_attendances_per_day": {
+      "value": 347.0, "kind": "derived",
+      "provenance": "400.5 x (1 - 0.1335) = 347.0 adult attendances a day. Children are REMOVED from demand, not re-routed into adult areas."
+    },
+    "assumptions": [
+      "The adult hour-of-arrival shape is the source trust's all-ages front-door shape (no adult-only hourly split exists).",
+      "The ambulance share (19.1%) is the all-ages share applied to adults; the adult share is probably higher because children are conveyed less often.",
+      "The mental-health share (2.6%) is the all-ages Type 1 and 2 share applied to adults.",
+      "The acuity mix is the source trust's ADULT area mix (resus / majors trolleys / majors ambulant / minors), so it needs no adjustment."
+    ]
+  },
+
+  "areas": {
+    "enabled": ["rat", "utc", "fit_to_sit", "sdec", "frailty"],
+    "hours": {"rat": [0, 24], "utc": [8, 24], "fit_to_sit": [0, 24], "sdec": [8, 22], "frailty": [8, 18]},
+    "provenance": {
+      "rat": "Source trust: 24/7, ambulance arrivals assessed on arrival.",
+      "utc": "Source trust: 08:00-00:00 envelope. Overnight, minors divert to the 24/7 ambulatory area (a labelled source-trust assumption).",
+      "fit_to_sit": "Source trust: 24/7.",
+      "sdec": "ILLUSTRATIVE for Midshire: 08:00-22:00, ED-streamed patients only.",
+      "frailty": "Source trust template: 08:00-18:00 (hours still unconfirmed at source)."
+    },
+    "excluded": {"paeds": "Adult demonstrator: paediatric area removed with its demand, staff and capacity.",
+                 "eemac": "Not in operation at the source trust.",
+                 "cdu": "Not in operation at the source trust.",
+                 "mh": "No dedicated mental-health area at the source trust; mental-health patients follow the mental-health admission sub-route."}
+  },
+
+  "capacity": {
+    "values": {"cubicle": 34, "resus_bay": 6, "fit_to_sit_chair": 17, "utc_room": 15, "sdec_chair": 12,
+               "handover_bay": 3, "ct_scanner": 3, "xray_room": 3, "fau_bed": 15, "minor_injury_space": 0},
+    "provenance": {
+      "cubicle": "Source trust ops return: 34 majors cubicles/trolley spaces.",
+      "resus_bay": "Source trust ops return: 6 resus bays.",
+      "fit_to_sit_chair": "Source trust ops return: 8 chairs + 9 ambulatory rooms.",
+      "utc_room": "Source trust ops return: 15 UTC rooms.",
+      "sdec_chair": "ILLUSTRATIVE for Midshire: 12 ED-facing SDEC chairs (the source trust's 60 also serve GP and other referral streams, which this demonstrator deliberately does not add).",
+      "handover_bay": "Source trust ops return: 3 ambulance handover bays.",
+      "ct_scanner": "Source trust ops return: 3 CT scanners (shared with inpatients).",
+      "xray_room": "Source trust ops return: 3 plain X-ray rooms.",
+      "fau_bed": "Template estimate (12 at 320/day, scaled to the source trust's size = 15). Not a real count.",
+      "minor_injury_space": "Source trust: 0 - minors are seen in the UTC (removes the ED minor-injury node)."
+    }
+  },
+
+  "space_staffing": {
+    "rows": [
+      {"space": "cubicle", "staff": "ed_nurse", "spaces_per_staff": 4},
+      {"space": "resus_bay", "staff": "resus_nurse", "spaces_per_staff": 2},
+      {"space": "utc_room", "staff": "utc_clinician", "spaces_per_staff": 3},
+      {"space": "sdec_chair", "staff": "sdec_nurse", "spaces_per_staff": 4}
+    ],
+    "note": "ILLUSTRATIVE, editable planning ratios - NOT clinical safe-staffing standards. A space only opens if staff on shift cover it (open = min(physical spaces, staff x spaces per staff)). The 1 nurse : 4 cubicles ratio is the source model's template value; the other three are Midshire illustrations. Fit-to-sit chairs, handover bays, CT and X-ray have no staffing ratio in the model (stated, not hidden)."
+  },
+
+  "downstream": {
+    "sd": {"inpatient_beds": 1068, "baseline_bed_occupancy": 0.8926,
+           "background_admissions_per_hour": 4.0, "ward_discharge_capacity_per_hour": 7.01,
+           "mh_beds": 28, "baseline_mh_occupancy": 0.9, "mh_background_per_hour": 0.25,
+           "mh_discharge_capacity_per_hour": 0.6, "community_capacity": 0,
+           "community_turnover_hours": 24, "ambulances": 24},
+    "provenance": "The source trust's whole-hospital bed model as the engine resolves it (KH03 beds 1,068 and occupancy 89.26%; flows are template rates scaled to the source trust's size). The ED cohort changes, the hospital does not.",
+    "community_note": "Community / virtual-ward capacity is set to NONE. The source trust reports 1 virtual-ward place a day, mostly step-down after discharge, so ED-facing capacity is effectively nil. The source model's community-pull mechanism (a signal held for an hour at a time) cannot represent a single daily place without diverting about ten patients a day, so Midshire models no community route rather than represent it wrongly.",
+    "aggregate_assumption": "Wards are one aggregate bed stock. Discharges per hour scale with how full the stock is, and occupancy lengthens the wait for a bed through a smooth multiplier. The model does not allocate patients to specific wards or model transfer constraints."
+  },
+
+  "sdec": {
+    "name": "Same Day Emergency Care (SDEC)",
+    "routing": {
+      "from_streaming": {"Acuity 2": 0.10, "Acuity 3": 0.15},
+      "from_rat": {"Acuity 2": 0.10, "Acuity 3": 0.15},
+      "streaming_to_rat": {"Acuity 2": 0.15}
+    },
+    "routing_note": "ILLUSTRATIVE eligibility assumptions (no source-trust figure exists for the ED-streamed share). From streaming: 10% of acuity-2 and 15% of acuity-3 walk-ins go straight to SDEC. 15% of acuity-2 walk-ins are referred to RAT for senior assessment, and RAT sends 10% of acuity-2 and 15% of acuity-3 patients (ambulance or walk-in) to SDEC. Everyone else follows the source routing.",
+    "closed_fallback": {"Acuity 1": "ed_resus", "Acuity 2": "ed_cubicles", "Acuity 3": "ed_ambulatory",
+                        "Acuity 4": "utc_minor_illness", "Acuity 5": "utc_minor_illness"},
+    "max_wait": {"dist": "constant", "value": 90},
+    "max_wait_note": "ILLUSTRATIVE: a patient who has waited 90 minutes without an SDEC chair and clinician - including anyone still queued when SDEC staff go off shift - is redirected to the ED area for their acuity, rather than waiting overnight for a unit that has closed.",
+    "closed_note": "When SDEC is closed, a patient who would have gone there is redirected to the ED area for their acuity (the same area they would have used without SDEC). Patients already in SDEC at closing time finish their care. Nobody is removed or discharged by the closure.",
+    "assessment_service": {"dist": "lognormal", "mean": 45, "stdev": 20},
+    "care_service": {"dist": "lognormal", "mean": 160, "stdev": 80},
+    "service_note": "ILLUSTRATIVE split of the SDEC stay: a 45-minute clinician assessment (holds an SDEC doctor) then tests, treatment and observation in the chair (no clinician held). The care time (mean 160 minutes) was CALIBRATED so the modelled time in SDEC matches the source trust's SDEC median time in department: 247 minutes modelled (4 replications) against 247 observed, June 2026; 46% within four hours of entering SDEC against 49% observed (Feb-Jul 2026).",
+    "selection_caveat": "The model picks SDEC patients at random within acuity 2 and 3; it cannot pick the clinically suitable ones. Those patients then skip the ED imaging and results-and-decision steps of their acuity's pathway and are admitted at SDEC's 16.1% rate. In the baseline, SDEC streaming adds about 8 points to the four-hour measure. Treat any SDEC-driven improvement as an UPPER BOUND.",
+    "admission_rate": 0.1606,
+    "admission_provenance": "Source trust SDEC admission rate, Feb-Jul 2026 (4,179 of 26,022).",
+    "reporting_boundary": "inside_ed",
+    "reporting_note": "SDEC time counts INSIDE the ED attendance: the four-hour clock does not stop at transfer to SDEC, and SDEC patients stay in every denominator. Transfer to SDEC is neither a discharge nor an admission."
+  },
+
+  "mental_health": {
+    "admission_rate": 0.1828,
+    "provenance": "Source trust mental-health disposals, 1 May - 12 Aug 2026: 195 admitted of 1,067 (rgt_published.json cuh_extracts.mental_health). Replaces the source build's fallback, which admitted every mental-health patient because there is no MH area.",
+    "not_modelled": "Did-not-wait (12.2%) and left-without-treatment (14.0%) rates for mental-health patients are recorded at source but not modelled."
+  },
+
+  "rota": {
+    "convention": "Whole hours 0-24. A shift whose end is at or before its start runs past midnight and belongs to the day it starts. 'Mon-Sun' rows repeat every day; other day patterns apply only on those days.",
+    "provenance": "ILLUSTRATIVE. Built from the Model ED template rota as the source build resolves it (scaled to the source trust's 400.5/day), with paediatric doctors removed, ENPs replaced by UTC practitioners, and resus, UTC and SDEC staffing added so the space-staffing ratios open the physical spaces. Not any trust's real roster.",
+    "rows": [
+      {"role": "ed_consultant", "area": "ED doctor pool", "days": "Mon-Sun", "start": 8, "end": 20, "count": 4},
+      {"role": "ed_consultant", "area": "ED doctor pool", "days": "Mon-Sun", "start": 20, "end": 8, "count": 1},
+      {"role": "em_registrar", "area": "ED doctor pool", "days": "Mon-Sun", "start": 8, "end": 22, "count": 6},
+      {"role": "em_registrar", "area": "ED doctor pool", "days": "Mon-Sun", "start": 22, "end": 8, "count": 4},
+      {"role": "em_sho", "area": "ED doctor pool", "days": "Mon-Sun", "start": 10, "end": 23, "count": 8},
+      {"role": "em_sho", "area": "ED doctor pool", "days": "Mon-Sun", "start": 22, "end": 10, "count": 4},
+      {"role": "streaming_nurse", "area": "Front door", "days": "Mon-Sun", "start": 0, "end": 24, "count": 1, "unpaid_break_minutes": 60},
+      {"role": "streaming_nurse", "area": "Front door", "days": "Mon-Sun", "start": 8, "end": 22, "count": 3, "unpaid_break_minutes": 30},
+      {"role": "rat_consultant", "area": "RAT", "days": "Mon-Sun", "start": 8, "end": 22, "count": 3},
+      {"role": "rat_consultant", "area": "RAT", "days": "Mon-Sun", "start": 22, "end": 8, "count": 1},
+      {"role": "band6_nurse", "area": "Majors", "days": "Mon-Sun", "start": 8, "end": 20, "count": 5, "unpaid_break_minutes": 30},
+      {"role": "band6_nurse", "area": "Majors", "days": "Mon-Sun", "start": 20, "end": 8, "count": 3, "unpaid_break_minutes": 30},
+      {"role": "band5_nurse", "area": "Majors", "days": "Mon-Sun", "start": 8, "end": 20, "count": 10, "unpaid_break_minutes": 30},
+      {"role": "band5_nurse", "area": "Majors", "days": "Mon-Sun", "start": 20, "end": 8, "count": 6, "unpaid_break_minutes": 30},
+      {"role": "resus_nurse", "area": "Resus", "days": "Mon-Sun", "start": 8, "end": 20, "count": 3, "unpaid_break_minutes": 30},
+      {"role": "resus_nurse", "area": "Resus", "days": "Mon-Sun", "start": 20, "end": 8, "count": 3, "unpaid_break_minutes": 30},
+      {"role": "utc_practitioner", "area": "UTC", "days": "Mon-Sun", "start": 8, "end": 16, "count": 5, "unpaid_break_minutes": 30},
+      {"role": "utc_practitioner", "area": "UTC", "days": "Mon-Sun", "start": 16, "end": 24, "count": 5, "unpaid_break_minutes": 30},
+      {"role": "sdec_doctor", "area": "SDEC", "days": "Mon-Fri", "start": 8, "end": 15, "count": 2},
+      {"role": "sdec_doctor", "area": "SDEC", "days": "Mon-Fri", "start": 15, "end": 22, "count": 2},
+      {"role": "sdec_doctor", "area": "SDEC", "days": "Sat-Sun", "start": 8, "end": 15, "count": 1},
+      {"role": "sdec_doctor", "area": "SDEC", "days": "Sat-Sun", "start": 15, "end": 22, "count": 1},
+      {"role": "sdec_nurse", "area": "SDEC", "days": "Mon-Sun", "start": 8, "end": 15, "count": 3},
+      {"role": "sdec_nurse", "area": "SDEC", "days": "Mon-Sun", "start": 15, "end": 22, "count": 3},
+      {"role": "frailty_pract", "area": "Frailty unit", "days": "Mon-Sun", "start": 8, "end": 18, "count": 5, "unpaid_break_minutes": 30},
+      {"role": "frailty_pract", "area": "Frailty unit", "days": "Mon-Sun", "start": 18, "end": 8, "count": 1, "unpaid_break_minutes": 30},
+      {"role": "porter", "area": "Transfers", "days": "Mon-Sun", "start": 0, "end": 24, "count": 3, "unpaid_break_minutes": 60},
+      {"role": "hca", "area": "Support", "days": "Mon-Sun", "start": 8, "end": 20, "count": 5, "unpaid_break_minutes": 30},
+      {"role": "hca", "area": "Support", "days": "Mon-Sun", "start": 20, "end": 8, "count": 3, "unpaid_break_minutes": 30},
+      {"role": "receptionist", "area": "Support", "days": "Mon-Sun", "start": 8, "end": 22, "count": 4, "unpaid_break_minutes": 30},
+      {"role": "receptionist", "area": "Support", "days": "Mon-Sun", "start": 22, "end": 8, "count": 1, "unpaid_break_minutes": 30}
+    ]
+  },
+
+  "cost_table": {
+    "status": "ILLUSTRATIVE Midshire demonstration rates. They are not current NHS Agenda for Change or medical pay rates, nor any trust's rates.",
+    "inclusions": "Effective hourly cost = basic rate x (1 + employer on-cost %) x (1 + average unsocial-hours enhancement %), blended with the bank/agency share at its all-in rate. A FULLY LOADED rate, if entered, is used as given and nothing is added to it - it must already include on-costs, enhancements and any agency mix.",
+    "roles": {
+      "ed_consultant":   {"base_hourly_rate": 52.0, "employer_on_cost_pct": 26, "enhancement_pct": 5, "contracted_hours_per_week": 40},
+      "rat_consultant":  {"base_hourly_rate": 52.0, "employer_on_cost_pct": 26, "enhancement_pct": 5, "contracted_hours_per_week": 40},
+      "em_registrar":    {"base_hourly_rate": 30.0, "employer_on_cost_pct": 26, "enhancement_pct": 10, "contracted_hours_per_week": 40},
+      "em_sho":          {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 10, "agency_share_pct": 6, "agency_hourly_rate": 75.0, "contracted_hours_per_week": 40},
+      "sdec_doctor":     {"base_hourly_rate": 34.0, "employer_on_cost_pct": 26, "enhancement_pct": 3, "contracted_hours_per_week": 40},
+      "streaming_nurse": {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 15, "contracted_hours_per_week": 37.5},
+      "band6_nurse":     {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 15, "contracted_hours_per_week": 37.5},
+      "band5_nurse":     {"base_hourly_rate": 18.0, "employer_on_cost_pct": 26, "enhancement_pct": 15, "agency_share_pct": 8, "agency_hourly_rate": 52.0, "contracted_hours_per_week": 37.5},
+      "resus_nurse":     {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 15, "contracted_hours_per_week": 37.5},
+      "sdec_nurse":      {"base_hourly_rate": 18.0, "employer_on_cost_pct": 26, "enhancement_pct": 8, "contracted_hours_per_week": 37.5},
+      "utc_practitioner": {"base_hourly_rate": 28.0, "employer_on_cost_pct": 26, "enhancement_pct": 8, "contracted_hours_per_week": 37.5},
+      "frailty_pract":   {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 5, "contracted_hours_per_week": 37.5},
+      "mh_liaison":      {"base_hourly_rate": 22.0, "employer_on_cost_pct": 26, "enhancement_pct": 10, "contracted_hours_per_week": 37.5},
+      "enp":             {"base_hourly_rate": 26.0, "employer_on_cost_pct": 26, "enhancement_pct": 10, "contracted_hours_per_week": 37.5},
+      "hca":             {"base_hourly_rate": 12.5, "employer_on_cost_pct": 26, "enhancement_pct": 15, "contracted_hours_per_week": 37.5},
+      "porter":          {"base_hourly_rate": 12.0, "employer_on_cost_pct": 26, "enhancement_pct": 12, "contracted_hours_per_week": 37.5},
+      "receptionist":    {"base_hourly_rate": 12.0, "employer_on_cost_pct": 26, "enhancement_pct": 8, "contracted_hours_per_week": 37.5}
+    }
+  },
+
+  "estates": {
+    "status": "ILLUSTRATIVE unit costs for demonstration. A blank cost is shown as 'not costed', never as £0, and a package containing one is never ranked as fully costed.",
+    "annualisation": {"capital_years": 15, "note": "For ranking only: annualised comparison cost = recurring annual cost + one-off capital / 15 years (straight line, no discounting, no residual value). Capital and recurring costs are always shown separately as well."},
+    "items": {
+      "cubicle":          {"label": "Majors cubicle (trolley space)", "unit": "space", "capital": 45000, "recurring_non_pay": 3000},
+      "resus_bay":        {"label": "Resus bay", "unit": "bay", "capital": 120000, "recurring_non_pay": 8000},
+      "fit_to_sit_chair": {"label": "Fit-to-sit / ambulatory space", "unit": "space", "capital": 6000, "recurring_non_pay": 500},
+      "utc_room":         {"label": "UTC consulting room", "unit": "room", "capital": 60000, "recurring_non_pay": 3000},
+      "sdec_chair":       {"label": "SDEC chair", "unit": "chair", "capital": 15000, "recurring_non_pay": 1500},
+      "handover_bay":     {"label": "Ambulance handover bay", "unit": "bay", "capital": 25000, "recurring_non_pay": null},
+      "ct_scanner":       {"label": "CT scanner", "unit": "scanner", "capital": 1200000, "recurring_non_pay": 150000,
+                           "staffing_not_modelled": "Radiographer staffing is not modelled; a new scanner is assumed staffed whenever open."},
+      "xray_room":        {"label": "X-ray room", "unit": "room", "capital": 400000, "recurring_non_pay": 40000,
+                           "staffing_not_modelled": "Radiographer staffing is not modelled."},
+      "inpatient_beds":   {"label": "New inpatient beds", "unit": "bed", "capital": null, "recurring_non_pay": 150000,
+                           "note": "NEW physical beds. Recurring cost per bed per year is an illustrative all-in ward cost (including ward staffing, which is not in the ED rota). Capital not costed. Different from freeing existing beds."},
+      "ward_discharge_pct": {"label": "Faster ward discharge (frees EXISTING beds)", "unit": "% uplift", "capital": null, "recurring_non_pay": null,
+                           "note": "An improvement in the rate wards discharge patients. Not a new bed. Not costed: it depends on what would deliver it."},
+      "community_capacity": {"label": "Community / virtual-ward places", "unit": "place", "capital": null, "recurring_non_pay": 30000,
+                           "note": "Illustrative recurring cost per place per year."}
+    }
+  },
+
+  "target": {
+    "pct": 90.0, "minutes": 240,
+    "label": "90% of eligible adult ED attendances completed within four hours",
+    "note": "A selected demonstration / planning target, editable here. It is not a statement of the current national requirement."
+  },
+
+  "engine": {
+    "warmup_days": 1, "observed_days": 6, "drain_hours": 12,
+    "replications": 6, "selection_seeds": [101, 102, 103, 104, 105, 106],
+    "validation_seeds": [9001, 9002, 9003, 9004, 9005, 9006, 9007, 9008],
+    "replay_day": 3,
+    "note": "Each replication simulates a 1-day warm-up, 6 observed days and a 12-hour drain. The cohort is everyone arriving in the 6 observed days; the drain lets them finish. Baseline and every scenario use the SAME seeds (matched comparisons). Shortlisted packages are re-run on a SEPARATE validation seed set, so selection is not mistaken for confirmation."
+  },
+
+  "search": {
+    "max_steps": 6,
+    "reps": 6,
+    "min_step_gain_pts": 0.5,
+    "guardrails": {"max_lwbs_increase_pts": 1.0, "max_wip_increase_pct": 10},
+    "levers": [
+      {"id": "nurse_day",   "kind": "shift", "title": "+1 Band 5 ED nurse 08:00-20:00", "shift": {"role": "band5_nurse", "area": "Majors", "days": "Mon-Sun", "start": 8, "end": 20, "count": 1, "unpaid_break_minutes": 30}},
+      {"id": "nurse_night", "kind": "shift", "title": "+1 Band 5 ED nurse 20:00-08:00", "shift": {"role": "band5_nurse", "area": "Majors", "days": "Mon-Sun", "start": 20, "end": 8, "count": 1, "unpaid_break_minutes": 30}},
+      {"id": "sho_late",    "kind": "shift", "title": "+1 ED junior doctor 14:00-02:00", "shift": {"role": "em_sho", "area": "ED doctor pool", "days": "Mon-Sun", "start": 14, "end": 2, "count": 1}},
+      {"id": "reg_night",   "kind": "shift", "title": "+1 ED registrar 22:00-08:00", "shift": {"role": "em_registrar", "area": "ED doctor pool", "days": "Mon-Sun", "start": 22, "end": 8, "count": 1}},
+      {"id": "cons_eve",    "kind": "shift", "title": "+1 ED consultant 14:00-24:00", "shift": {"role": "ed_consultant", "area": "ED doctor pool", "days": "Mon-Sun", "start": 14, "end": 24, "count": 1}},
+      {"id": "rat_day",     "kind": "shift", "title": "+1 RAT senior 10:00-22:00", "shift": {"role": "rat_consultant", "area": "RAT", "days": "Mon-Sun", "start": 10, "end": 22, "count": 1}},
+      {"id": "stream_day",  "kind": "shift", "title": "+1 streaming nurse 08:00-20:00", "shift": {"role": "streaming_nurse", "area": "Front door", "days": "Mon-Sun", "start": 8, "end": 20, "count": 1, "unpaid_break_minutes": 30}},
+      {"id": "utc_prac",    "kind": "shift", "title": "+1 UTC practitioner 12:00-24:00", "shift": {"role": "utc_practitioner", "area": "UTC", "days": "Mon-Sun", "start": 12, "end": 24, "count": 1, "unpaid_break_minutes": 30}},
+      {"id": "sdec_doc",    "kind": "shift", "title": "+1 SDEC doctor 10:00-20:00 weekdays", "shift": {"role": "sdec_doctor", "area": "SDEC", "days": "Mon-Fri", "start": 10, "end": 20, "count": 1}},
+      {"id": "porter",      "kind": "shift", "title": "+1 porter 08:00-20:00", "shift": {"role": "porter", "area": "Transfers", "days": "Mon-Sun", "start": 8, "end": 20, "count": 1, "unpaid_break_minutes": 30}},
+      {"id": "cubicles_4",  "kind": "estate", "title": "+4 majors cubicles (with any nurses needed to open them)", "space": "cubicle", "add": 4},
+      {"id": "resus_1",     "kind": "estate", "title": "+1 resus bay (with any resus nurses needed)", "space": "resus_bay", "add": 1},
+      {"id": "utc_rooms_3", "kind": "estate", "title": "+3 UTC rooms (with any UTC practitioners needed)", "space": "utc_room", "add": 3},
+      {"id": "f2s_4",       "kind": "estate", "title": "+4 fit-to-sit spaces", "space": "fit_to_sit_chair", "add": 4},
+      {"id": "sdec_chairs_4", "kind": "estate", "title": "+4 SDEC chairs (with any SDEC nurses needed)", "space": "sdec_chair", "add": 4},
+      {"id": "sdec_late",   "kind": "hours", "title": "SDEC open until midnight (with matching SDEC staff)", "area": "sdec", "hours": [8, 24],
+       "staff": [{"role": "sdec_doctor", "area": "SDEC", "days": "Mon-Sun", "start": 22, "end": 24, "count": 1},
+                 {"role": "sdec_nurse", "area": "SDEC", "days": "Mon-Sun", "start": 22, "end": 24, "count": 3}]},
+      {"id": "ct_1",        "kind": "estate", "title": "+1 CT scanner", "space": "ct_scanner", "add": 1},
+      {"id": "beds_20",     "kind": "downstream", "title": "+20 new inpatient beds", "param": "inpatient_beds", "add": 20, "estate_item": "inpatient_beds"},
+      {"id": "discharge_10", "kind": "downstream", "title": "Wards discharge 10% faster (frees existing beds)", "param": "ward_discharge_capacity_per_hour", "scale": 1.10, "estate_item": "ward_discharge_pct", "units": 10}
+    ],
+    "note": "The search only tests the changes listed here, at these sizes, and combinations of them built step by step (see the method on screen). It cannot change clinical durations, routing probabilities or demand. It does not prove that a target is impossible in the real hospital or that the package found is the cheapest possible."
+  },
+
+  "groups": [
+    {"id": "front_door_wait", "order": 1, "label": "Waiting for first assessment",
+     "description": "Arrived and waiting to be streamed (walk-ins) or for an ambulance handover bay (ambulance arrivals).",
+     "states": [
+       {"node": "streaming", "phase": "queue", "label": "Walk-ins waiting for streaming", "kind": "waiting"},
+       {"node": "ambulance_handover", "phase": "queue", "label": "Ambulance arrivals waiting for handover", "kind": "waiting"}
+     ]},
+    {"id": "initial_assessment", "order": 2, "label": "Initial assessment and handover",
+     "description": "Streaming, the ambulance handover itself, and rapid assessment and treatment (RAT) by a senior clinician.",
+     "states": [
+       {"node": "streaming", "phase": "service", "label": "Being streamed", "kind": "in_service"},
+       {"node": "ambulance_handover", "phase": "service", "label": "Handover in progress", "kind": "in_service"},
+       {"node": "rat", "phase": "queue", "label": "Waiting for RAT", "kind": "waiting"},
+       {"node": "rat", "phase": "service", "label": "In RAT (senior assessment)", "kind": "in_service"}
+     ]},
+    {"id": "treatment", "order": 3, "label": "Clinical assessment and treatment",
+     "description": "The adult treatment areas, SDEC, the frailty unit, and waiting for results or a decision after diagnostics.",
+     "states": [
+       {"node": "ed_resus", "phase": "queue", "label": "Waiting for resus", "kind": "waiting", "area": "Resus"},
+       {"node": "ed_resus", "phase": "service", "label": "In resus", "kind": "in_service", "area": "Resus"},
+       {"node": "ed_cubicles", "phase": "queue", "label": "Waiting for a majors cubicle or clinician", "kind": "waiting", "area": "Majors cubicles"},
+       {"node": "ed_cubicles", "phase": "service", "label": "Being treated in majors", "kind": "in_service", "area": "Majors cubicles"},
+       {"node": "ed_ambulatory", "phase": "queue", "label": "Waiting for fit-to-sit / ambulatory", "kind": "waiting", "area": "Fit-to-sit"},
+       {"node": "ed_ambulatory", "phase": "service", "label": "Being treated in fit-to-sit", "kind": "in_service", "area": "Fit-to-sit"},
+       {"node": "utc_minor_illness", "phase": "queue", "label": "Waiting for a UTC room", "kind": "waiting", "area": "UTC"},
+       {"node": "utc_minor_illness", "phase": "service", "label": "Being seen in the UTC", "kind": "in_service", "area": "UTC"},
+       {"node": "sdec", "phase": "queue", "label": "Waiting for SDEC", "kind": "waiting", "area": "SDEC"},
+       {"node": "sdec", "phase": "service", "label": "SDEC assessment", "kind": "in_service", "area": "SDEC"},
+       {"node": "sdec_care", "phase": "queue", "label": "SDEC care (queue)", "kind": "waiting", "area": "SDEC"},
+       {"node": "sdec_care", "phase": "service", "label": "SDEC tests, treatment and observation", "kind": "in_service", "area": "SDEC"},
+       {"node": "fau", "phase": "queue", "label": "Waiting for the frailty unit", "kind": "waiting", "area": "Frailty unit"},
+       {"node": "fau", "phase": "service", "label": "In the frailty unit", "kind": "in_service", "area": "Frailty unit"},
+       {"node": "disposition", "phase": "queue", "label": "Awaiting results or decision (queue)", "kind": "waiting", "area": "Results and decision"},
+       {"node": "disposition", "phase": "service", "label": "Awaiting results, review or decision", "kind": "waiting", "area": "Results and decision"}
+     ]},
+    {"id": "diagnostics", "order": 4, "label": "Diagnostics",
+     "description": "Imaging the model represents: CT and plain X-ray. Patients return to the results-and-decision step afterwards.",
+     "states": [
+       {"node": "ct", "phase": "queue", "label": "Waiting for CT", "kind": "waiting", "area": "CT"},
+       {"node": "ct", "phase": "service", "label": "Having a CT scan", "kind": "in_service", "area": "CT"},
+       {"node": "xray", "phase": "queue", "label": "Waiting for X-ray", "kind": "waiting", "area": "X-ray"},
+       {"node": "xray", "phase": "service", "label": "Having an X-ray", "kind": "in_service", "area": "X-ray"}
+     ]},
+    {"id": "next_destination", "order": 5, "label": "Next destination / leaving ED",
+     "description": "After the decision: waiting for an inpatient bed, transfer to the ward, discharge preparation, and onward referral.",
+     "states": [
+       {"node": "await_inpatient_bed", "phase": "queue", "label": "Waiting for an inpatient bed", "kind": "waiting", "area": "Admission"},
+       {"node": "await_inpatient_bed", "phase": "service", "label": "Waiting for an inpatient bed", "kind": "waiting", "area": "Admission"},
+       {"node": "transfer_to_ward", "phase": "queue", "label": "Waiting for a porter", "kind": "waiting", "area": "Admission"},
+       {"node": "transfer_to_ward", "phase": "service", "label": "Transfer to ward in progress", "kind": "in_service", "area": "Admission"},
+       {"node": "await_mh_bed", "phase": "queue", "label": "Waiting for a mental-health bed", "kind": "waiting", "area": "Mental health"},
+       {"node": "await_mh_bed", "phase": "service", "label": "Waiting for a mental-health bed", "kind": "waiting", "area": "Mental health"},
+       {"node": "discharge", "phase": "queue", "label": "Discharge preparation (queue)", "kind": "waiting", "area": "Discharge"},
+       {"node": "discharge", "phase": "service", "label": "Discharge preparation", "kind": "in_service", "area": "Discharge"},
+       {"node": "community_referral", "phase": "queue", "label": "Community referral (queue)", "kind": "waiting", "area": "Discharge"},
+       {"node": "community_referral", "phase": "service", "label": "Referral to community / virtual ward", "kind": "in_service", "area": "Discharge"}
+     ]}
+  ],
+  "milestones": [
+    {"node": "decision_to_admit", "label": "Decision to admit", "group": "next_destination"},
+    {"node": "decision_to_admit_mh", "label": "Decision to admit (mental health)", "group": "next_destination"},
+    {"node": "sdec_outcome", "label": "SDEC outcome decided", "group": "treatment"},
+    {"node": "imaging_decision", "label": "Diagnostics decision", "group": "treatment"},
+    {"node": "disposition_general", "label": "Disposition decided", "group": "treatment"},
+    {"node": "sdec_closed", "label": "Redirected: SDEC closed", "group": "initial_assessment"}
+  ],
+  "outcomes": [
+    {"node": "admitted", "label": "Admitted to a ward (transfer complete)", "summary": "admitted"},
+    {"node": "admitted_mh", "label": "Admitted to a mental-health (MH) bed", "summary": "admitted"},
+    {"node": "discharged", "label": "Discharged from the ED", "summary": "discharged"},
+    {"node": "discharged_sdec", "label": "Discharged from SDEC", "summary": "discharged"},
+    {"node": "discharged_community", "label": "Discharged to community / virtual ward", "summary": "discharged"},
+    {"node": "lwbs", "label": "Left without being seen", "summary": "left_without_being_seen"}
+  ],
+  "labels": {
+    "streaming": "Streaming / initial assessment", "ambulance_handover": "Ambulance handover",
+    "rat": "Rapid assessment and treatment (RAT)", "ed_resus": "Resus",
+    "ed_cubicles": "Majors cubicles", "ed_ambulatory": "Fit-to-sit / majors ambulant",
+    "utc_minor_illness": "Urgent Treatment Centre (UTC)", "sdec": "SDEC assessment",
+    "sdec_care": "SDEC care and observation", "sdec_outcome": "SDEC outcome",
+    "sdec_closed": "SDEC closed: redirected", "fau": "Frailty assessment unit",
+    "imaging_decision": "Diagnostics decision", "ct": "CT scan", "xray": "X-ray",
+    "disposition": "Awaiting results / clinical decision", "disposition_general": "Disposition",
+    "decision_to_admit": "Decision to admit", "await_inpatient_bed": "Waiting for an inpatient bed",
+    "transfer_to_ward": "Transfer to ward", "decision_to_admit_mh": "Decision to admit (mental health)",
+    "await_mh_bed": "Waiting for a mental-health bed", "discharge": "Discharge preparation",
+    "community_referral": "Referral to community / virtual ward",
+    "admitted": "Admitted to a ward (transfer complete)", "admitted_mh": "Admitted to an MH bed",
+    "discharged": "Discharged from the ED", "discharged_sdec": "Discharged from SDEC",
+    "discharged_community": "Discharged to community / virtual ward",
+    "lwbs": "Left without being seen"
+  }
+}

@@ -45,10 +45,11 @@ def _cap(current, change):
 
 def _windowed(current, change, hours):
     """Apply a change only inside a set of 24h-clock hours (roster-ifying a
-    scalar capacity if needed)."""
-    cur24 = list(current) if isinstance(current, (list, tuple)) else [current] * 24
-    return [max(0, _cap(c, change)) if h in hours else max(0, int(round(c)))
-            for h, c in enumerate(cur24)]
+    scalar capacity if needed). A 168-value (hour-of-week) roster is changed
+    at those clock hours on every day."""
+    cur = list(current) if isinstance(current, (list, tuple)) else [current] * 24
+    return [max(0, _cap(c, change)) if (h % 24) in hours else max(0, int(round(c)))
+            for h, c in enumerate(cur)]
 
 
 def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
@@ -90,11 +91,12 @@ def apply_scenario(pathway: Pathway, scenario: dict) -> tuple[Pathway, dict]:
             and "cubicle" in raw.get("resources", {})):
         ratio = int(uec["nurse_to_cubicle_ratio"])
         hours = set(nrs.get("hours") or range(24))
-        n24 = [max(0, _cap(n, nrs["change"])) if h in hours else int(n)
+        n24 = [max(0, _cap(n, nrs["change"])) if (h % 24) in hours else int(n)
                for h, n in enumerate(uec["ed_nurse_staffing"])]
         phys = uec.get("physical_cubicles") or raw["resources"]["cubicle"]
-        p24 = list(phys) if isinstance(phys, (list, tuple)) else [int(phys)] * 24
-        raw["resources"]["cubicle"] = [max(1, min(int(p), n * ratio))
+        p24 = list(phys) if isinstance(phys, (list, tuple)) else [int(phys)] * len(n24)
+        # no floor: zero nurses on shift opens zero cubicles
+        raw["resources"]["cubicle"] = [max(0, min(int(p), n * ratio))
                                        for p, n in zip(p24, n24)]
         uec["ed_nurse_staffing"] = n24     # keep raw self-consistent for chained use
 

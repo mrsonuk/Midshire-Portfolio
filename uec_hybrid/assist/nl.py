@@ -161,8 +161,8 @@ def parse_question(question: str, raw: dict):
             phys = uec.get("physical_cubicles") or cur24
             p24 = list(phys) if isinstance(phys, (list, tuple)) else [int(phys)] * 24
             win = set(hours or range(24))
-            moved = any(max(1, min(int(p24[h]), max(0, _cap(n, change)) * ratio)) != int(round(cur24[h]))
-                        for h, n in enumerate(uec["ed_nurse_staffing"]) if h in win)
+            moved = any(max(0, min(int(p24[h]), max(0, _cap(n, change)) * ratio)) != int(round(cur24[h]))
+                        for h, n in enumerate(uec["ed_nurse_staffing"]) if (h % 24) in win)
             if not moved:
                 note += (". Note: at your current rota every physical cubicle in that window "
                          "is already nurse-covered, so this change adds no cubicle capacity - "

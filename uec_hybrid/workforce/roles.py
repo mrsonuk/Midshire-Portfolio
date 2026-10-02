@@ -16,12 +16,16 @@ STAFF_RESOURCES = [
     "streaming_nurse", "rat_clinician", "ed_doctor", "paeds_doctor",
     "specialty_doctor", "frailty_team", "mh_clinician",
     "ed_nurse", "minors_enp", "porter_pool",
+    "resus_nurse", "utc_clinician", "sdec_nurse",
 ]
 
-# staff areas that limit flow through a builder RATIO rather than as engine
-# resources - always shown in the workforce view even though they never appear
-# in a built pathway's resource list
-RATIO_RESOURCES = {"ed_nurse"}
+# staff areas that limit flow through a builder RATIO (spaces open = staff on
+# shift x spaces per member of staff, never more than the physical spaces)
+# rather than as engine resources. They never appear in a built pathway's
+# resource list. ed_nurse -> majors cubicles is the template's ratio; the other
+# three are used only where a department's space-staffing table names them
+# (the Midshire demonstrator does; the Cambridge build does not).
+RATIO_RESOURCES = {"ed_nurse", "resus_nurse", "utc_clinician", "sdec_nurse"}
 
 # rostered-and-costed workforce that does not yet limit flow in the engine -
 # it appears in the rota, the pay-bill and the staffing-vs-demand view.
@@ -44,6 +48,22 @@ ROLES = {
     "hca":             {"label": "Healthcare assistant", "staffs": "hca_pool", "cost": 20},
     "porter":          {"label": "Porter / patient transport", "staffs": "porter_pool", "cost": 18},
     "receptionist":    {"label": "Receptionist", "staffs": "reception", "cost": 18},
+    # ratio-staffed spaces (only limit flow where a space-staffing table uses them)
+    "resus_nurse":     {"label": "Resus nurse - Band 6", "staffs": "resus_nurse", "cost": 36},
+    "utc_practitioner": {"label": "UTC practitioner (ENP / GP)", "staffs": "utc_clinician", "cost": 48},
+    "sdec_nurse":      {"label": "SDEC nurse - Band 5", "staffs": "sdec_nurse", "cost": 30},
+}
+
+# Indicative contracted hours per week by role, used ONLY to express extra
+# hours as whole-time equivalents (WTE). Professions work different standard
+# weeks, so there is deliberately no single figure. Editable per scenario.
+CONTRACTED_HOURS = {
+    "ed_consultant": 40.0, "rat_consultant": 40.0, "em_registrar": 40.0,
+    "em_sho": 40.0, "paeds_doctor": 40.0, "sdec_doctor": 40.0,
+    "streaming_nurse": 37.5, "band6_nurse": 37.5, "band5_nurse": 37.5,
+    "resus_nurse": 37.5, "sdec_nurse": 37.5, "enp": 37.5,
+    "utc_practitioner": 37.5, "frailty_pract": 37.5, "mh_liaison": 37.5,
+    "hca": 37.5, "porter": 37.5, "receptionist": 37.5,
 }
 
 # nice plain labels for the staff areas, for the workforce view
@@ -55,11 +75,14 @@ AREA_LABEL = {
     "specialty_doctor": "SDEC / specialty doctors",
     "frailty_team": "Frailty team",
     "mh_clinician": "Mental-health liaison",
-    "ed_nurse": "ED nursing (majors / resus)",
+    "ed_nurse": "ED nursing (majors cubicles)",
     "minors_enp": "Minor injury (ENPs)",
     "hca_pool": "Healthcare assistants",
     "porter_pool": "Porters / patient transport",
     "reception": "Reception / registration",
+    "resus_nurse": "Resus nursing",
+    "utc_clinician": "UTC practitioners",
+    "sdec_nurse": "SDEC nursing",
 }
 
 

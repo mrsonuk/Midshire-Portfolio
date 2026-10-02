@@ -1,3 +1,70 @@
+# Midshire University Hospitals Trust Control Tower (demonstrator)
+
+This branch adds an **adult ED simulation and planning demonstrator** under the
+fictional name *Midshire University Hospitals Trust*. It is built on the
+Cambridge (RGT) control tower below and leaves that build intact. Midshire is a
+**demonstration identity**: it is not a real trust, not a live patient feed, not
+a connected digital twin and not a clinically validated staffing tool.
+
+## Run the demonstrator
+
+```
+pip install -r requirements.txt
+python3 -m uec_hybrid.midshire            # http://127.0.0.1:5050
+```
+
+No external AI service, API key or network access is needed. The demo opens on
+committed, clearly labelled **precomputed** results (baseline and three package
+searches) so a presentation never waits on a cold run; everything can be re-run
+from the page. Useful commands:
+
+| Command | What it does |
+|---|---|
+| `python3 -m uec_hybrid.midshire --check` | start, load fixtures, report, exit |
+| `python3 -m uec_hybrid.midshire.precompute` | regenerate the precomputed fixtures (~30 min) |
+| `python3 -m uec_hybrid.midshire.validate` | conformance + per-area comparison + four-hour decomposition |
+| `python3 -m uec_hybrid.tests.midshire` | the Midshire checks (also run by `uec_hybrid.tests.run`) |
+
+**Reset the demo:** Scenarios → "Reset to demo baseline" (keeps saved scenarios),
+or stop the server and delete `uec_midshire.sqlite3` for a completely fresh
+start. Midshire stores everything in that file (or `MIDSHIRE_DATABASE_URL`); it
+never reads or writes the Cambridge database `uec_platform.sqlite3`.
+
+## What it shows
+
+Overview → Patient flow → Workforce & investment → Scenarios, with Set up /
+assumptions as a secondary tab, and **Ask Qbo ED** as another way into the same
+workflow. Details, the requirement mapping and a presenter walkthrough are in
+[`docs/MIDSHIRE.md`](docs/MIDSHIRE.md).
+
+## Data boundaries
+
+* Inputs trace to the Cambridge build's committed files (`data/cuh/`, NHS
+  England publications under `data/`, `uec_hybrid/data/rgt_published.json`), or
+  are labelled **illustrative** in `uec_hybrid/data/midshire/midshire_demo.json`
+  (rota, staff costs, estates unit costs, SDEC size, hours and streaming shares,
+  space-staffing ratios). The Set up tab lists the kind and source of every input.
+* Adult only: children are removed from demand (400.5 × (1 − 0.1335) = 347.0
+  adult attendances a day, using the source trust's own paediatric-area share),
+  with the paediatric area, staff and routes; they are not re-routed.
+* Outputs are simulated. The adult, SDEC-extended build does not inherit the
+  Cambridge validation; see `python3 -m uec_hybrid.midshire.validate`.
+
+## Metric definitions (short form)
+
+The four-hour measure is the share of **eligible adult attendances** (everyone
+arriving in the observed days; no exclusions; left-without-being-seen included)
+completed within the target time, from arrival to leaving the ED. SDEC time
+counts **inside** the ED attendance. Each simulated week runs a 12-hour drain;
+anyone still in the department then has already exceeded the target and counts
+as not met (and as unfinished work in progress). Snapshot counts come from **one**
+simulated day; whole-run figures are per simulated week, then summarised across
+weeks (mean, range, and a simulation-noise interval of the mean). Every metric's
+population, units, window, start, end and treatment of unfinished patients is
+in `uec_hybrid/midshire/metrics.py` (`DEFINITIONS`) and on the Set up tab.
+
+---
+
 # Model ED Optimiser, control tower edition
 
 This branch carries a focused build of the Model ED Optimiser. It has two
