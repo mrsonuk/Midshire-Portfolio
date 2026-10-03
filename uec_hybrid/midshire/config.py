@@ -21,7 +21,7 @@ FIXTURE = DATA_DIR / "midshire_demo.json"
 PRECOMPUTED_DIR = DATA_DIR / "precomputed"
 
 PATHWAY_VERSION = "midshire-adult-pathway-v1"
-METRICS_VERSION = "midshire-metrics-v1"
+METRICS_VERSION = "midshire-metrics-v2"
 
 # parts of the scenario inputs that drive the SIMULATION (hashed for the cache)
 MODEL_KEYS = ("cohort", "areas", "capacity", "space_staffing", "rota", "downstream",
@@ -55,6 +55,57 @@ def state_table() -> dict:
         for st in g["states"]:
             out[(st["node"], st["phase"])] = {"group": g["id"], "label": st["label"],
                                               "kind": st["kind"], "area": st.get("area")}
+    return out
+
+
+def flow_units() -> list[dict]:
+    """The boxes on the Patient flow maps (central, by stable id). Raises if a
+    state is in no unit, in two units, or in a unit of a different group."""
+    f = fixture()
+    units = copy.deepcopy(f["flow_map"]["units"])
+    table = state_table()
+    seen = {}
+    for u in units:
+        if u["group"] not in {g["id"] for g in f["groups"]}:
+            raise ValueError(f"flow unit {u['id']}: unknown group {u['group']}")
+        for key in u.get("states", []):
+            node, phase = key.split("|")
+            if (node, phase) not in table:
+                raise ValueError(f"flow unit {u['id']}: {key} is not an occupancy state")
+            if table[(node, phase)]["group"] != u["group"]:
+                raise ValueError(f"flow unit {u['id']}: {key} belongs to group {table[(node, phase)]['group']}")
+            if key in seen:
+                raise ValueError(f"{key} is in flow units {seen[key]} and {u['id']}")
+            seen[key] = u["id"]
+    missing = [f"{n}|{p}" for (n, p) in table if f"{n}|{p}" not in seen]
+    if missing:
+        raise ValueError(f"states in no flow unit: {missing}")
+    return units
+
+
+def unit_maps() -> tuple[dict, dict]:
+    """(node, phase) -> unit id, and milestone node -> unit id."""
+    by_state, by_milestone = {}, {}
+    for u in flow_units():
+        for key in u.get("states", []):
+            node, phase = key.split("|")
+            by_state[(node, phase)] = u["id"]
+        if u.get("milestone"):
+            by_milestone[u["milestone"]] = u["id"]
+    return by_state, by_milestone
+
+
+def node_groups() -> dict:
+    """node id -> the summary group the full-pathway map places it in. A node
+    whose waiting and service states sit in different groups (streaming,
+    ambulance handover) goes where its service is; decision and routing
+    points go where the fixture's milestone list puts them."""
+    out = {}
+    for (node, phase), s in state_table().items():
+        if phase == "service" or node not in out:
+            out[node] = s["group"]
+    for m in fixture()["milestones"]:
+        out.setdefault(m["node"], m["group"])
     return out
 
 

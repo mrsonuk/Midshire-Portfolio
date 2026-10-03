@@ -61,7 +61,8 @@ def _one(args):
            "kpis": M.replication_kpis(tr, raw, raw.get("target_minutes", 240)),
            "within": _within_curve(tr, raw),
            "stages": M.stage_metrics(tr, raw),
-           "profile": M.hour_profile(tr, raw)}
+           "profile": M.hour_profile(tr, raw),
+           "flows": M.flow_links(tr, raw)}
     hist = res.get("sd_history") or []
     if hist:
         occ = [s["bed_occupancy"] for _, s in hist]
@@ -159,6 +160,15 @@ def reduce(model: Model, inputs: dict, reps: list[dict], seeds: list[int],
     profile = {}
     for key in ("census_avg", "waiting_avg", "arrivals_per_hour", "departures_per_hour"):
         profile[key] = [float(np.mean([r["profile"][key][h] for r in reps])) for h in range(24)]
+    for key in ("states_avg", "milestones_per_hour", "departures_by_outcome_per_hour"):
+        names = set().union(*[r["profile"].get(key, {}).keys() for r in reps])
+        # a state nobody entered in a replication had zero patients in it
+        profile[key] = {k: [float(np.mean([(r["profile"].get(key, {}).get(k) or [0.0] * 24)[h] for r in reps]))
+                            for h in range(24)] for k in sorted(names)}
+    flows = {}
+    for level in ("group", "unit", "node"):
+        names = set().union(*[r["flows"][level].keys() for r in reps])
+        flows[level] = {k: float(np.mean([r["flows"][level].get(k, 0.0) for r in reps])) for k in sorted(names)}
     replay = next((r for r in reps if "replay" in r), None)
     uec = model.raw.get("uec") or {}
     open_cap = {r: {"min": int(min(v)), "max": int(max(v)), "week": v}
@@ -203,6 +213,7 @@ def reduce(model: Model, inputs: dict, reps: list[dict], seeds: list[int],
         "stages": stages,
         "pressure": M.pressure_ranking(stages),
         "profile": profile,
+        "flows": flows,
         "replay": ({"seed": replay["seed"], **replay["replay"],
                     "bed_occupancy": replay.get("bed_occupancy_series")} if replay else None),
         "model": {"warnings": model.warnings, "pruned_nodes": uec.get("pruned_nodes"),

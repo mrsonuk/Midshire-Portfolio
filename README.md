@@ -34,7 +34,10 @@ never reads or writes the Cambridge database `uec_platform.sqlite3`.
 
 Overview → Patient flow → Workforce & investment → Scenarios, with Set up /
 assumptions as a secondary tab, and **Ask Qbo ED** as another way into the same
-workflow. Details, the requirement mapping and a presenter walkthrough are in
+workflow. Patient flow is an animated flow map like the Cambridge control
+tower's, simplified to five groups left to right; selecting a group opens a map
+of its areas underneath, and the full step-by-step map is the expert view.
+Details, the requirement mapping and a presenter walkthrough are in
 [`docs/MIDSHIRE.md`](docs/MIDSHIRE.md).
 
 ## Data boundaries

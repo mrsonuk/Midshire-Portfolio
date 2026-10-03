@@ -98,15 +98,28 @@
   <!-- ============================ PATIENT FLOW ============================ -->
   <section id="panel-flow" role="tabpanel" aria-labelledby="tab-flow" class="ms-panel" hidden>
     <h2>Patient flow</h2>
-    <p class="ms-lead">Five summary groups, left to right. This is a display grouping, not a compulsory sequence: not
-      everyone needs diagnostics, assessment by RAT or admission; patients can go home early, go straight to SDEC, or
-      return from diagnostics to a decision. Select a group to open its detail underneath.</p>
+    <p class="ms-lead">The department as one picture, in five summary groups from left to right. This is a display
+      grouping, not a compulsory sequence: not everyone needs diagnostics, assessment by RAT or admission; patients can
+      go home early, go straight to SDEC, or return from diagnostics to a decision, and the lines show those routes.
+      Select a group to open a map of its areas underneath.</p>
+    <div class="fm-toolbar">
+      <ul class="fm-key" aria-label="Key to the map borders">
+        <li><span class="sw st-quiet" aria-hidden="true"></span>quiet</li>
+        <li><span class="sw st-busy" aria-hidden="true"></span>filling</li>
+        <li><span class="sw st-peak" aria-hidden="true"></span>near its busiest moment of the day</li>
+        <li><span class="sw line" aria-hidden="true"></span>patients a day moving between boxes</li>
+      </ul>
+      <button id="flowPause" class="ms-btn-small fm-pause" type="button" aria-pressed="false">Pause movement</button>
+    </div>
     <p class="ms-hint" id="flowLegend"></p>
-    <div class="ms-groups" id="groupRow" role="list"></div>
+    <div class="fm-map" id="groupRow" role="group" aria-label="Patient flow map: the five summary groups, with arrivals on the left and outcomes on the right"></div>
+    <details class="ms-details" id="flowTableView"><summary>Table view of this map</summary><div id="flowTable"></div></details>
     <div id="groupDetail" class="ms-detail" hidden tabindex="-1"></div>
     <h3 class="ms-h3">Leaving the department</h3>
     <div id="outcomeRow" class="ms-tiles ms-tiles-secondary"></div>
     <details class="ms-details" id="expertView"><summary>Expert view: the full modelled pathway</summary>
+      <p class="ms-hint" id="expertNote"></p>
+      <div class="fm-map" id="expertMap" role="group" aria-label="Full pathway map: every modelled step"></div>
       <div id="expertTable"></div></details>
   </section>
 

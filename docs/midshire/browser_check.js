@@ -49,6 +49,22 @@ async function ready(page) {
     ok("arrow keys move between tabs", await page.$eval("#tab-flow", e => e.getAttribute("aria-selected") === "true" && document.activeElement === e));
     const focusBg = await page.$eval("#tab-flow", e => getComputedStyle(e).backgroundColor);
     ok("visible yellow focus state", focusBg === "rgb(255, 235, 59)", focusBg);
+    // the flow map: five groups left to right, routes drawn between them, moving dots that pause
+    await page.waitForSelector("#groupRow path.fm-link", { state: "attached" });
+    ok("summary flow map draws the routes between groups", (await page.$$("#groupRow path.fm-link")).length >= 8);
+    ok("summary map has arrivals, the five groups and the three merged outcomes",
+      (await page.$$("#groupRow .fm-group")).length === 5 && (await page.$$("#groupRow .fm-outcome")).length === 3 && !!(await page.$("#groupRow .fm-source")));
+    ok("returns from diagnostics are drawn", !!(await page.$('#groupRow path.fm-link[data-s="diagnostics"][data-d="treatment"]')));
+    const xs = await page.$$eval("#groupRow #grp-front_door_wait, #groupRow #grp-initial_assessment, #groupRow #grp-treatment, #groupRow #grp-next_destination", els => els.map(e => e.getBoundingClientRect().left));
+    ok("groups run left to right", xs.every((x, i) => i === 0 || x > xs[i - 1]), xs.join(","));
+    const dotAt = () => page.$eval("#groupRow circle.fm-dot", c => c.getAttribute("cx") + "," + c.getAttribute("cy"));
+    const d0 = await dotAt(); await page.waitForTimeout(500);
+    ok("dots move along the routes", (await dotAt()) !== d0);
+    await page.click("#flowPause");
+    const p0 = await dotAt(); await page.waitForTimeout(500);
+    ok("Pause movement stops the animation", (await dotAt()) === p0 && (await page.getAttribute("#flowPause", "aria-pressed")) === "true");
+    await page.click("#flowPause");
+    await page.screenshot({ path: path.join(OUT, "02_flow_map_1366.png"), fullPage: true });
     // time: change via keyboard on the slider; group numbers follow
     const before = await page.textContent("#grp-treatment .gnum");
     await page.focus("#timeSlider");
@@ -66,8 +82,13 @@ async function ready(page) {
     ok("detail keeps the selected time", (await page.textContent("#groupDetail")).includes("16:00"));
     const det = await page.textContent("#groupDetail");
     ok("treatment detail lists the adult areas incl. SDEC", ["resus", "majors", "fit-to-sit", "UTC", "SDEC"].every(w => det.toLowerCase().includes(w.toLowerCase())));
+    ok("the detail is a map of the group's areas with its routes", (await page.$$("#groupDetail .fm-box.fm-unit")).length >= 6 && (await page.$$("#groupDetail path.fm-link")).length >= 10);
+    await page.click("#groupDetail .fm-box.fm-unit >> nth=1");
+    await page.waitForSelector("#unitDrill:not([hidden])");
+    const drill = await page.textContent("#unitDrill");
+    ok("selecting an area opens its day, what serves it and where patients come from and go to", /Patients come from/.test(drill) && /And go on to/.test(drill) && /What serves this area/.test(drill));
     ok("no paediatric area anywhere in the flow", !/paed|child/i.test(await page.textContent("#panel-flow")));
-    await page.screenshot({ path: path.join(OUT, "02_flow_treatment_open_1366.png"), fullPage: true });
+    await page.screenshot({ path: path.join(OUT, "02b_flow_treatment_open_1366.png"), fullPage: true });
     await page.click("#grp-diagnostics");
     ok("diagnostics expands into CT and X-ray", /CT/.test(await page.textContent("#groupDetail")) && /X-ray/.test(await page.textContent("#groupDetail")));
     await page.click("#grp-next_destination");
@@ -76,6 +97,12 @@ async function ready(page) {
     await page.keyboard.press("Tab");
     await page.click("text=Close Next destination / leaving ED");
     ok("collapse returns focus to the group", await page.$eval("#grp-next_destination", e => document.activeElement === e));
+    // expert view: every modelled step as one map
+    await page.click("#expertView summary");
+    await page.waitForSelector("#expertMap .fm-box");
+    ok("expert view draws the full pathway map", (await page.$$("#expertMap .fm-box")).length >= 20 && (await page.$$("#expertMap path.fm-link")).length >= 30);
+    await (await page.$("#expertView")).screenshot({ path: path.join(OUT, "02c_flow_expert_1366.png") });
+    await page.click("#expertView summary");
     // typical-day mode labels averages
     await page.click("#modeTypical");
     ok("typical mode says 'average'", /average/i.test(await page.textContent("#groupRow")));
@@ -138,6 +165,14 @@ async function ready(page) {
     const overlap = tiles.some((a, i) => tiles.some((b, j) => i < j && a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom));
     ok("summary tiles do not overlap at 390px", !overlap);
     ok("reduced motion honoured (no transitions)", await page.evaluate(() => getComputedStyle(document.querySelector(".ms-btn")).transitionDuration === "0s"));
+    await page.click("#tab-flow");
+    await page.waitForSelector("#groupRow circle.fm-dot", { state: "attached" });
+    const r0 = await page.$eval("#groupRow circle.fm-dot", c => c.getAttribute("cx") + "," + c.getAttribute("cy"));
+    await page.waitForTimeout(500);
+    ok("reduced motion: the flow map does not animate", r0 === await page.$eval("#groupRow circle.fm-dot", c => c.getAttribute("cx") + "," + c.getAttribute("cy"))
+      && await page.$eval("#flowPause", b => b.disabled));
+    ok("flow map fits the phone width", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1));
+    await page.click("#tab-overview");
     await page.screenshot({ path: path.join(OUT, "09_overview_390.png"), fullPage: true });
     await page.click("#tab-flow");
     await page.screenshot({ path: path.join(OUT, "10_flow_390.png"), fullPage: true });

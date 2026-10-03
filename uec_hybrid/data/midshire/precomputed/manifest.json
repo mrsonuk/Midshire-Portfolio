@@ -1,5 +1,5 @@
 {
-  "generated_from_commit": "8dd0117e9e0d460630bfefc4fb522eadca8b2436",
+  "generated_from_commit": "1fbf629e685ca691011b71835a1f901d50c14986",
   "engine_version": "0.5.0",
   "fixture_version": "midshire-demo-2026-10-v1",
   "label": "PRECOMPUTED demo results. Regenerate with python3 -m uec_hybrid.midshire.precompute",
@@ -7,34 +7,34 @@
     {
       "id": "pkg_combined_90",
       "inputs": "pkg_combined_90_inputs.json.gz",
-      "name": "Combined package: +1 CT scanner, +4 fit-to-sit spaces (precomputed)",
-      "note": "PRECOMPUTED from the package search. +1 CT scanner; +4 fit-to-sit spaces",
       "ids": [
         "ct_1",
         "f2s_4"
-      ]
+      ],
+      "name": "Combined package: +1 CT scanner, +4 fit-to-sit spaces (precomputed)",
+      "note": "PRECOMPUTED from the package search. +1 CT scanner; +4 fit-to-sit spaces"
     },
     {
       "id": "pkg_workforce_90",
       "inputs": "pkg_workforce_90_inputs.json.gz",
-      "name": "Workforce package: +1 RAT senior 10:00-22:00 (precomputed)",
-      "note": "PRECOMPUTED from the package search. +1 RAT senior 10:00-22:00",
       "ids": [
         "rat_day"
-      ]
+      ],
+      "name": "Workforce package: +1 RAT senior 10:00-22:00 (precomputed)",
+      "note": "PRECOMPUTED from the package search. +1 RAT senior 10:00-22:00"
     },
     {
       "id": "pkg_estate_90",
       "inputs": "pkg_estate_90_inputs.json.gz",
-      "name": "Estate package: +20 new inpatient beds, +1 CT scanner, +4 fit-to-sit spaces, +1 resus bay, +3 UTC rooms (precomputed)",
-      "note": "PRECOMPUTED from the package search. +20 new inpatient beds; +1 CT scanner; +4 fit-to-sit spaces; +1 resus bay (with any resus nurses needed); +3 UTC rooms (with any UTC practitioners needed)",
       "ids": [
         "beds_20",
         "ct_1",
         "f2s_4",
         "resus_1",
         "utc_rooms_3"
-      ]
+      ],
+      "name": "Estate package: +20 new inpatient beds, +1 CT scanner, +4 fit-to-sit spaces, +1 resus bay, +3 UTC rooms (precomputed)",
+      "note": "PRECOMPUTED from the package search. +20 new inpatient beds; +1 CT scanner; +4 fit-to-sit spaces; +1 resus bay (with any resus nurses needed); +3 UTC rooms (with any UTC practitioners needed)"
     }
   ],
   "runs": [
@@ -42,7 +42,7 @@
       "kind": "run",
       "file": "baseline_run.json.gz",
       "inputs": "baseline_inputs.json.gz",
-      "model_hash": "a70b4ba6de7bdbd4b51c",
+      "model_hash": "f8bb06c53b8fad79c965",
       "seeds": [
         101,
         102,
@@ -57,7 +57,7 @@
       "kind": "run",
       "file": "pkg_combined_90_run.json.gz",
       "inputs": "pkg_combined_90_inputs.json.gz",
-      "model_hash": "92ba15890bcc2f010675",
+      "model_hash": "c6940ec011cf90cdc698",
       "seeds": [
         101,
         102,
@@ -72,7 +72,7 @@
       "kind": "run",
       "file": "pkg_workforce_90_run.json.gz",
       "inputs": "pkg_workforce_90_inputs.json.gz",
-      "model_hash": "1e6b3f6a4cdd35d66df5",
+      "model_hash": "03d6d9ee51826b27d877",
       "seeds": [
         101,
         102,
@@ -87,7 +87,7 @@
       "kind": "run",
       "file": "pkg_estate_90_run.json.gz",
       "inputs": "pkg_estate_90_inputs.json.gz",
-      "model_hash": "247882ce108eb75d3143",
+      "model_hash": "d94a676e9608ed4fcf12",
       "seeds": [
         101,
         102,
@@ -149,5 +149,5 @@
       "headline": "Lowest-cost package found within the tested options reaches 70.4% (baseline 66.5%) against the 70% target, for about \u00a3152,000 a year recurring and \u00a31,224,000 capital. On 8 separate validation weeks it reads 70.3%."
     }
   ],
-  "seconds": 670.2
+  "seconds": 716.2
 }

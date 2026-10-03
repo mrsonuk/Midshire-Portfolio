@@ -298,8 +298,107 @@ def stage_metrics(trace: dict, raw: dict) -> dict:
         sel = allst[(allst["node"] == m["node"]) & (allst["phase"] == "service")
                     & (allst["start"] >= a) & (allst["start"] < b)]
         ms[m["node"]] = float(len(sel) / days)
-    return {"states": per_state, "groups": per_group, "milestones_per_day": ms,
+    # flow-map units: occupancy is the sum of their states; a STAY is one
+    # continuous visit to the unit (waiting and being seen together)
+    uv = _visits(_with_units(trace), "unit")
+    per_unit = {}
+    for u in mcfg.flow_units():
+        keys = u.get("states", [])
+        sts = [per_state[k] for k in keys if k in per_state]
+        vis = uv[uv["key"] == u["id"]]
+        inwin = vis[(vis["start"] >= a) & (vis["start"] < b)]
+        done = inwin[np.isfinite(inwin["end"].to_numpy(float))]
+        durs = (done["end"] - done["start"]).to_numpy(float)
+        per_unit[u["id"]] = {
+            "mean_occupancy": float(sum(s["mean_occupancy"] for s in sts)),
+            "mean_waiting": float(sum(s["mean_occupancy"] for s in sts if s["kind"] == "waiting")),
+            "waiting_patient_hours_per_day": float(sum(s["patient_hours_per_day"] for s in sts if s["kind"] == "waiting")),
+            "entries_per_day": float(len(inwin) / days),
+            "stay_median": float(np.median(durs)) if len(durs) and not u.get("milestone") else None,
+            "stay_p90": float(np.quantile(durs, 0.9)) if len(durs) and not u.get("milestone") else None,
+            "n_completed": int(len(durs))}
+    return {"states": per_state, "groups": per_group, "units": per_unit, "milestones_per_day": ms,
             "utilisation": utilisation(trace, raw, a, b)}
+
+
+# --------------------------------------------------------------------------- #
+# flows between steps: the links on the Patient flow maps
+# --------------------------------------------------------------------------- #
+def _with_units(trace: dict) -> pd.DataFrame:
+    """The state intervals in the engine's log order (chronological within a
+    patient) with the flow-map unit of each row. Instantaneous routing points
+    that are not units get None: patients pass straight through them."""
+    by_state, by_milestone = mcfg.unit_maps()
+    st = trace["states"].copy()
+    st["end"] = st["end"].fillna(np.inf)
+    st["unit"] = [by_state.get((n, p)) or (by_milestone.get(n) if p == "service" else None)
+                  for n, p in zip(st["node"], st["phase"])]
+    return st
+
+
+def _visits(st: pd.DataFrame, key: str) -> pd.DataFrame:
+    """Consecutive rows of one patient with the same ``key`` merged into one
+    visit: pid, key, start, end (inf while still there). Rows whose key is
+    None are skipped, so the steps either side of them become consecutive."""
+    d = st[st[key].notna()]
+    d = d.iloc[np.argsort(d["pid"].to_numpy(), kind="stable")]
+    new = d["pid"].ne(d["pid"].shift()) | d[key].ne(d[key].shift())
+    v = d.groupby(new.cumsum().to_numpy(), sort=False).agg(
+        pid=("pid", "first"), key=(key, "first"), start=("start", "min"), end=("end", "max"))
+    return v.reset_index(drop=True)
+
+
+def _links(v: pd.DataFrame, trace: dict, sink_key, a: float, b: float, days: float) -> dict:
+    """Moves between consecutive visits, plus arrival -> first visit and last
+    visit -> outcome, counted when the move happens inside [a, b) and divided
+    by the number of days: 'source>target' -> patients per day."""
+    prev = v.groupby("pid")["key"].shift(1)
+    has = prev.notna().to_numpy()
+    parts = [pd.DataFrame({"s": prev[has].to_numpy(), "d": v["key"].to_numpy()[has],
+                           "t": v["start"].to_numpy()[has]})]
+    arr = trace["arrivals"][["pid", "arrival"]]
+    first = v[~has][["pid", "key"]].merge(arr, on="pid", how="left")
+    parts.append(pd.DataFrame({"s": "arrival", "d": first["key"].to_numpy(), "t": first["arrival"].to_numpy()}))
+    dep = trace["departures"]
+    last = v.groupby("pid").tail(1)[["pid", "key"]].merge(dep, on="pid", how="inner")
+    parts.append(pd.DataFrame({"s": last["key"].to_numpy(), "d": [sink_key(x) for x in last["sink"]],
+                               "t": last["time"].to_numpy()}))
+    direct = dep[~dep["pid"].isin(v["pid"])]           # left with no recorded step at all
+    if len(direct):
+        parts.append(pd.DataFrame({"s": "arrival", "d": [sink_key(x) for x in direct["sink"]],
+                                   "t": direct["time"].to_numpy()}))
+    allr = pd.concat(parts, ignore_index=True)
+    allr = allr[(allr["t"] >= a) & (allr["t"] < b)]
+    c = allr.groupby(["s", "d"]).size() / days
+    return {f"{s}>{d}": float(n) for (s, d), n in c.items()}
+
+
+def flow_links(trace: dict, raw: dict) -> dict:
+    """Patients per day moving between steps over the observed days, at three
+    levels, from the same patient-level intervals as every other number:
+
+    * ``group``: between the five summary groups (moves inside a group are
+      not shown), from 'arrival', and into the merged outcomes 'discharged',
+      'admitted' and 'left_without_being_seen';
+    * ``unit``: between the boxes of the group detail maps, into each outcome;
+    * ``node``: between every modelled step, including routing points.
+
+    A move is counted when it happens inside the observed days. A patient may
+    appear on several links (a return from diagnostics is a second move)."""
+    uec = raw.get("uec") or {}
+    a, b = uec.get("cohort_window") or [raw["warmup_minutes"], raw["sim_duration_minutes"]]
+    days = (b - a) / 1440.0
+    summary = {o["node"]: o["summary"] for o in mcfg.fixture()["outcomes"]}
+    unit_group = {u["id"]: u["group"] for u in mcfg.flow_units()}
+    st = _with_units(trace)
+    uv = _visits(st, "unit")
+    st["ugroup"] = st["unit"].map(unit_group)
+    gv = _visits(st, "ugroup")
+    nv = _visits(st, "node")
+    return {"days": days,
+            "group": _links(gv, trace, lambda s: summary.get(s, s), a, b, days),
+            "unit": _links(uv, trace, lambda s: s, a, b, days),
+            "node": _links(nv, trace, lambda s: s, a, b, days)}
 
 
 def utilisation(trace, raw, a, b) -> dict:
@@ -434,12 +533,20 @@ def hour_profile(trace: dict, raw: dict) -> dict:
     def avg(series):
         s = np.array(series[:-1], float)
         return [float(s[hod == h].mean()) for h in range(24)]
-    arr = np.array(rs["arrivals"][1:], float); dep = np.array(rs["departures"][1:], float)
     # intervals (t-STEP, t] attributed to the hour containing t-STEP
     hod_i = (((np.array(rs["times"][1:]) - STEP) // 60) % 24).astype(int)
+
+    def per_hour(series):
+        s = np.array(series[1:], float)
+        return [float(s[hod_i == h].sum() / days) for h in range(24)]
     return {"census_avg": avg(rs["census"]), "waiting_avg": avg(rs["waiting"]),
-            "arrivals_per_hour": [float(arr[hod_i == h].sum() / days) for h in range(24)],
-            "departures_per_hour": [float(dep[hod_i == h].sum() / days) for h in range(24)],
+            "arrivals_per_hour": per_hour(rs["arrivals"]),
+            "departures_per_hour": per_hour(rs["departures"]),
+            # every occupancy state by hour of day, so the typical-day flow map
+            # follows the clock (groups and map boxes are sums of states)
+            "states_avg": {k: avg(v) for k, v in rs["states"].items()},
+            "milestones_per_hour": {k: per_hour(v) for k, v in rs["milestones"].items()},
+            "departures_by_outcome_per_hour": {k: per_hour(v) for k, v in rs["departures_by_outcome"].items()},
             "days": days}
 
 
@@ -508,11 +615,14 @@ def summarise_stage_metrics(items: list[dict]) -> dict:
     groups = {}
     for key in set().union(*[i["groups"].keys() for i in items]):
         groups[key] = avg([i["groups"][key] for i in items if key in i["groups"]])
+    units = {}
+    for key in set().union(*[i.get("units", {}).keys() for i in items]):
+        units[key] = avg([i["units"][key] for i in items if key in i.get("units", {})])
     ms = avg([i["milestones_per_day"] for i in items])
     util = {}
     for key in set().union(*[i["utilisation"].keys() for i in items]):
         util[key] = avg([i["utilisation"][key] for i in items if key in i["utilisation"]])
-    return {"states": states, "groups": groups, "milestones_per_day": ms, "utilisation": util}
+    return {"states": states, "groups": groups, "units": units, "milestones_per_day": ms, "utilisation": util}
 
 
 def pressure_ranking(stage_summary: dict) -> list[dict]:

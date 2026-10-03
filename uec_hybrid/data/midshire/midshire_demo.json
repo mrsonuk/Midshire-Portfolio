@@ -319,6 +319,32 @@
        {"node": "community_referral", "phase": "service", "label": "Referral to community / virtual ward", "kind": "in_service", "area": "Discharge"}
      ]}
   ],
+  "flow_map": {
+    "note": "The boxes on the Patient flow maps. Each unit is one or more occupancy states (stable node id and phase) or a decision milestone, and every state belongs to exactly one unit. Steps that are not units (diagnostics decision, disposition, SDEC outcome, SDEC-closed redirect) are instantaneous routing points: patients pass through them and the map links the steps on either side. col/row place a unit inside its group's detail map.",
+    "units": [
+      {"id": "walkin_wait", "group": "front_door_wait", "label": "Walk-ins waiting for streaming", "states": ["streaming|queue"], "col": 0, "row": 0},
+      {"id": "ambulance_wait", "group": "front_door_wait", "label": "Ambulances waiting for handover", "states": ["ambulance_handover|queue"], "col": 0, "row": 1},
+      {"id": "streaming", "group": "initial_assessment", "label": "Streaming / initial assessment", "states": ["streaming|service"], "col": 0, "row": 0},
+      {"id": "handover", "group": "initial_assessment", "label": "Ambulance handover", "states": ["ambulance_handover|service"], "col": 0, "row": 1},
+      {"id": "rat", "group": "initial_assessment", "label": "Rapid assessment and treatment (RAT)", "states": ["rat|queue", "rat|service"], "col": 1, "row": 0.5},
+      {"id": "resus", "group": "treatment", "label": "Resus", "states": ["ed_resus|queue", "ed_resus|service"], "col": 0, "row": 0},
+      {"id": "majors", "group": "treatment", "label": "Majors cubicles", "states": ["ed_cubicles|queue", "ed_cubicles|service"], "col": 0, "row": 1},
+      {"id": "fit_to_sit", "group": "treatment", "label": "Fit-to-sit (majors ambulant)", "states": ["ed_ambulatory|queue", "ed_ambulatory|service"], "col": 0, "row": 2},
+      {"id": "utc", "group": "treatment", "label": "Urgent Treatment Centre (UTC)", "states": ["utc_minor_illness|queue", "utc_minor_illness|service"], "col": 0, "row": 3},
+      {"id": "sdec", "group": "treatment", "label": "SDEC (Same Day Emergency Care)", "states": ["sdec|queue", "sdec|service", "sdec_care|queue", "sdec_care|service"], "col": 0, "row": 4},
+      {"id": "frailty", "group": "treatment", "label": "Frailty assessment unit", "states": ["fau|queue", "fau|service"], "col": 0, "row": 5},
+      {"id": "results_decision", "group": "treatment", "label": "Awaiting results, review or decision", "states": ["disposition|queue", "disposition|service"], "col": 1, "row": 2.5},
+      {"id": "ct", "group": "diagnostics", "label": "CT scan", "states": ["ct|queue", "ct|service"], "col": 0, "row": 0},
+      {"id": "xray", "group": "diagnostics", "label": "X-ray", "states": ["xray|queue", "xray|service"], "col": 0, "row": 1},
+      {"id": "dta", "group": "next_destination", "label": "Decision to admit", "milestone": "decision_to_admit", "col": 0, "row": 0},
+      {"id": "bed_wait", "group": "next_destination", "label": "Waiting for an inpatient bed", "states": ["await_inpatient_bed|queue", "await_inpatient_bed|service"], "col": 1, "row": 0},
+      {"id": "ward_transfer", "group": "next_destination", "label": "Transfer to ward", "states": ["transfer_to_ward|queue", "transfer_to_ward|service"], "col": 2, "row": 0},
+      {"id": "dta_mh", "group": "next_destination", "label": "Decision to admit (mental health)", "milestone": "decision_to_admit_mh", "col": 0, "row": 1},
+      {"id": "mh_bed_wait", "group": "next_destination", "label": "Waiting for a mental-health bed", "states": ["await_mh_bed|queue", "await_mh_bed|service"], "col": 1, "row": 1},
+      {"id": "discharge_prep", "group": "next_destination", "label": "Discharge preparation", "states": ["discharge|queue", "discharge|service"], "col": 1, "row": 2},
+      {"id": "community", "group": "next_destination", "label": "Referral to community / virtual ward", "states": ["community_referral|queue", "community_referral|service"], "col": 1, "row": 3}
+    ]
+  },
   "milestones": [
     {"node": "decision_to_admit", "label": "Decision to admit", "group": "next_destination"},
     {"node": "decision_to_admit_mh", "label": "Decision to admit (mental health)", "group": "next_destination"},

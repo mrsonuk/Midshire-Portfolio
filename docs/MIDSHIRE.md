@@ -28,7 +28,7 @@ Neither source branch was changed, merged into, reset or force-pushed.
 | Midshire name, Cambridge branding removed | `app/templates/midshire.html` (exact title, no logo), `midshire.js`; branding test (2). Provenance kept on Set up / assumptions |
 | Adult pathway only | `midshire/build.py` `adult_patch` + `make_adult`: demand reduced by the source trust's paediatric-area share (400.5 → 347.0/day), paediatric area, staff, routes, attribute and metrics removed; test 3 |
 | Overall performance first, then the day's pattern | Overview: five primary tiles (present, waiting, within target, arrivals/departures, median time), secondary row, through-the-day chart, "Where waits build up" |
-| Left-to-right pathway, ≤5 groups, detail below | Patient flow: five groups from the central table in `data/midshire/midshire_demo.json` (`groups`, by stable node id); detail opens **underneath**, keyboard operable; expert full-pathway table |
+| Left-to-right pathway, ≤5 groups, detail below | Patient flow: a Cambridge-style animated **flow map** of the five groups (arrivals on the left, the three merged outcomes on the right, diagnostics drawn as the branch patients go to and return from). Selecting a group opens a **map of its areas underneath**; selecting an area opens its day, what serves it and where its patients come from and go to. The **full pathway map** is the expert view. Groups and map boxes (`groups`, `flow_map.units` in `data/midshire/midshire_demo.json`) are by stable node id; moving dots can be paused and are off under reduced motion; every map has a table view |
 | Present / waiting / time waiting / arrivals / departures distinguished | `midshire/metrics.py` metric contract (`DEFINITIONS`); every tile states snapshot vs whole run |
 | SDEC from streaming and from RAT | `build.add_sdec`: streaming → SDEC, streaming → RAT → SDEC, handover → RAT → SDEC; explicit closed redirect `sdec_closed`; 90-minute wait limit redirect; test 4 |
 | Discharge outcomes merged in summary, admission detail merged, MH sub-route kept | Outcomes row (Discharged / Admitted / Left without being seen); group 5 detail |
@@ -104,6 +104,13 @@ when they entered and left each step, split into "waiting" and "being seen".
   counted as not met and reported as unfinished.
 * **Where waits build up** = waiting patient-hours per day by step (never an
   area's own peak, never volume).
+* **Flow-map lines** = patients a day moving between boxes over the whole run
+  (`metrics.flow_links`, from the same state intervals): at group, area and step
+  level, arrivals in, outcomes out, returns included. A box's moves in minus moves
+  out equal its change in occupancy, and the group lines are the area lines added
+  up (checked by test 6). A box's top border compares it with its own busiest
+  moment of the day; the "most waiting now" badge is the box with the most
+  patients waiting at the viewing time.
 
 ## 5. The package search
 
@@ -189,7 +196,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 * `python3 -m uec_hybrid.tests.run`: the full Cambridge suite plus the 18
   Midshire acceptance checks (`uec_hybrid/tests/midshire.py`) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 31 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 42 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors.
 
 | Brief acceptance test | Where it is checked |
@@ -199,9 +206,9 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 | 3 Paediatrics excluded everywhere | checks 3a (build: no node, route, resource, attribute, rota row) and 3b (cohort, denominator); browser: no paediatric area in the flow |
 | 4 Both SDEC routes, closed fallback, distinct outcomes | check 4a |
 | 5 Decision to admit → bed wait → transfer | check 5 |
-| 6 Snapshot reconciles, carry-in and unfinished included | check 6 |
+| 6 Snapshot reconciles, carry-in and unfinished included | check 6 (and the flow maps: every box balances, arrivals and departures match at three levels) |
 | 7 Durations and waiting from patient intervals | check 7 (controlled three-patient fixture) |
-| 8 Groups expand underneath, keep time, adult detail | browser checks (detail below the row, `aria-expanded`, time kept, diagnostics / treatment / admission content, focus returns on close) |
+| 8 Groups expand underneath, keep time, adult detail | browser checks (flow map routes and order, detail map below the summary, `aria-expanded`, time kept, area drill, diagnostics / treatment / admission content, focus returns on close, expert map) |
 | 9 Rota overnight, day patterns, rejects, blank ≠ 0, no floor | check 9; browser: negative count rejected |
 | 10 One resolved staffing for editor, engine and cost | check 10 |
 | 11 Cost-only edits move money, not performance; uncosted ≠ £0 | check 11 |
@@ -214,7 +221,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 | 18 Fresh checkout starts from committed files | check 18 |
 
 **Screenshots** (`docs/midshire/screenshots/`): `01_overview_1366x768.png`,
-`01b_overview_full_1366.png`, `02_flow_treatment_open_1366.png`,
+`01b_overview_full_1366.png`, `02_flow_map_1366.png`, `02b_flow_treatment_open_1366.png`, `02c_flow_expert_1366.png`,
 `03_workforce_search_1366.png`, `04_scenarios_1366.png`,
 `05_ask_qbo_1366.png`, `06_setup_1366.png`, `07_overview_1920x1080.png`,
 `08_flow_1920x1080.png`, `09_overview_390.png`, `10_flow_390.png`,
@@ -247,12 +254,19 @@ baseline**. Everything below opens on committed, labelled precomputed results.
    by waiting patient-hours per day. Say what it is measured by, and that the
    model chose it - the bed wait and the results/decision wait lead in the
    baseline, not because they were assumed.
-4. **Expand a stage (1.5 min).** Patient flow: five groups left to right. Open
-   *Clinical assessment and treatment* - the detail opens underneath with resus,
-   majors, fit-to-sit, UTC and SDEC, what each is waiting for, what serves it
-   (staff on shift, spaces open) and utilisation. Open *Next destination*:
-   decision to admit (an event count), waiting for a bed (patients still on
-   their trolley), transfer to the ward, and the mental-health sub-route.
+4. **Walk the flow map, then expand a stage (2 min).** Patient flow: the
+   department as one picture - arrivals, the five groups left to right, the
+   three outcomes, with diagnostics as the loop patients go out to and come back
+   from. Line width is patients a day; the badge marks where most patients are
+   waiting *now*. Drag the slider from 04:00 to 16:00 and watch the boxes fill
+   and the badge move. Open *Clinical assessment and treatment* - a map of its
+   areas opens underneath (resus, majors, fit-to-sit, UTC, SDEC, frailty unit,
+   results and decision), with the groups and outcomes it connects to. Select
+   *Majors cubicles*: its day, the staff and spaces serving it now, and where its
+   patients come from and go to. Open *Next destination*: decision to admit (an
+   event count), waiting for a bed (patients still on their trolley), transfer
+   to the ward, and the mental-health sub-route. The expert view draws every
+   modelled step.
 5. **Set the 90% target (1 min).** Workforce & investment → 90% within 4 hours,
    "Combined workforce and estate packages" → Find a package. It returns
    "Target not reached within the tested options", the best tested package, the

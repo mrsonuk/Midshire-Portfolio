@@ -163,6 +163,48 @@ def check_runs(base):
     print(f"Midshire 6 OK: census = initial + arrivals - departures at every 15 minutes; groups sum to "
           f"the census; {rs['census'][0]} carried in; {unfinished} unfinished intervals kept; hourly "
           f"profile normalised by {days:.0f} observed days.")
+
+    # 6 (flow maps): the lines and boxes of the Patient flow maps come from the same intervals
+    units = mcfg.flow_units()                       # raises unless every state is in exactly one box
+    fl = M.flow_links(tr, m.raw)
+    d = fl["days"]
+    stf = M.states_frame(tr)
+    keyset = [f"{n}|{p}" for n, p in zip(stf["node"], stf["phase"])]
+    stf = stf.assign(key=keyset)
+    worst = 0.0
+    for u in units:
+        sel = stf[stf["key"].isin(u.get("states", []))]
+        n_at = lambda t: int(((sel["start"] <= t) & (sel["end"] > t)).sum())
+        inn = sum(v for kk, v in fl["unit"].items() if kk.split(">")[1] == u["id"])
+        out = sum(v for kk, v in fl["unit"].items() if kk.split(">")[0] == u["id"])
+        worst = max(worst, abs((inn - out) * d - (n_at(w[1]) - n_at(w[0]))))
+    assert worst < 0.5, f"a flow-map box does not balance: in - out differs from its change by {worst}"
+    dep_t = tr["departures"]["time"]
+    n_dep = int(((dep_t >= w[0]) & (dep_t < w[1])).sum())
+    for level in ("group", "unit", "node"):
+        into = sum(v for kk, v in fl[level].items() if kk.startswith("arrival>")) * d
+        assert abs(into - arr_window) < 0.5, f"{level} map: arrivals {into} vs {arr_window}"
+    outcomes = {"discharged", "admitted", "left_without_being_seen"}
+    leave = sum(v for kk, v in fl["group"].items() if kk.split(">")[1] in outcomes) * d
+    assert abs(leave - n_dep) < 0.5, f"summary map: departures {leave} vs {n_dep}"
+    # the summary lines are the box-level lines added up across groups (moves inside a group drop out)
+    ug = {u["id"]: u["group"] for u in units}
+    summary = {o["node"]: o["summary"] for o in mcfg.fixture()["outcomes"]}
+    agg = {}
+    for kk, v in fl["unit"].items():
+        s, t = kk.split(">")
+        gs, gt = ug.get(s, s), ug.get(t, summary.get(t, t))
+        if gs != gt:
+            agg[f"{gs}>{gt}"] = agg.get(f"{gs}>{gt}", 0.0) + v
+    assert set(agg) == set(fl["group"]) and all(abs(agg[kk] - fl["group"][kk]) < 1e-9 for kk in agg), "summary lines disagree with the detail lines"
+    assert fl["group"].get("diagnostics>treatment", 0) > 0, "returns from diagnostics must be drawn"
+    # the typical-day boxes add up to the typical-day census
+    for hh in range(24):
+        tot = sum(v[hh] for v in prof["states_avg"].values())
+        assert abs(tot - prof["census_avg"][hh]) < 1e-6, f"typical-day boxes do not sum to the census at {hh}:00"
+    print(f"Midshire 6 OK (flow maps): {len(units)} map boxes partition the states; every box's patients in - "
+          f"out equals its change in occupancy; arrivals and departures match at all three levels; summary "
+          f"lines are the detail lines added up ({len(fl['group'])} routes, including returns from diagnostics).")
     return m, res
 
 
@@ -469,6 +511,11 @@ def check_accessibility_static():
         r = ratio(tok[a], tok[b])
         assert r >= need, f"contrast {a} on {b} is {r:.2f}, needs {need}"
     assert ratio("#ffffff", tok["nhs-blue"]) >= 4.5 and ratio("#ffffff", tok["nhs-green"]) >= 4.5
+    # flow-map status words and the "most waiting" badge
+    for fg in ("#00401e", "#5c4200", "#8a1538"):
+        assert ratio(fg, tok["nhs-surface"]) >= 4.5 and ratio(fg, tok["nhs-background"]) >= 4.5, fg
+    assert ratio("#ffffff", tok["nhs-red"]) >= 4.5 and ratio(tok["nhs-dark-blue"], tok["nhs-surface"]) >= 4.5
+    assert 'id="flowPause"' in html and 'id="flowTableView"' in html, "the flow map needs a pause control and a table view"
     assert "prefers-reduced-motion" in css and ":focus-visible" in css and "--nhs-focus" in css
     assert '<html lang="en-GB">' in html and 'class="ms-skip"' in html
     for m in re.finditer(r"<(input|select)\b([^>]*)>", html):
@@ -478,7 +525,7 @@ def check_accessibility_static():
             continue
         assert 'aria-label' in attrs or (idm and f'for="{idm.group(1)}"' in html), f"unlabelled control: {m.group(0)}"
     assert 'role="tablist"' in html and 'aria-live' in html and 'role="dialog"' in html
-    print(f"Midshire 17 OK (static): {len(pairs) + 2} colour pairs meet WCAG AA contrast; every control "
+    print(f"Midshire 17 OK (static): {len(pairs) + 10} colour pairs meet WCAG AA contrast; every control "
           "is labelled; yellow focus state, skip link, reduced-motion rule and live regions present. "
           "(Keyboard, zoom and viewport checks run in the browser script.)")
 

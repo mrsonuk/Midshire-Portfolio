@@ -175,6 +175,8 @@ def meta():
                               for l in f["search"]["levers"]],
                    "modes": {k: v["label"] for k, v in MODES.items()}},
         "groups": f["groups"], "milestones": f["milestones"], "outcomes": f["outcomes"],
+        "flow_units": mcfg.flow_units(), "flow_note": f["flow_map"]["note"],
+        "node_groups": mcfg.node_groups(),
         "labels": f["labels"], "definitions": M.DEFINITIONS, "roles": roles, "days": DAYS,
         "assistant": QBO_NAME, "step_minutes": M.STEP,
         "storage": {"database": store.url().split("///")[-1].split("/")[-1],

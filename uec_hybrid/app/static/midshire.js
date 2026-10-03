@@ -85,6 +85,7 @@
     if (location.hash !== "#" + name) history.replaceState(null, "", "#" + name);
     if (name === "overview") renderCharts();
     if (name === "workforce") renderCoverage();
+    if (name === "flow") { S.flowKey = null; renderFlow(); }
   }
   function wireTabs() {
     $$("#tabs [role=tab]").forEach((tab, i, all) => {
@@ -554,104 +555,580 @@
   }
 
   // ================================================================ patient flow
-  function groupNumbers(g) {
-    const r = S.result, typ = S.mode === "typical", i = idx();
-    if (typ) {
-      const gs = r.stages.groups[g.id] || {};
-      return { present: fmt(gs.mean_occupancy, 1), waiting: fmt(gs.mean_waiting, 1),
-        elapsed: null, entries: fmt((gs.entries_per_day || 0) / 24, 1), scope: "average across the run" };
+  // Control-tower flow maps at three levels, all drawn by flowMap():
+  //   * the five summary groups, left to right (the default view);
+  //   * one group's areas, opened UNDERNEATH the summary when a group is
+  //     selected (the time and scenario stay as they are);
+  //   * every modelled step (the expert view).
+  // Box numbers are values at the viewing time: one simulated day, or the
+  // average at that time of day. Line widths are patients per day moving
+  // between boxes over the whole run (result.flows, from the metric layer);
+  // the moving dots only show direction and can be paused.
+  const FM = { maps: {}, raf: null, last: 0, paused: false };
+  const OUTCOME_LABEL = { discharged: "Discharged", admitted: "Admitted (ward transfer complete)", left_without_being_seen: "Left without being seen" };
+  const typical = () => S.mode === "typical";
+
+  function kindOf(key) {
+    if (!S._kinds) { S._kinds = {}; for (const g of S.meta.groups) for (const st of g.states) S._kinds[st.node + "|" + st.phase] = st.kind; }
+    return S._kinds[key];
+  }
+  function stNow(key) {
+    const r = S.result;
+    return typical() ? (((r.profile.states_avg || {})[key] || [])[hourOf()] || 0) : (((r.replay.states || {})[key] || [])[idx()] || 0);
+  }
+  // element-wise sum over the selected day (15-minute steps) or the 24 typical-day averages
+  function stDay(keys) {
+    const r = S.result, n = typical() ? 24 : STEPS_PER_DAY, a = typical() ? 0 : S.day * STEPS_PER_DAY;
+    const out = new Array(n).fill(0);
+    for (const k of keys) {
+      const s = typical() ? ((r.profile.states_avg || {})[k] || []) : ((r.replay.states || {})[k] || []);
+      for (let j = 0; j < n; j++) out[j] += s[a + j] || 0;
     }
-    const gr = r.replay.groups[g.id];
-    return { present: fmtInt(gr.present[i]), waiting: fmtInt(gr.waiting[i]),
-      elapsed: gr.elapsed_median[i] === null ? null : { med: gr.elapsed_median[i], max: gr.elapsed_max[i] },
-      entries: fmtInt(sumLast(gr.entries, i, 4)), scope: "at " + HHMM(viewTime()) + ", day " + (S.day + 1) };
+    return out;
+  }
+  function occupancy(keys) {
+    let present = 0, waiting = 0;
+    for (const k of keys) { const v = stNow(k); present += v; if (kindOf(k) === "waiting") waiting += v; }
+    return { present, waiting };
+  }
+  // events in the hour to the viewing time (one day), or that hour's average per day
+  function eventsNow(series, perHour) { return typical() ? ((perHour || [])[hourOf()] || 0) : sumLast(series || [], idx(), 4); }
+  function busyStatus(now, series) {
+    const peak = Math.max(0, ...series);
+    if (peak <= 0) return { cls: "quiet", text: typical() ? "empty at every hour" : "empty all day" };
+    const q = now / peak;
+    if (q >= 0.8) return { cls: "peak", text: typical() ? "near its usual daily peak" : "near today's peak" };
+    if (q >= 0.45) return { cls: "busy", text: "filling" };
+    return { cls: "quiet", text: "quiet" };
+  }
+  const nval = (v) => typical() ? fmt(v, 1) : fmtInt(v);
+  const whenText = () => typical() ? "average at " + HHMM(hourOf() * 60) : "at " + HHMM(viewTime());
+  const hourText = () => typical() ? "in the hour from " + HHMM(hourOf() * 60) + " (average)" : "in the hour to " + HHMM(viewTime());
+  const linkList = (obj) => Object.entries(obj || {}).map(([k, v]) => { const [s, d] = k.split(">"); return { s, d, v }; });
+  const keysOf = (states) => states.map(st => typeof st === "string" ? st : st.node + "|" + st.phase);
+  const tipRows = (pairs) => pairs.filter(Boolean).map(([name, value]) => ({ name, value: String(value), color: "transparent" }));
+
+  // ------------------------------------------------------------ the renderer
+  // spec: {boxes:[{id,col,row,kind,name,content(),onClick?,domId?,controls?,expanded?,flaggable?}],
+  //        links:[{s,d,v}], vertical, arch, rowH, stepH, boxW, padA, padX, colWeight(col), flagText, label}
+  function flowMap(host, spec) {
+    host.replaceChildren();
+    host.classList.toggle("fm-vertical", !!spec.vertical);
+    host.classList.toggle("fm-compact", !!spec.compact);
+    host.classList.toggle("fm-expert", spec.key === "expert");
+    const W = Math.max(280, mapWidth(host)), vert = !!spec.vertical;
+    const cols = [...new Set(spec.boxes.map(b => b.col))].sort((a, b) => a - b);
+    const ci = new Map(cols.map((c, k) => [c, k]));
+    const nRows = Math.max(1, ...spec.boxes.map(b => b.row + 1));
+    const padA = spec.padA ?? 16, padX = spec.padX ?? 70;
+    const uPos = new Map(), colW = new Map();
+    let H;
+    if (!vert) {
+      const wts = cols.map(c => (spec.colWeight ? spec.colWeight(c) : 1)), tot = wts.reduce((a, b) => a + b, 0);
+      let acc = 0;
+      cols.forEach((c, k) => { const w = (W - 2 * padA) * wts[k] / tot; uPos.set(c, padA + acc + w / 2); colW.set(c, w); acc += w; });
+      H = 2 * padX + nRows * spec.rowH;
+    } else {
+      cols.forEach((c, k) => uPos.set(c, padA + (k + 0.5) * spec.stepH));
+      H = 2 * padA + cols.length * spec.stepH;
+    }
+    const across = (row) => vert ? padX + (row + 0.5) * (W - 2 * padX) / nRows : padX + (row + 0.5) * spec.rowH;
+    host.style.height = H + "px";
+    const svg = svgEl("svg", { width: W, height: H, class: "fm-svg", "aria-hidden": "true", focusable: "false" });
+    host.append(svg);
+    const els = new Map(), parts = new Map();
+    for (const b of spec.boxes) {
+      const u = uPos.get(b.col), v = across(b.row);
+      const bw = vert ? Math.min(spec.boxW, (W - 2 * padX) / nRows - 12) : Math.min(spec.boxW, colW.get(b.col) - 16);
+      const el = h(b.onClick ? "button" : "div", { type: b.onClick ? "button" : null, class: "fm-box fm-" + b.kind, id: b.domId || null, "aria-controls": b.controls || null });
+      el.style.left = (vert ? v : u) + "px"; el.style.top = (vert ? u : v) + "px"; el.style.width = Math.round(bw) + "px";
+      const p = { num: h("span", { class: "fm-num" + (b.kind === "group" ? " gnum" : "") }), cap: h("span", { class: "fm-cap" }),
+        lines: h("span", { class: "fm-lines" }), status: h("span", { class: "fm-status" }), flag: h("span", { class: "fm-flag", hidden: true }) };
+      el.append(h("span", { class: "fm-name", text: b.name }), p.num, p.cap, p.lines, p.status, p.flag);
+      if (b.onClick) el.addEventListener("click", b.onClick);
+      const enter = () => { highlight(b.id, true); const r = el.getBoundingClientRect(); showTip(r.right - 8, r.top + 4, b.name, b._tip || []); };
+      const leave = () => { highlight(b.id, false); hideTip(); };
+      el.addEventListener("mouseenter", enter); el.addEventListener("mouseleave", leave);
+      el.addEventListener("focus", () => highlight(b.id, true)); el.addEventListener("blur", () => highlight(b.id, false));
+      host.append(el);
+      els.set(b.id, el); parts.set(b.id, p);
+    }
+    const linkEls = [];
+    function fill() {
+      let best = null, bestW = 0;
+      for (const b of spec.boxes) {
+        const c = b.content(), p = parts.get(b.id), el = els.get(b.id);
+        p.num.textContent = c.num ?? "";
+        p.cap.textContent = c.cap || "";
+        p.lines.replaceChildren(...(c.lines || []).filter(Boolean).map(t => h("span", { text: t })));
+        p.status.textContent = c.status ? c.status.text : "";
+        p.status.hidden = !c.status;
+        el.classList.remove("st-quiet", "st-busy", "st-peak");
+        if (c.status) el.classList.add("st-" + c.status.cls);
+        b._tip = c.tip || [];
+        if (b.expanded) { const on = b.expanded(); el.setAttribute("aria-expanded", on ? "true" : "false"); el.classList.toggle("fm-selected", on); }
+        if (b.selected) el.classList.toggle("fm-selected", b.selected());
+        if (b.flaggable && (c.waiting || 0) > bestW + 1e-9) { bestW = c.waiting; best = b.id; }
+      }
+      for (const b of spec.boxes) {
+        const p = parts.get(b.id), on = best === b.id;
+        p.flag.hidden = !on; p.flag.textContent = on ? spec.flagText : "";
+        els.get(b.id).classList.toggle("fm-most", on);
+      }
+      for (const L of linkEls) for (const d of L.dots) d.el.classList.toggle("hot", !!best && L.l.d === best);
+    }
+    fill();
+    // geometry: u runs along the flow, v across it (swapped when vertical)
+    const geo = new Map();
+    for (const b of spec.boxes) {
+      const el = els.get(b.id), hw = el.offsetWidth / 2, hh = el.offsetHeight / 2;
+      geo.set(b.id, { u: uPos.get(b.col), v: across(b.row), hu: vert ? hh : hw, hv: vert ? hw : hh, k: ci.get(b.col) });
+    }
+    const P = (u, v) => vert ? v.toFixed(1) + " " + u.toFixed(1) : u.toFixed(1) + " " + v.toFixed(1);
+    const links = spec.links.filter(l => geo.has(l.s) && geo.has(l.d) && l.s !== l.d && l.v >= (spec.minV ?? 0.05));
+    const pairs = new Set(links.map(l => l.s + ">" + l.d));
+    const maxV = Math.max(1e-9, ...links.map(l => l.v));
+    // arches leave and enter a box's top/bottom edge; spread the attachment points
+    // a link arches over (or under) the row only when a box would sit on its straight path
+    const blocked = (l, a, b) => {
+      for (const [id, g] of geo) {
+        if (id === l.s || id === l.d || g.k <= Math.min(a.k, b.k) || g.k >= Math.max(a.k, b.k)) continue;
+        const vl = a.v + (g.k - a.k) / (b.k - a.k) * (b.v - a.v);
+        if (Math.abs(vl - g.v) < g.hv + 10) return true;
+      }
+      return false;
+    };
+    const archOf = (l) => { const a = geo.get(l.s), b = geo.get(l.d), dk = b.k - a.k;
+      if (!spec.arch || Math.abs(dk) < 2 || !blocked(l, a, b)) return 0;
+      return dk < 0 ? 1 : (b.v > a.v + 5 ? 1 : -1); };
+    const attach = new Map();
+    for (const l of links) {
+      const side = archOf(l);
+      if (!side) continue;
+      for (const [me, other] of [[l.s, l.d], [l.d, l.s]]) {
+        const key = me + "|" + side;
+        if (!attach.has(key)) attach.set(key, []);
+        attach.get(key).push({ l, other: geo.get(other).u });
+      }
+    }
+    const offset = (id, side, l) => {
+      const list = (attach.get(id + "|" + side) || []).slice().sort((x, y) => x.other - y.other);
+      const n = list.length, k = list.findIndex(x => x.l === l), g = geo.get(id);
+      return n <= 1 ? 0 : (-0.55 + 1.1 * (k + 0.5) / n) * g.hu;
+    };
+    for (const l of links) {
+      const a = geo.get(l.s), b = geo.get(l.d), dk = b.k - a.k, side = archOf(l);
+      let d;
+      if (side) {
+        const v0 = a.v + side * a.hv, v3 = b.v + side * b.hv, u0 = a.u + offset(l.s, side, l), u3 = b.u + offset(l.d, side, l);
+        const ext = vert ? W : H;
+        const lane = Math.max(6, Math.min(ext - 6, (side > 0 ? Math.max(v0, v3) : Math.min(v0, v3)) + side * (18 + 13 * Math.min(4, Math.abs(dk)))));
+        d = `M ${P(u0, v0)} C ${P(u0, lane)}, ${P(u3, lane)}, ${P(u3, v3)}`;
+      } else if (dk === 0) {
+        const bulge = 40 + Math.abs(b.v - a.v) * 0.15;
+        d = `M ${P(a.u + a.hu, a.v)} C ${P(a.u + a.hu + bulge, a.v)}, ${P(b.u + b.hu + bulge, b.v)}, ${P(b.u + b.hu, b.v)}`;
+      } else if (Math.abs(dk) === 1 && Math.abs(b.v - a.v) >= (a.hv + b.hv) * 0.6) {
+        // neighbouring boxes on different rows (diagnostics below the main line): an elbow
+        // out of the facing top/bottom edge, so the way out and the way back stay apart
+        const s = Math.sign(b.v - a.v), f = dk;
+        const u0 = a.u + f * 0.3 * a.hu, v0 = a.v + s * a.hv;
+        const u3 = b.u - f * b.hu, v3 = b.v + (f < 0 ? -s * 0.35 * b.hv : 0);
+        d = `M ${P(u0, v0)} C ${P(u0, v3)}, ${P(u0, v3)}, ${P(u3, v3)}`;
+      } else {
+        const f = dk > 0 ? 1 : -1, off = pairs.has(l.d + ">" + l.s) ? -9 * f : 0;
+        const u0 = a.u + f * a.hu, u3 = b.u - f * b.hu, um = (u0 + u3) / 2;
+        d = `M ${P(u0, a.v + off)} C ${P(um, a.v + off)}, ${P(um, b.v + off)}, ${P(u3, b.v + off)}`;
+      }
+      const w = 1.5 + 11 * Math.sqrt(l.v / maxV);
+      const path = svgEl("path", { d, class: "fm-link", "stroke-width": w.toFixed(1), fill: "none", "data-s": l.s, "data-d": l.d });
+      svg.append(path);
+      linkEls.push({ l, path, w, dots: [], pts: [], len: 1 });
+    }
+    const name = (id) => (spec.boxes.find(b => b.id === id) || {}).name || id;
+    for (const L of linkEls) {   // wide invisible hover targets, above the drawn lines
+      const hit = svgEl("path", { d: L.path.getAttribute("d"), class: "fm-hit", "stroke-width": Math.max(14, L.w + 6).toFixed(1), fill: "none" });
+      hit.addEventListener("mousemove", (e) => {
+        L.path.classList.add("on");
+        showTip(e.clientX, e.clientY, name(L.l.s) + " → " + name(L.l.d), tipRows([["patients a day moving along this route (whole-run average)", fmt(L.l.v, 1)]]));
+      });
+      hit.addEventListener("mouseleave", () => { L.path.classList.remove("on"); hideTip(); });
+      svg.append(hit);
+    }
+    for (const L of linkEls) {
+      L.len = Math.max(1, L.path.getTotalLength());
+      const N = Math.max(16, Math.round(L.len / 6));
+      for (let j = 0; j <= N; j++) { const q = L.path.getPointAtLength(L.len * j / N); L.pts.push([q.x, q.y]); }
+      const n = L.l.v >= 0.2 ? Math.max(1, Math.min(8, Math.round(1 + 7 * L.l.v / maxV), Math.floor(L.len / 24))) : 0;
+      for (let j = 0; j < n; j++) {
+        const c = svgEl("circle", { r: 3.2, class: "fm-dot" });
+        svg.append(c);
+        const dot = { el: c, ph: (j + 0.5) / n };
+        L.dots.push(dot); placeDot(L, dot);
+      }
+    }
+    function highlight(id, on) {
+      for (const L of linkEls) {
+        const touch = on && (L.l.s === id || L.l.d === id);
+        L.path.classList.toggle("on", touch);
+        L.path.classList.toggle("dim", on && !touch);
+      }
+    }
+    fill();
+    const map = { links: linkEls, update: fill };
+    FM.maps[spec.key] = map;
+    fmStart();
+    return map;
+  }
+  // the width a map can use: its own box, or its container's while it is still empty
+  function mapWidth(host) { return host.clientWidth || (host.parentElement && host.parentElement.clientWidth) || 1000; }
+  function placeDot(L, d) {
+    const q = L.pts[Math.min(L.pts.length - 1, Math.floor(d.ph * (L.pts.length - 1)))];
+    if (q) { d.el.setAttribute("cx", q[0].toFixed(1)); d.el.setAttribute("cy", q[1].toFixed(1)); }
+  }
+  function fmTick(now) {
+    FM.raf = null;
+    const panel = $("#panel-flow");
+    if (!panel || panel.hidden || FM.paused || reducedMotion) return;
+    const dt = FM.last ? Math.min(0.1, (now - FM.last) / 1000) : 0;
+    FM.last = now;
+    for (const m of Object.values(FM.maps)) for (const L of m.links) {
+      if (!L.dots.length || !L.path.isConnected) continue;
+      const step = dt * 55 / L.len;
+      for (const d of L.dots) { d.ph = (d.ph + step) % 1; placeDot(L, d); }
+    }
+    FM.raf = requestAnimationFrame(fmTick);
+  }
+  function fmStart() {
+    if (!FM.raf && !FM.paused && !reducedMotion) { FM.last = 0; FM.raf = requestAnimationFrame(fmTick); }
+  }
+  function wireFlowControls() {
+    const b = $("#flowPause");
+    if (reducedMotion) { b.disabled = true; b.textContent = "Movement off (reduced motion)"; return; }
+    b.addEventListener("click", () => {
+      FM.paused = !FM.paused;
+      b.setAttribute("aria-pressed", FM.paused ? "true" : "false");
+      b.textContent = FM.paused ? "Resume movement" : "Pause movement";
+      if (!FM.paused) fmStart();
+    });
   }
 
+  // ------------------------------------------------------------ box contents
+  function groupContent(g) {
+    const r = S.result, keys = keysOf(g.states).filter(k => (r.replay.states || {})[k] || (r.profile.states_avg || {})[k]);
+    let present, waiting, el = null;
+    if (typical()) ({ present, waiting } = occupancy(keys));
+    else { const gr = r.replay.groups[g.id]; present = gr.present[idx()]; waiting = gr.waiting[idx()];
+      if (gr.elapsed_max[idx()] !== null) el = { med: gr.elapsed_median[idx()], max: gr.elapsed_max[idx()] }; }
+    const gs = r.stages.groups[g.id] || {};
+    const entering = typical() ? null : sumLast(r.replay.groups[g.id].entries, idx(), 4);
+    return { num: nval(present), cap: (typical() ? "average present at " : "present at ") + HHMM(typical() ? hourOf() * 60 : viewTime()),
+      lines: [nval(waiting) + (typical() ? " waiting on average" : " waiting") + (el ? " · longest " + el.max + " min" : "")],
+      status: busyStatus(present, stDay(keys)), waiting,
+      tip: tipRows([["present " + whenText(), nval(present)], ["waiting " + whenText(), nval(waiting)],
+        el ? ["longest current wait (median " + el.med + " min)", el.max + " min"] : null,
+        entering !== null ? ["came into this group in the hour before", entering] : null,
+        ["waiting patient-hours per day (whole run)", fmt(gs.waiting_patient_hours_per_day, 0)],
+        ["patients entering per day (whole run)", fmt(gs.entries_per_day, 0)]]) };
+  }
+  function arrivalsContent() {
+    const r = S.result, n = typical() ? r.profile.arrivals_per_hour[hourOf()] : sumLast(r.replay.arrivals, idx(), 4);
+    const perDay = linkList(r.flows.group).filter(l => l.s === "arrival").reduce((a, l) => a + l.v, 0);
+    return { num: nval(n), cap: "arrived " + hourText(), lines: [fmt(perDay, 0) + " a day (whole run)"],
+      tip: tipRows([["arrivals " + hourText(), nval(n)], ["arrivals per day (whole run)", fmt(perDay, 1)]]) };
+  }
+  function outcomeNodes(summary) {
+    const present = new Set(S.result.model.nodes);
+    return S.meta.outcomes.filter(o => o.summary === summary && present.has(o.node));
+  }
+  function outcomeContent(summary) {
+    const r = S.result, nodes = outcomeNodes(summary);
+    const n = nodes.reduce((a, o) => a + eventsNow((r.replay.departures_by_outcome || {})[o.node], (r.profile.departures_by_outcome_per_hour || {})[o.node]), 0);
+    const perDay = linkList(r.flows.group).filter(l => l.d === summary).reduce((a, l) => a + l.v, 0);
+    const sub = nodes.map(o => [o.label + " (a day)", fmt(linkList(r.flows.unit).filter(l => l.d === o.node).reduce((a, l) => a + l.v, 0), 1)]);
+    return { num: nval(n), cap: "left " + hourText(), lines: [fmt(perDay, 0) + " a day (whole run)"],
+      tip: tipRows([["left " + hourText(), nval(n)], ["per day (whole run)", fmt(perDay, 1)], ...sub]) };
+  }
+  function unitKeys(u) { return (u.states || []).filter(k => (S.result.replay.states || {})[k] !== undefined || (S.result.profile.states_avg || {})[k] !== undefined); }
+  function unitContent(u) {
+    const r = S.result, um = (r.stages.units || {})[u.id] || {};
+    if (u.milestone) {
+      const n = eventsNow((r.replay.milestones || {})[u.milestone], (r.profile.milestones_per_hour || {})[u.milestone]);
+      return { num: nval(n), cap: "decisions " + hourText(), lines: ["an event, not a place · " + fmt(um.entries_per_day, 1) + " a day"],
+        tip: tipRows([["decisions " + hourText(), nval(n)], ["decisions per day (whole run)", fmt(um.entries_per_day, 1)]]) };
+    }
+    const keys = unitKeys(u), o = occupancy(keys);
+    const stay = um.stay_median !== null && um.stay_median !== undefined ? "usual stay " + fmt(um.stay_median, 0) + " min" : null;
+    return { num: nval(o.present), cap: (typical() ? "average present at " : "present at ") + HHMM(typical() ? hourOf() * 60 : viewTime()),
+      lines: [nval(o.waiting) + (typical() ? " waiting on average" : " waiting") + (stay ? " · " + stay : "")], status: busyStatus(o.present, stDay(keys)), waiting: o.waiting,
+      tip: tipRows([["present " + whenText(), nval(o.present)], ["waiting " + whenText(), nval(o.waiting)],
+        ["time here, median / 90th percentile (completed stays, whole run)", um.stay_median !== null && um.stay_median !== undefined ? fmt(um.stay_median, 0) + " / " + fmt(um.stay_p90, 0) + " min" : "not available"],
+        ["waiting patient-hours per day (whole run)", fmt(um.waiting_patient_hours_per_day, 0)],
+        ["patients entering per day (whole run)", fmt(um.entries_per_day, 0)]]) };
+  }
+
+  // ------------------------------------------------------------ the three maps
+  function buildSummaryMap(host) {
+    const vertical = mapWidth(host) < 760, mid = vertical ? 0 : 1;
+    const boxes = [{ id: "arrival", col: 0, row: mid, kind: "source", name: "Arrivals", content: arrivalsContent }];
+    for (const g of S.meta.groups) boxes.push({ id: g.id, col: g.order, row: g.id === "diagnostics" && !vertical ? 2 : mid, kind: "group", domId: "grp-" + g.id, controls: "groupDetail",
+      name: g.order + ". " + g.label, content: () => groupContent(g), onClick: () => toggleGroup(g.id), expanded: () => S.openGroup === g.id, flaggable: true });
+    ["discharged", "admitted", "left_without_being_seen"].forEach((o, k) =>
+      boxes.push({ id: o, col: vertical ? 6 + k : 6, row: vertical ? 0 : k, kind: "outcome outcome-" + o, name: OUTCOME_LABEL[o], content: () => outcomeContent(o) }));
+    return flowMap(host, { key: "summary", boxes, links: linkList(S.result.flows.group), vertical, arch: true,
+      rowH: 128, stepH: 165, boxW: vertical ? 300 : 196, padX: vertical ? 56 : 64, colWeight: c => c === 0 ? 0.8 : c === 6 ? 1.05 : 1,
+      flagText: typical() ? "Most waiting at this time (average)" : "Most waiting now" });
+  }
+
+  // a group's areas, with the groups and outcomes they connect to as stubs
+  function buildDetailMap(host, g) {
+    const r = S.result, gorder = Object.fromEntries(S.meta.groups.map(x => [x.id, x.order]));
+    const units = detailUnits(g);
+    const unitGroup = Object.fromEntries(S.meta.flow_units.map(u => [u.id, u.group]));
+    const mine = new Set(units.map(u => u.id));
+    const outLabel = Object.fromEntries(S.meta.outcomes.map(o => [o.node, o.label]));
+    const stubs = new Map(), agg = new Map();
+    const stubFor = (id, dir) => {
+      if (mine.has(id)) return id;
+      let key, label, side;
+      if (id === "arrival") { key = "ext:arrival"; label = "Arrivals"; side = "left"; }
+      else if (outLabel[id]) { key = "out:" + id; label = outLabel[id]; side = "right"; }
+      else { const og = unitGroup[id]; if (!og) return null;
+        const G = S.meta.groups.find(x => x.id === og); side = gorder[og] < g.order ? "left" : "right";
+        key = "ext:" + og + ":" + side; label = (dir === "in" ? "From " : "To ") + G.order + ". " + G.label;
+        if (stubs.has(key) && stubs.get(key).label !== label) stubs.get(key).label = G.order + ". " + G.label + " (to and from)"; }
+      if (!stubs.has(key)) stubs.set(key, { key, label, side, dir });
+      return key;
+    };
+    for (const l of linkList(r.flows.unit)) {
+      if (!mine.has(l.s) && !mine.has(l.d)) continue;
+      const s = stubFor(l.s, "in"), d = stubFor(l.d, "out");
+      if (!s || !d || s === d) continue;
+      agg.set(s + ">" + d, (agg.get(s + ">" + d) || 0) + l.v);
+    }
+    const links = [...agg.entries()].map(([k, v]) => { const [s, d] = k.split(">"); return { s, d, v }; });
+    const maxCol = Math.max(0, ...units.map(u => u.col)), nRows = Math.max(1, ...units.map(u => Math.ceil(u.row) + 1));
+    const boxes = units.map(u => ({ id: u.id, col: u.col, row: u.row, kind: u.milestone ? "milestone" : "unit", name: u.label,
+      content: () => unitContent(u), onClick: () => openUnit(u.id), selected: () => S.openUnit === u.id, flaggable: !u.milestone }));
+    for (const side of ["left", "right"]) {
+      const rowOf = Object.fromEntries(units.map(u => [u.id, u.row]));
+      const meanRow = (key) => { let sw = 0, sv = 0; for (const l of links) { const o = l.s === key ? l.d : l.d === key ? l.s : null;
+        if (o !== null && rowOf[o] !== undefined) { sw += l.v; sv += l.v * rowOf[o]; } } return sw ? sv / sw : 0; };
+      const list = [...stubs.values()].filter(s => s.side === side).sort((a, b) => meanRow(a.key) - meanRow(b.key));
+      list.forEach((s, k) => {
+        const flowsIn = links.filter(l => l.s === s.key).reduce((a, l) => a + l.v, 0), flowsOut = links.filter(l => l.d === s.key).reduce((a, l) => a + l.v, 0);
+        boxes.push({ id: s.key, col: side === "left" ? -1 : maxCol + 1, row: list.length === 1 ? (nRows - 1) / 2 : k * (nRows - 1) / Math.max(1, list.length - 1),
+          kind: s.key.startsWith("out:") ? "stub fm-stub-out" : "stub", name: s.label,
+          content: () => ({ lines: [flowsIn > 0.05 ? fmt(flowsIn, 1) + " a day into this group" : null, flowsOut > 0.05 ? fmt(flowsOut, 1) + " a day from this group" : null],
+            tip: tipRows([flowsIn > 0.05 ? ["patients a day coming into " + g.label + " (whole run)", fmt(flowsIn, 1)] : null,
+              flowsOut > 0.05 ? ["patients a day going here from " + g.label + " (whole run)", fmt(flowsOut, 1)] : null]) }) });
+      });
+    }
+    return flowMap(host, { key: "detail", boxes, links, vertical: false, arch: false, compact: true, rowH: 112, padX: 26, boxW: 210,
+      colWeight: c => (c < 0 || c > maxCol) ? 0.8 : 1, flagText: typical() ? "Most waiting in this group (average)" : "Most waiting in this group now" });
+  }
+
+  function buildExpertMap(host) {
+    const r = S.result, ng = S.meta.node_groups, gorder = Object.fromEntries(S.meta.groups.map(x => [x.id, x.order]));
+    const labels = S.meta.labels, nodeStates = {};
+    for (const g of S.meta.groups) for (const st of g.states) (nodeStates[st.node] = nodeStates[st.node] || []).push(st.node + "|" + st.phase);
+    const msNodes = new Set(S.meta.milestones.map(m => m.node));
+    const byCol = {};
+    for (const n of r.model.pathway) {
+      const col = n.type === "source" ? 0 : n.type === "sink" ? 6 : gorder[ng[n.id]];
+      if (col === undefined) continue;
+      (byCol[col] = byCol[col] || []).push(n);
+    }
+    const boxes = [];
+    for (const [col, list] of Object.entries(byCol)) list.forEach((n, k) => {
+      const c = Number(col);
+      boxes.push({ id: n.id, col: c, row: k, kind: n.type === "sink" ? "outcome" : n.type === "source" ? "source" : msNodes.has(n.id) ? "milestone" : "unit",
+        name: n.type === "source" ? "Arrivals" : labels[n.id] || n.id, flaggable: n.type === "process" && !msNodes.has(n.id),
+        content: () => {
+          if (n.type === "source") return arrivalsContent();
+          if (n.type === "sink") { const v = eventsNow((r.replay.departures_by_outcome || {})[n.id], (r.profile.departures_by_outcome_per_hour || {})[n.id]);
+            return { num: nval(v), cap: "left " + hourText(), tip: tipRows([["left " + hourText(), nval(v)]]) }; }
+          if (msNodes.has(n.id)) { const v = eventsNow((r.replay.milestones || {})[n.id], (r.profile.milestones_per_hour || {})[n.id]);
+            return { num: nval(v), cap: "decisions " + hourText(), tip: tipRows([["decisions or routings " + hourText(), nval(v)]]) }; }
+          const o = occupancy(nodeStates[n.id] || []);
+          return { num: nval(o.present), cap: nval(o.waiting) + " waiting", waiting: o.waiting, status: busyStatus(o.present, stDay(nodeStates[n.id] || [])),
+            tip: tipRows([["present " + whenText(), nval(o.present)], ["waiting " + whenText(), nval(o.waiting)]]) };
+        } });
+    });
+    return flowMap(host, { key: "expert", boxes, links: linkList(r.flows.node), vertical: false, arch: false, compact: true, rowH: 96,
+      padX: 24, boxW: 168, colWeight: () => 1, flagText: "Most waiting now" });
+  }
+
+  // ------------------------------------------------------------ orchestration
   function renderFlow() {
     const r = S.result;
-    if (!r) return;
-    const typ = S.mode === "typical";
-    $("#flowLegend").textContent = typ
-      ? "Each box shows AVERAGE simulated patients across the whole run (not a moment in time). The bar under each box is waiting patient-hours per day."
-      : "Each box shows whole numbers of patients in that group at the viewing time on one simulated day (present, and how many of them are waiting), then how many came INTO the group in the hour before. The bar is waiting patient-hours per day across the whole run - the measure used to say where waits build up.";
-    const press = Object.fromEntries(S.meta.groups.map(g => [g.id, (r.stages.groups[g.id] || {}).waiting_patient_hours_per_day || 0]));
-    const mx = Math.max(1, ...Object.values(press));
-    const top = Object.keys(press).sort((a, b) => press[b] - press[a])[0];
-    const row = $("#groupRow");
-    row.replaceChildren(...S.meta.groups.map(g => {
-      const n = groupNumbers(g);
-      const fill = h("span", { class: "fill" }); fill.style.width = (100 * press[g.id] / mx).toFixed(1) + "%";
-      const btn = h("button", { type: "button", "aria-expanded": S.openGroup === g.id ? "true" : "false", "aria-controls": "groupDetail", id: "grp-" + g.id },
-        h("span", { class: "gname", text: g.order + ". " + g.label }),
-        h("span", { class: "gnum", text: n.present }),
-        h("span", { class: "gsub", text: (typ ? "average patients present" : "patients present, " + n.scope) }),
-        h("span", { class: "gline", text: n.waiting + (typ ? " waiting on average" : " of them waiting") }),
-        n.elapsed ? h("span", { class: "gline", text: "Waiting so far: median " + n.elapsed.med + " min, longest " + n.elapsed.max + " min" })
-          : h("span", { class: "gline", text: typ ? "" : "Nobody waiting at this moment" }),
-        h("span", { class: "gline", text: (typ ? n.entries + " entering per hour (average)" : n.entries + " entered in the hour before") }),
-        h("span", { class: "gpress" }, h("span", { text: fmt(press[g.id], 0) + " waiting patient-hours/day" }), h("span", { class: "track" }, fill)),
-        g.id === top && press[g.id] > 0 ? h("span", { class: "gflag", text: "Most waiting (waiting patient-hours/day)" }) : null,
-        h("span", { class: "gopen", text: S.openGroup === g.id ? "Hide detail" : "Show detail" }));
-      btn.addEventListener("click", () => toggleGroup(g.id));
-      return h("div", { class: "ms-group", role: "listitem" }, btn);
-    }));
+    if (!r || !S.meta) return;
+    const panel = $("#panel-flow");
+    if (panel.hidden) { S.flowKey = null; return; }          // drawn when shown (it needs its width)
+    if (!r.flows) { $("#groupRow").replaceChildren(h("p", { class: "ms-warning", text: "This result was produced before the flow maps existed. Simulate the scenario again to draw them." })); return; }
+    const host = $("#groupRow");
+    const wide = mapWidth(host) >= 760;
+    const key = [r.run_id, S.mode, wide ? "h" : "v", Math.round(mapWidth(host) / 40)].join("|");
+    $("#flowLegend").textContent = (typical()
+      ? "Boxes: AVERAGE simulated patients at the selected time of day across the whole run. "
+      : "Boxes: whole numbers of patients at the viewing time on simulated day " + (S.day + 1) + ". ")
+      + "Lines: patients a day moving between groups over the whole run (thicker = more); the dots only show direction. "
+      + "Top border and the word under the number: how full the box is compared with its own busiest moment of the "
+      + (typical() ? "typical day." : "day.") + " Arrivals and the outcome boxes count people in an hour, not people waiting.";
+    if (S.flowKey !== key) { S.flowKey = key; S.detailKey = null; FM.maps = {}; buildSummaryMap(host); }
+    else FM.maps.summary && FM.maps.summary.update();
+    renderSummaryTable();
     renderGroupDetail();
     renderOutcomes();
     renderExpert();
   }
 
+  function renderSummaryTable() {
+    const r = S.result, name = (id) => id === "arrival" ? "Arrivals" : OUTCOME_LABEL[id] || ((S.meta.groups.find(g => g.id === id) || {}).label) || id;
+    const rows = linkList(r.flows.group).sort((a, b) => b.v - a.v).map(l => [name(l.s), name(l.d), fmt(l.v, 1)]);
+    const now = S.meta.groups.map(g => { const c = groupContent(g); return [g.order + ". " + g.label, c.num, c.lines[0], c.status.text]; });
+    $("#flowTable").replaceChildren(
+      table((typical() ? "Average at " + HHMM(hourOf() * 60) : "At " + HHMM(viewTime()) + ", simulated day " + (S.day + 1)), ["Group", "Present", "Waiting", "Compared with its busiest moment"], now, [1]),
+      table("Patients moving between groups (whole run, a day)", ["From", "To", "Patients a day"], rows, [2]));
+  }
+
   function toggleGroup(id) {
     S.openGroup = S.openGroup === id ? null : id;
+    S.openUnit = null;
     renderFlow();
-    if (S.openGroup) $("#groupDetail").focus(); else $("#grp-" + id).focus();
+    if (S.openGroup) $("#groupDetail").focus(); else { const b = $("#grp-" + id); if (b) b.focus(); }
+  }
+  function openUnit(id) {
+    S.openUnit = S.openUnit === id ? null : id;
+    if (FM.maps.detail) FM.maps.detail.update();
+    renderGroupDetail();
+    if (S.openUnit) { const d = $("#unitDrill"); if (d) d.focus(); }
   }
 
   function renderGroupDetail() {
     const box = $("#groupDetail");
     const g = S.meta.groups.find(x => x.id === S.openGroup);
-    if (!g || !S.result) { box.hidden = true; box.replaceChildren(); return; }
-    const r = S.result, typ = S.mode === "typical", i = idx();
+    if (!g || !S.result || !S.result.flows) { box.hidden = true; box.replaceChildren(); S.detailKey = null; delete FM.maps.detail; return; }
+    const r = S.result;
+    box.hidden = false;
+    const narrow = box.clientWidth < 640;
+    const key = [S.flowKey, g.id, narrow].join("|");
+    if (S.detailKey === key && (narrow || FM.maps.detail)) {
+      if (narrow) renderDetailCards($("#detailMap"), g); else FM.maps.detail.update();
+      $("#detailWhen").textContent = detailWhen();
+      renderUnitDrill(); renderDetailTables(g);
+      return;
+    }
+    S.detailKey = key;
+    const close = h("button", { class: "ms-btn-secondary", type: "button", text: "Close " + g.label });
+    close.addEventListener("click", () => toggleGroup(g.id));
+    const mapHost = h("div", { class: narrow ? "fm-cards" : "fm-map fm-detail-map", id: "detailMap", role: "group", "aria-label": "Areas inside " + g.label + ": patients present and the routes between them" });
+    box.replaceChildren(...[
+      h("div", { class: "ms-detail-head" }, h("div", {}, h("h3", { text: g.order + ". " + g.label }), h("p", { class: "ms-hint", text: g.description }),
+        h("p", { class: "ms-hint", id: "detailWhen", text: detailWhen() })), close),
+      mapHost,
+      h("p", { class: "ms-hint", text: "Select an area to see its day, what serves it, and where its patients come from and go to. Boxes on the left and right are the other groups and the outcomes this group connects to; the figures on them are patients a day over the whole run." }),
+      h("div", { id: "unitDrill", class: "fm-drill", tabindex: "-1", hidden: true }),
+      g.id === "treatment" ? h("p", { class: "ms-info", text: S.meta.sdec.reporting_note + " " + S.meta.sdec.selection_caveat }) : null,
+      g.id === "next_destination" ? h("p", { class: "ms-info", text: "The admission sequence is: decision to admit (an event) → waiting for an inpatient bed (patients still occupy their ED trolley) → transfer to the ward → departure. " + S.meta.downstream.aggregate_assumption }) : null,
+      h("details", { class: "ms-details", id: "detailTables" }, h("summary", { text: "Table view: every step in " + g.label }), h("div", { id: "detailTablesBody" }))].filter(Boolean));
+    if (!narrow) buildDetailMap(mapHost, g);
+    else { delete FM.maps.detail; renderDetailCards(mapHost, g); }
+    renderUnitDrill(); renderDetailTables(g);
+  }
+  // narrow screens: the same areas as cards (no lines); routes are in each area's detail
+  function detailUnits(g) {
+    const present = new Set(S.result.model.nodes);
+    return S.meta.flow_units.filter(u => u.group === g.id && (u.milestone ? present.has(u.milestone) : u.states.some(k => present.has(k.split("|")[0]))));
+  }
+  function renderDetailCards(host, g) {
+    host.replaceChildren(...detailUnits(g).map(u => {
+      const c = unitContent(u);
+      const b = h("button", { type: "button", class: "fm-box fm-card fm-" + (u.milestone ? "milestone" : "unit") + (c.status ? " st-" + c.status.cls : "") + (S.openUnit === u.id ? " fm-selected" : "") },
+        h("span", { class: "fm-name", text: u.label }), h("span", { class: "fm-num", text: c.num }), h("span", { class: "fm-cap", text: c.cap }),
+        h("span", { class: "fm-lines" }, ...(c.lines || []).filter(Boolean).map(x => h("span", { text: x }))),
+        c.status ? h("span", { class: "fm-status", text: c.status.text }) : null);
+      b.addEventListener("click", () => openUnit(u.id));
+      return b;
+    }));
+  }
+  function detailWhen() {
+    return typical() ? "Showing the typical day at " + HHMM(hourOf() * 60) + " (averages across the whole run)."
+      : "Showing simulated day " + (S.day + 1) + " at " + HHMM(viewTime()) + " (the same time as the summary above).";
+  }
+
+  // the drill-down for one area: its day, who serves it, where patients come from and go to
+  function renderUnitDrill() {
+    const box = $("#unitDrill");
+    if (!box) return;
+    const u = S.meta.flow_units.find(x => x.id === S.openUnit);
+    if (!u || !S.result) { box.hidden = true; box.replaceChildren(); return; }
+    const r = S.result, um = (r.stages.units || {})[u.id] || {}, c = unitContent(u);
+    const close = h("button", { class: "ms-btn-secondary", type: "button", text: "Close " + u.label });
+    close.addEventListener("click", () => openUnit(u.id));
+    const chart = h("div", { class: "ms-chart", id: "unitChart", role: "img" });
+    const unitName = (id) => id === "arrival" ? "Arrivals" : ((S.meta.flow_units.find(x => x.id === id) || {}).label) || ((S.meta.outcomes.find(o => o.node === id) || {}).label) || id;
+    const flows = linkList(r.flows.unit);
+    const inn = flows.filter(l => l.d === u.id).sort((a, b) => b.v - a.v), out = flows.filter(l => l.s === u.id).sort((a, b) => b.v - a.v);
+    const nodes = u.milestone ? [] : [...new Set(unitKeys(u).map(k => k.split("|")[0]))];
+    const how = Math.floor((viewTime() % 10080) / 60), resRows = [], seen = new Set();
+    for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
+      if (seen.has(res)) continue; seen.add(res);
+      const oc = r.model.open_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
+      const isStaff = !!Object.values(S.meta.roles).some(ro => ro.staffs === res);
+      resRows.push([labelFor(res), isStaff ? "staff on shift" : "spaces open", oc ? String(oc.week[how]) : "–", fmt(ut, 0, "%")]);
+    }
+    box.replaceChildren(...[
+      h("div", { class: "ms-detail-head" }, h("h4", { text: u.label }), close),
+      h("div", { class: "fm-drill-stats" },
+        ...(c.tip || []).map(t => h("div", { class: "fm-stat" }, h("span", { class: "k", text: t.name }), h("span", { class: "v", text: t.value })))),
+      u.milestone ? null : h("h5", { text: typical() ? "Through the typical day (average present at each hour)" : "Through simulated day " + (S.day + 1) + " (present on the hour)" }),
+      u.milestone ? null : chart,
+      resRows.length ? table("What serves this area at " + HHMM(viewTime()) + " (" + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)] + ")", ["Resource", "Type", "Available now", "Utilisation (whole run)"], resRows, [2, 3]) : null,
+      h("div", { class: "fm-drill-flows" },
+        h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])),
+        h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])))].filter(Boolean));
+    box.hidden = false;
+    if (!u.milestone) {
+      const keys = unitKeys(u), day = stDay(keys);
+      const vals = typical() ? day : [...Array(24).keys()].map(hh => day[hh * 4]);
+      columnChart(chart, { labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 150, yTitle: "patients present",
+        series: [{ name: "Present", values: vals, color: token("--chart-1"), fmt: (v) => typical() ? fmt(v, 1) : String(v) }],
+        xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null, highlight: hourOf(), tipTitle: (i) => HHMM(i * 60) });
+      chart.setAttribute("aria-label", "Column chart: patients present in " + u.label + " at each hour. The table view below lists the same steps.");
+    }
+  }
+
+  function renderDetailTables(g) {
+    const body = $("#detailTablesBody");
+    if (!body) return;
+    const r = S.result, typ = typical(), i = idx();
     const present = new Set(r.model.nodes);
-    // a step that uses no resource has no queue (its "queue" is always zero
-    // length), so that row would only ever show zeros
+    // a step that uses no resource has no queue (its "queue" is always zero length)
     const states = g.states.filter(st => present.has(st.node) &&
       !(st.phase === "queue" && !(r.model.node_resources[st.node] || []).length));
     const rows = states.map(st => {
-      const key = st.node + "|" + st.phase;
-      const sm = r.stages.states[key] || {};
-      const now = typ ? fmt(sm.mean_occupancy, 1) : ((r.replay.states[key] || [])[i] ?? 0);
-      return [st.label, h("span", { class: "ms-kind " + st.kind, text: st.kind === "waiting" ? "Waiting" : "Being seen / in progress" }), String(now),
-        fmt(sm.mean_occupancy, 1), st.kind === "waiting" ? fmt(sm.patient_hours_per_day, 0) : "–",
-        sm.n_completed ? fmt(sm.completed_median, 0) + " / " + fmt(sm.completed_p90, 0) : "no observations",
-        fmt(sm.entries_per_day, 1)];
+      const key = st.node + "|" + st.phase, sm = r.stages.states[key] || {};
+      return [st.label, h("span", { class: "ms-kind " + st.kind, text: st.kind === "waiting" ? "Waiting" : "Being seen / in progress" }),
+        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), st.kind === "waiting" ? fmt(sm.patient_hours_per_day, 0) : "–",
+        sm.n_completed ? fmt(sm.completed_median, 0) + " / " + fmt(sm.completed_p90, 0) : "no observations", fmt(sm.entries_per_day, 1)];
     });
-    const close = h("button", { class: "ms-btn-secondary", type: "button", text: "Close " + g.label });
-    close.addEventListener("click", () => toggleGroup(g.id));
-    const parts = [h("div", { class: "ms-detail-head" }, h("div", {}, h("h3", { text: g.order + ". " + g.label }), h("p", { class: "ms-hint", text: g.description })), close),
-      table(null, ["Step", "Kind", typ ? "Now (average)" : "Now (" + HHMM(viewTime()) + ")", "Average present (whole run)", "Waiting patient-hours/day", "Time in step, minutes: median / 90th percentile (completed)", "Entries per day"], rows, [2, 3, 4, 5, 6])];
-    // resources serving this group
-    const nodes = [...new Set(states.map(s => s.node))];
-    const resRows = [];
-    const seen = new Set();
+    const parts = [table(null, ["Step", "Kind", typ ? "Average at " + HHMM(hourOf() * 60) : "Now (" + HHMM(viewTime()) + ")", "Average present (whole run)", "Waiting patient-hours/day", "Time in step, minutes: median / 90th percentile (completed)", "Entries per day"], rows, [2, 3, 4, 5, 6])];
+    const nodes = [...new Set(states.map(s => s.node))], resRows = [], seen = new Set();
     const how = Math.floor((viewTime() % 10080) / 60);
     for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
       if (seen.has(res)) continue; seen.add(res);
       const oc = r.model.open_capacity[res], ph = r.model.physical_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
       const isStaff = !!(S.meta.roles && Object.values(S.meta.roles).some(ro => ro.staffs === res));
-      resRows.push([labelFor(res), isStaff ? "Staff (on shift)" : "Space / equipment (open)",
-        oc ? String(oc.week[how]) : "–", ph && !isStaff ? String(ph.max) : "–", fmt(ut, 0, "%")]);
+      resRows.push([labelFor(res), isStaff ? "Staff (on shift)" : "Space / equipment (open)", oc ? String(oc.week[how]) : "–", ph && !isStaff ? String(ph.max) : "–", fmt(ut, 0, "%")]);
     }
     if (resRows.length) parts.push(h("h4", { text: "What serves these steps" }),
       table(null, ["Resource", "Type", "Available at " + HHMM(viewTime()) + " (" + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)] + ")", "Physical spaces", "Utilisation (whole run)"], resRows, [2, 3, 4]),
       h("p", { class: "ms-hint", text: "A space only opens when the staff to cover it are on shift (the space-staffing ratios on the Workforce screen). Utilisation alone does not make a bottleneck - compare it with the waiting measures above." }));
-    const ms = S.meta.milestones.filter(m => m.group === g.id && r.replay.milestones[m.node]);
+    const ms = S.meta.milestones.filter(m => m.group === g.id && (r.replay.milestones || {})[m.node]);
     if (ms.length) parts.push(h("h4", { text: "Decisions and events (counted, not occupancy)" }),
-      table(null, ["Event", typ ? "Per day (whole run)" : "In the hour to " + HHMM(viewTime()), "Per day (whole run)"],
-        ms.map(m => [m.label, typ ? fmt(r.stages.milestones_per_day[m.node], 1) : String(sumLast(r.replay.milestones[m.node], i, 4)), fmt(r.stages.milestones_per_day[m.node], 1)]), [1, 2]));
-    if (g.id === "treatment") parts.push(h("p", { class: "ms-info", text: S.meta.sdec.reporting_note + " " + S.meta.sdec.selection_caveat }));
-    if (g.id === "next_destination") parts.push(h("p", { class: "ms-info", text: "The admission sequence is: decision to admit (an event) → waiting for an inpatient bed (patients still occupy their ED trolley) → transfer to the ward → departure. " + S.meta.downstream.aggregate_assumption }));
-    box.replaceChildren(...parts);
-    box.hidden = false;
+      table(null, ["Event", typ ? "In the hour from " + HHMM(hourOf() * 60) + " (average)" : "In the hour to " + HHMM(viewTime()), "Per day (whole run)"],
+        ms.map(m => [m.label, typ ? fmt(((r.profile.milestones_per_hour || {})[m.node] || [])[hourOf()], 1) : String(sumLast(r.replay.milestones[m.node], i, 4)), fmt(r.stages.milestones_per_day[m.node], 1)]), [1, 2]));
+    body.replaceChildren(...parts);
   }
 
   function labelFor(res) {
@@ -682,8 +1159,19 @@
   }
 
   function renderExpert() {
-    const r = S.result, labels = S.meta.labels;
-    const name = (id) => labels[id] || id;
+    const r = S.result, det = $("#expertView"), host = $("#expertMap");
+    if (!det.open || !r.flows) { delete FM.maps.expert; S.expertKey = null; return; }
+    if (mapWidth(host) >= 900) {
+      $("#expertNote").textContent = "Every modelled step, in the column of its summary group. Decision and routing points (dashed) count events in the hour; outcomes count departures. Lines are patients a day over the whole run.";
+      if (S.expertKey !== S.flowKey || !FM.maps.expert) { S.expertKey = S.flowKey; buildExpertMap(host); }
+      else FM.maps.expert.update();
+    } else {
+      delete FM.maps.expert; S.expertKey = null; host.replaceChildren(); host.style.height = "";
+      $("#expertNote").textContent = "The full map needs a wider screen. Every step and its routes are listed in the table below.";
+    }
+    if (S.expertTable === r.run_id) return;
+    S.expertTable = r.run_id;
+    const labels = S.meta.labels, name = (id) => labels[id] || id;
     const rows = r.model.pathway.map(n => [name(n.id), n.type === "sink" ? "outcome" : n.milestone ? "decision (event)" : "step",
       (n.resources || []).map(labelFor).join(", ") || "–",
       n.open_hours ? HHMM(n.open_hours[0] * 60) + "–" + HHMM(n.open_hours[1] * 60) + " (closed: " + name(n.closed_fallback) + ")" : "always",
@@ -693,8 +1181,10 @@
 
   // ================================================================ render orchestration
   function renderAllEmpty() {
-    for (const id of ["#kpiPrimary", "#kpiSecondary", "#pressureList", "#groupRow", "#outcomeRow", "#chartCensus", "#chartFlow"]) $(id).replaceChildren();
+    for (const id of ["#kpiPrimary", "#kpiSecondary", "#pressureList", "#groupRow", "#outcomeRow", "#chartCensus", "#chartFlow", "#flowTable", "#expertMap"]) $(id).replaceChildren();
+    $("#groupRow").style.height = ""; $("#expertMap").style.height = "";
     $("#groupDetail").hidden = true;
+    S.flowKey = null; S.detailKey = null; S.expertKey = null; FM.maps = {};
   }
   function renderNotSimulated() {
     renderAllEmpty();
@@ -713,7 +1203,7 @@
     dayOptions();
     renderContext(); renderOverview(); renderFlow(); renderSetup();
   }
-  window.addEventListener("resize", () => { clearTimeout(S._rs); S._rs = setTimeout(() => { renderChartsImpl(); renderCoverageImpl(); }, 150); });
+  window.addEventListener("resize", () => { clearTimeout(S._rs); S._rs = setTimeout(() => { renderChartsImpl(); renderCoverageImpl(); if (S.result) renderFlow(); }, 150); });
 
   // ================================================================ workforce: target search
   function initTargetForm() {
@@ -1273,7 +1763,8 @@
     try {
       S.meta = await api("/api/m/meta");
       $("#statusMore").textContent = "Fictional demonstration identity. Inputs: a real trust's published and extract data plus labelled illustrative assumptions (rota, costs, SDEC) - see Set up / assumptions.";
-      wireTabs(); wireContext(); wireEditor(); wireScenarios(); wireQbo();
+      wireTabs(); wireContext(); wireEditor(); wireScenarios(); wireQbo(); wireFlowControls();
+      $("#expertView").addEventListener("toggle", () => { S.expertKey = null; if (S.result) renderExpert(); });
       await loadScenarios();
       await loadCurrent();
       initTargetForm();
