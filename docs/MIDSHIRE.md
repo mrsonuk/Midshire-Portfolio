@@ -206,7 +206,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
   runs finish without forkserver, without any start method and with a broken
   worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 74 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 75 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors. They cover
   every page in the baseline and with a scenario open, the Selected day view
   on every day offered (Tuesday to Sunday) at three times of day, the Typical

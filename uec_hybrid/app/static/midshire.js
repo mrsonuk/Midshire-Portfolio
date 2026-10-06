@@ -727,7 +727,10 @@
     if (q >= 0.45) return { cls: "busy", text: "filling" };
     return { cls: "quiet", text: "quiet" };
   }
-  const nval = (v) => typical() ? fmt(v, 1) : fmtInt(v);
+  // Typical day figures are averages, but patients come in whole numbers: show
+  // them rounded, and an average below one half as "<1" rather than as 0.
+  const whole = (v) => (typeof v === "number" && v > 0 && v < 0.5) ? "<1" : fmt(v, 0);
+  const nval = (v) => typical() ? whole(v) : fmtInt(v);
   const whenText = () => typical() ? "average at " + HHMM(hourOf() * 60) : "at " + HHMM(viewTime());
   const hourText = () => typical() ? "in the hour from " + HHMM(hourOf() * 60) + ", on average" : "in the hour to " + HHMM(viewTime());
   const linkList = (obj) => Object.entries(obj || {}).map(([k, v]) => { const [s, d] = k.split(">"); return { s, d, v }; });
@@ -875,7 +878,7 @@
       const hit = svgEl("path", { d: L.path.getAttribute("d"), class: "fm-hit", "stroke-width": Math.max(14, L.w + 6).toFixed(1), fill: "none" });
       hit.addEventListener("mousemove", (e) => {
         L.path.classList.add("on");
-        showTip(e.clientX, e.clientY, name(L.l.s) + " → " + name(L.l.d), tipRows([["patients a day on this route, on average", fmt(L.l.v, 1)]]));
+        showTip(e.clientX, e.clientY, name(L.l.s) + " → " + name(L.l.d), tipRows([["patients a day on this route, on average", whole(L.l.v)]]));
       });
       hit.addEventListener("mouseleave", () => { L.path.classList.remove("on"); hideTip(); });
       svg.append(hit);
@@ -961,7 +964,7 @@
     const r = S.result, n = typical() ? r.profile.arrivals_per_hour[hourOf()] : sumLast(r.replay.arrivals, idx(), 4);
     const perDay = linkList(r.flows.group).filter(l => l.s === "arrival").reduce((a, l) => a + l.v, 0);
     return { num: nval(n), cap: "arrived " + hourText(), lines: [fmt(perDay, 0) + " a day on average"],
-      tip: tipRows([["arrivals " + hourText(), nval(n)], ["arrivals a day, on average", fmt(perDay, 1)]]) };
+      tip: tipRows([["arrivals " + hourText(), nval(n)], ["arrivals a day, on average", whole(perDay)]]) };
   }
   function outcomeNodes(summary) {
     const present = new Set(S.result.model.nodes);
@@ -973,7 +976,7 @@
     const perDay = linkList(r.flows.group).filter(l => l.d === summary).reduce((a, l) => a + l.v, 0);
     const sub = nodes.map(o => [o.label + ", a day", fmt(linkList(r.flows.unit).filter(l => l.d === o.node).reduce((a, l) => a + l.v, 0), 1)]);
     return { num: nval(n), cap: "left " + hourText(), lines: [fmt(perDay, 0) + " a day on average"],
-      tip: tipRows([["left " + hourText(), nval(n)], ["a day, on average", fmt(perDay, 1)], ...sub]) };
+      tip: tipRows([["left " + hourText(), nval(n)], ["a day, on average", whole(perDay)], ...sub]) };
   }
   function unitKeys(u) { return (u.states || []).filter(k => (S.result.replay.states || {})[k] !== undefined || (S.result.profile.states_avg || {})[k] !== undefined); }
   function unitContent(u) {
@@ -981,14 +984,15 @@
     if (u.milestone) {
       const n = eventsNow((r.replay.milestones || {})[u.milestone], (r.profile.milestones_per_hour || {})[u.milestone]);
       return { num: nval(n), cap: "decisions " + hourText(), lines: ["a decision, not a wait · " + fmt(um.entries_per_day, 0) + " a day"],
-        tip: tipRows([["decisions " + hourText(), nval(n)], ["decisions a day, on average", fmt(um.entries_per_day, 1)]]) };
+        tip: tipRows([["decisions " + hourText(), nval(n)], ["decisions a day, on average", whole(um.entries_per_day)]]) };
     }
     const keys = unitKeys(u), o = occupancy(keys);
-    const stay = um.stay_median !== null && um.stay_median !== undefined ? "usual stay " + fmt(um.stay_median, 0) + " min" : null;
+    const hasStay = um.stay_median !== null && um.stay_median !== undefined;
+    const stay = !hasStay ? null : um.stay_median < 1 ? "most don't wait" : "usual stay " + fmt(um.stay_median, 0) + " min";
     return { num: nval(o.present), cap: (typical() ? "average present at " : "present at ") + HHMM(typical() ? hourOf() * 60 : viewTime()),
       lines: [nval(o.waiting) + (typical() ? " waiting on average" : " waiting") + (stay ? " · " + stay : "")], status: busyStatus(o.present, stDay(keys)), waiting: o.waiting,
       tip: tipRows([["present " + whenText(), nval(o.present)], ["waiting " + whenText(), nval(o.waiting)],
-        ["usual time here", um.stay_median !== null && um.stay_median !== undefined ? fmt(um.stay_median, 0) + " min" : "not available"],
+        ["usual time here", !hasStay ? "not available" : um.stay_median < 1 ? "under 1 min (most don't wait)" : fmt(um.stay_median, 0) + " min"],
         um.stay_p90 !== null && um.stay_p90 !== undefined ? ["1 in 10 stay longer than", fmt(um.stay_p90, 0) + " min"] : null,
         ["hours spent waiting here a day, on average", fmt(um.waiting_patient_hours_per_day, 0)],
         ["patients a day, on average", fmt(um.entries_per_day, 0)]]) };
@@ -1047,8 +1051,8 @@
         boxes.push({ id: s.key, col: side === "left" ? -1 : maxCol + 1, row: list.length === 1 ? (nRows - 1) / 2 : k * (nRows - 1) / Math.max(1, list.length - 1),
           kind: s.key.startsWith("out:") ? "stub fm-stub-out" : "stub", name: s.label,
           content: () => ({ lines: [flowsIn > 0.05 ? fmt(flowsIn, 0) + " a day into this group" : null, flowsOut > 0.05 ? fmt(flowsOut, 0) + " a day from this group" : null],
-            tip: tipRows([flowsIn > 0.05 ? ["patients a day coming into " + g.label + ", on average", fmt(flowsIn, 1)] : null,
-              flowsOut > 0.05 ? ["patients a day going here from " + g.label + ", on average", fmt(flowsOut, 1)] : null]) }) });
+            tip: tipRows([flowsIn > 0.05 ? ["patients a day coming into " + g.label + ", on average", whole(flowsIn)] : null,
+              flowsOut > 0.05 ? ["patients a day going here from " + g.label + ", on average", whole(flowsOut)] : null]) }) });
       });
     }
     return flowMap(host, { key: "detail", boxes, links, vertical: false, arch: false, compact: true, rowH: 112, padX: 26, boxW: 210,
@@ -1097,7 +1101,7 @@
     const wide = mapWidth(host) >= 760;
     const key = [r.run_id, S.mode, wide ? "h" : "v", Math.round(mapWidth(host) / 40)].join("|");
     $("#flowLegend").textContent = (typical()
-      ? "Numbers show the average number of patients in each group at " + HHMM(hourOf() * 60) + " on a typical day. "
+      ? "Numbers show the average number of patients in each group at " + HHMM(hourOf() * 60) + " on a typical day, rounded to whole patients (\"<1\" means fewer than one on average). "
       : "Numbers show the patients in each group at " + HHMM(viewTime()) + " on " + dayName(S.day) + ". ")
       + "Thicker lines carry more patients a day; the moving dots show the direction. The coloured top edge shows how busy a group is compared with its busiest time of day.";
     if (S.flowKey !== key) { S.flowKey = key; S.detailKey = null; FM.maps = {}; buildSummaryMap(host); }
@@ -1110,7 +1114,7 @@
 
   function renderSummaryTable() {
     const r = S.result, name = (id) => id === "arrival" ? "Arrivals" : OUTCOME_LABEL[id] || ((S.meta.groups.find(g => g.id === id) || {}).label) || id;
-    const rows = linkList(r.flows.group).sort((a, b) => b.v - a.v).map(l => [name(l.s), name(l.d), fmt(l.v, 1)]);
+    const rows = linkList(r.flows.group).sort((a, b) => b.v - a.v).map(l => [name(l.s), name(l.d), whole(l.v)]);
     const now = S.meta.groups.map(g => { const c = groupContent(g); return [g.order + ". " + g.label, c.num, c.lines[0], c.status.text]; });
     $("#flowTable").replaceChildren(
       table((typical() ? "Average at " + HHMM(hourOf() * 60) + " on a typical day" : "At " + HHMM(viewTime()) + " on " + dayName(S.day)), ["Group", "Patients", "Waiting", "How busy"], now, [1]),
@@ -1211,14 +1215,14 @@
       u.milestone ? null : chart,
       resRows.length ? table("Staff and space for this area at " + HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)], ["Staff or space", "Type", "Available now", "How busy, on average"], resRows, [2, 3]) : null,
       h("div", { class: "fm-drill-flows" },
-        h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])),
-        h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])))].filter(Boolean));
+        h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none in this run" })])),
+        h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none in this run" })])))].filter(Boolean));
     box.hidden = false;
     if (!u.milestone) {
       const keys = unitKeys(u), day = stDay(keys);
       const vals = typical() ? day : [...Array(24).keys()].map(hh => day[hh * 4]);
       columnChart(chart, { labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 150, yTitle: "patients present",
-        series: [{ name: "Present", values: vals, color: token("--chart-1"), fmt: (v) => typical() ? fmt(v, 1) : String(v) }],
+        series: [{ name: "Present", values: vals, color: token("--chart-1"), fmt: (v) => typical() ? whole(v) : String(v) }],
         xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null, highlight: hourOf(), tipTitle: (i) => HHMM(i * 60) });
       chart.setAttribute("aria-label", "Column chart: patients present in " + u.label + " at each hour. The table view below lists the same steps.");
     }

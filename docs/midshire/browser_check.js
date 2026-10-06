@@ -165,6 +165,7 @@ async function techCheck(page, where) {
     await techCheck(page, "Patient flow");
     await page.click("#modeTypical");
     ok("typical mode says 'average'", /average/i.test(await page.textContent("#groupRow")) && /typical day/.test(await page.textContent("#flowLegend")));
+    ok("typical-day map shows whole patients, not decimals", !/\d\.\d/.test(await page.textContent("#groupRow")), (await page.textContent("#groupRow")).match(/\d\.\d/g));
     await page.click("#modeReplay");
 
     // Workforce & investment: the decision journey
