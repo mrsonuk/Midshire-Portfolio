@@ -36,6 +36,16 @@
   const DAYNAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
   const fmt = (v, dp = 1, unit = "") => (v === null || v === undefined || Number.isNaN(v)) ? "not available" : Number(v).toFixed(dp) + unit;
   const fmtInt = (v) => (v === null || v === undefined) ? "not available" : Math.round(v).toLocaleString("en-GB");
+  // Paid hours: whole hours unless a half-hour break makes it x.5
+  const hrs = (v) => {
+    if (v === null || v === undefined || Number.isNaN(v)) return "not available";
+    const r = Math.round(v * 10) / 10;
+    return r.toLocaleString("en-GB", { minimumFractionDigits: Number.isInteger(r) ? 0 : 1, maximumFractionDigits: 1 });
+  };
+  // Rota day patterns in words (the rota file keeps the short codes)
+  const DAY_LABEL = { "Mon-Sun": "Every day", "Mon-Fri": "Monday to Friday", "Sat-Sun": "Weekends", Mon: "Mondays", Tue: "Tuesdays",
+    Wed: "Wednesdays", Thu: "Thursdays", Fri: "Fridays", Sat: "Saturdays", Sun: "Sundays" };
+  const dayLabel = (d) => DAY_LABEL[d || "Mon-Sun"] || d;
   const money = (v) => (v === null || v === undefined) ? "not costed" : (v < 0 ? "-£" : "£") + Math.abs(Math.round(v)).toLocaleString("en-GB");
   const signed = (v, dp = 1, unit = "") => (v === null || v === undefined) ? "not available" : (v > 0 ? "+" : v < 0 ? "-" : "") + Math.abs(v).toFixed(dp) + unit;
   const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -657,16 +667,16 @@
       (typ ? " Averages across every modelled day." : "");
     lineChart($("#chartCensus"), {
       labels, marker, height: 260, yTitle: "patients", area: true,
-      series: [{ name: "In the department", values: census, color: c1, fmt: (v) => typ ? v.toFixed(0) : String(v) },
-               { name: "Waiting", values: waiting, color: c2, fmt: (v) => typ ? v.toFixed(0) : String(v) }],
+      series: [{ name: "In the department", values: census, color: c1, fmt: (v) => typ ? whole(v) : String(v) },
+               { name: "Waiting", values: waiting, color: c2, fmt: (v) => typ ? whole(v) : String(v) }],
       xTick: (i) => (typ ? i % 3 === 0 : i % 12 === 0) ? labels[i] : null,
       tipTitle: (i) => (typ ? "Average at " : "At ") + labels[i],
     });
     $("#chartCensus").setAttribute("aria-label", "Line chart: patients in the department and patients waiting through the day. A table version follows.");
     columnChart($("#chartFlow"), {
       labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 220, yTitle: "patients per hour",
-      series: [{ name: "Arrivals", values: arr, color: c1, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
-      lines: [{ name: "Departures", values: dep, color: c3, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
+      series: [{ name: "Arrivals", values: arr, color: c1, fmt: (v) => typ ? whole(v) : String(v) }],
+      lines: [{ name: "Departures", values: dep, color: c3, fmt: (v) => typ ? whole(v) : String(v) }],
       xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null, highlight: hourOf(),
       tipTitle: (i) => HHMM(i * 60) + " to " + HHMM((i + 1) * 60),
     });
@@ -674,7 +684,7 @@
     const rows = [];
     for (let hh = 0; hh < 24; hh++) {
       const at = typ ? hh : hh * 4;
-      rows.push([HHMM(hh * 60), typ ? fmt(census[hh], 0) : String(census[at]), typ ? fmt(waiting[hh], 0) : String(waiting[at]), typ ? fmt(arr[hh], 1) : String(arr[hh]), typ ? fmt(dep[hh], 1) : String(dep[hh])]);
+      rows.push([HHMM(hh * 60), typ ? whole(census[hh]) : String(census[at]), typ ? whole(waiting[hh]) : String(waiting[at]), typ ? whole(arr[hh]) : String(arr[hh]), typ ? whole(dep[hh]) : String(dep[hh])]);
     }
     $("#dayTable").replaceChildren(table(typ ? "Typical day (averages)" : dayName(S.day),
       ["Time", "In the department", "Waiting", "Arrivals in the hour", "Departures in the hour"], rows, [1, 2, 3, 4]));
@@ -1003,7 +1013,7 @@
       lines: [nval(o.waiting) + (typical() ? " waiting on average" : " waiting") + (stay ? " · " + stay : "")], status: busyStatus(o.present, stDay(keys)), waiting: o.waiting,
       tip: tipRows([["present " + whenText(), nval(o.present)], ["waiting " + whenText(), nval(o.waiting)],
         ["usual time here", !hasStay ? "not available" : um.stay_median < 1 ? "under 1 min (most don't wait)" : fmt(um.stay_median, 0) + " min"],
-        um.stay_p90 !== null && um.stay_p90 !== undefined ? ["1 in 10 stay longer than", fmt(um.stay_p90, 0) + " min"] : null,
+        um.stay_p90 !== null && um.stay_p90 !== undefined ? ["1 in 10 take longer than", fmt(um.stay_p90, 0) + " min"] : null,
         ["hours spent waiting here a day, on average", fmt(um.waiting_patient_hours_per_day, 0)],
         ["patients a day, on average", fmt(um.entries_per_day, 0)]]) };
   }
@@ -1253,12 +1263,12 @@
       // a median under a minute on a waiting step means most patients don't wait at all
       const usual = !sm.n_completed ? "none" : (wait && sm.completed_median < 1) ? "no wait" : fmt(sm.completed_median, 0);
       return [st.label, h("span", { class: "ms-kind " + st.kind, text: wait ? "Waiting" : "Being seen or tested" }),
-        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), wait ? fmt(sm.patient_hours_per_day, 0) : "-",
+        typ ? whole(stNow(key)) : String(stNow(key)), whole(sm.mean_occupancy), wait ? fmt(sm.patient_hours_per_day, 0) : "-",
         usual, sm.n_completed ? fmt(sm.completed_p90, 0) : "none", fmt(sm.entries_per_day, 0)];
     });
     const parts = [table(null, ["Step", "Kind", typ ? "Patients here, average at " + HHMM(hourOf() * 60) : "Patients here at " + HHMM(viewTime()),
       "Patients here, average over the day", "Hours spent waiting a day, all patients", "Usual time here (minutes)", "1 in 10 take longer than (minutes)", "Patients a day"], rows, [2, 3, 4, 5, 6, 7]),
-      h("p", { class: "ms-hint", text: "Averages can be below one: 0.3 means the step is empty most of the time. Usual time is the middle patient's time at the step." })];
+      h("p", { class: "ms-hint", text: "Patients are rounded to whole numbers; \"<1\" means fewer than one on average, so the step is empty most of the time. Usual time is the typical patient's time at the step." })];
     const nodes = [...new Set(states.map(s => s.node))], resRows = [], seen = new Set();
     for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
       if (seen.has(res)) continue; seen.add(res);
@@ -1272,7 +1282,7 @@
     const ms = S.meta.milestones.filter(m => m.group === g.id && (r.replay.milestones || {})[m.node]);
     if (ms.length) parts.push(h("h4", { text: "Decisions (counted, not patients waiting)" }),
       table(null, ["Decision", typ ? "In the hour from " + HHMM(hourOf() * 60) + ", on average" : "In the hour to " + HHMM(viewTime()), "A day, on average"],
-        ms.map(m => [m.label, typ ? fmt(((r.profile.milestones_per_hour || {})[m.node] || [])[hourOf()], 1) : String(sumLast(r.replay.milestones[m.node], i, 4)), fmt(r.stages.milestones_per_day[m.node], 1)]), [1, 2]));
+        ms.map(m => [m.label, typ ? whole(((r.profile.milestones_per_hour || {})[m.node] || [])[hourOf()]) : String(sumLast(r.replay.milestones[m.node], i, 4)), whole(r.stages.milestones_per_day[m.node])]), [1, 2]));
     body.replaceChildren(...parts);
   }
 
@@ -1297,7 +1307,7 @@
     $("#outcomeNote").textContent = typ ? "Patients leaving on a typical day." : "Patients who arrived on " + dayName(S.day) + ", by how they left.";
     const card = (title, list, note) => {
       const n = list.reduce((a, o) => a + (per[o.node] || 0), 0);
-      return kpi({ label: title, value: typ ? fmt(n, 0) : fmtInt(n), unit: " a day", compare: fmt(100 * n / total, 0) + "% of patients" + (note ? " · " + note : "") });
+      return kpi({ label: title, value: typ ? whole(n) : fmtInt(n), unit: " a day", compare: fmt(100 * n / total, 1) + "% of patients" + (note ? " · " + note : "") });
     };
     $("#outcomeRow").replaceChildren(
       card("Went home", groups.discharged, groups.discharged.some(o => o.node === "discharged_sdec") ? "including from SDEC" : ""),
@@ -1356,13 +1366,6 @@
 
   // ================================================================ workforce: target search
   const leverInfo = (id) => (S.meta.lever_text || {})[id] || { name: id, change: "" };
-  const moneyShort = (v) => {
-    if (v === null || v === undefined) return "not costed";
-    const a = Math.abs(v), s = v < 0 ? "-£" : "£";
-    if (a >= 1e6) return s + (a / 1e6).toFixed(a >= 1e7 ? 0 : 2).replace(/\.?0+$/, "") + "m";
-    if (a >= 1e4) return s + Math.round(a / 1000) + "k";
-    return s + Math.round(a).toLocaleString("en-GB");
-  };
 
   // the decision journey: now -> target -> changes -> expected -> cost
   function renderJourney(j) {
@@ -1378,7 +1381,7 @@
       const reached = j.expected >= tgt.pct;
       items.push(step("Expected", fmt(j.expected, 1) + "%", (j.delta !== null && j.delta !== undefined ? signed(j.delta, 1) + " points, " : "") + (reached ? "on target" : "below target"), reached ? "ok" : "short"));
       const f = j.finance || {};
-      items.push(step("Extra cost", moneyShort(f.recurring_annual_total) + " a year", f.capital ? "plus " + moneyShort(f.capital) + " one-off" : "no one-off cost"));
+      items.push(step("Extra cost", money(f.recurring_annual_total) + " a year", f.capital ? "plus " + money(f.capital) + " one-off" : "no one-off cost"));
     } else {
       items.push(step("Changes", "-", "find a package or try your own"), step("Expected", "-", ""), step("Extra cost", "-", ""));
     }
@@ -1474,7 +1477,7 @@
       const rt = retestSentence(v);
       if (rt) parts.push(h("p", { class: "ms-hint", text: rt }));
       parts.push(table("What it costs", ["", "Amount"], [
-        ["Extra staff", f.extra_wte ? fmt(f.extra_wte, 1) + " whole-time equivalent (" + fmt(f.extra_paid_hours_week, 0) + " paid hours a week)" : "none"],
+        ["Extra staff", f.extra_wte ? fmt(f.extra_wte, 1) + " whole-time equivalent (" + hrs(f.extra_paid_hours_week) + " paid hours a week)" : "none"],
         ["Extra pay a year", money(f.annual_pay_delta)],
         ["One-off building and equipment cost", money(f.capital)],
         ["Other running costs a year", money(f.recurring_non_pay_annual)],
@@ -1483,8 +1486,8 @@
       const det = [];
       if (f.rota_rows.length) det.push(table("Extra shifts (a planning rota, not named staff)",
         ["Role", "Area", "Days", "Hours", "Staff now", "Staff with package", "Extra paid hours a week", "Whole-time equivalent", "Cost a week", "Cost a year", "Why"],
-        f.rota_rows.map(rw => [rw.role_label, rw.area, rw.days, HHMM(rw.start * 60) + " to " + HHMM(rw.end * 60), String(rw.baseline_staff), String(rw.proposed_staff),
-          fmt(rw.extra_paid_hours_week, 1), fmt(rw.wte, 2), money(rw.weekly_cost), money(rw.annual_cost), rw.why]), [4, 5, 6, 7, 8, 9]));
+        f.rota_rows.map(rw => [rw.role_label, rw.area, dayLabel(rw.days), HHMM(rw.start * 60) + " to " + HHMM(rw.end * 60), String(rw.baseline_staff), String(rw.proposed_staff),
+          hrs(rw.extra_paid_hours_week), fmt(rw.wte, 1), money(rw.weekly_cost), money(rw.annual_cost), rw.why]), [4, 5, 6, 7, 8, 9]));
       else det.push(h("p", { class: "ms-hint", text: "This package needs no extra shifts." }));
       if (f.estate_rows.length) det.push(table("Extra space, equipment and beds",
         ["Item", "Change", "Now and after", "One-off cost", "Running cost a year", "Note"],
@@ -1508,9 +1511,9 @@
           const d = await api("/api/m/retime", { scenario_id: S.current.id, lever_ids: rec.ids });
           S.draft = d.inputs; renderEditor(); schedulePreview();
           $("#draftResult").replaceChildren(h("div", { class: "ms-info" }, h("p", { text: d.note }),
-            h("ul", { class: "ms-list" }, d.moves.map(mv => h("li", { text: "Move " + mv.count + " " + mv.role + " (" + mv.days + ") from " + mv.from + " to " + mv.to })),
+            h("ul", { class: "ms-list" }, d.moves.map(mv => h("li", { text: "Move " + mv.count + " " + mv.role + " (" + dayLabel(mv.days).toLowerCase() + ") from " + mv.from + " to " + mv.to })),
               d.infeasible.map(x => h("li", { text: "Can't be moved: " + x }))),
-            h("p", { class: "ms-hint", text: "Change in paid hours a week: " + fmt(d.paid_hours_delta, 1) + ". Run these changes to see the effect." })));
+            h("p", { class: "ms-hint", text: "Change in paid hours a week: " + (d.paid_hours_delta > 0 ? "+" : "") + hrs(d.paid_hours_delta) + ". Run these changes to see the effect." })));
           $("#editorCard").scrollIntoView();
         } catch (e) { showError("#tgtError", e); }
       });
@@ -1566,7 +1569,7 @@
       const role = h("select", { class: "role", "aria-label": "Role, row " + (i + 1) }, roleOpts.map(([k, v]) => h("option", { value: k, text: v.label })));
       role.value = row.role;
       const area = h("input", { type: "text", value: row.area || "", "aria-label": "Area, row " + (i + 1), maxlength: 60 });
-      const days = h("select", { "aria-label": "Days, row " + (i + 1) }, DAY_PATTERNS.map(p => h("option", { value: p, text: p })));
+      const days = h("select", { "aria-label": "Days, row " + (i + 1) }, DAY_PATTERNS.map(p => h("option", { value: p, text: dayLabel(p) })));
       if (!DAY_PATTERNS.includes(row.days || "Mon-Sun")) days.append(h("option", { value: row.days, text: row.days }));
       days.value = row.days || "Mon-Sun";
       const start = hourSelect(row.start, false, "Start, row " + (i + 1));
@@ -1680,7 +1683,8 @@
     $("#costSummary").replaceChildren(table("Pay for this rota", ["", "Your changes", "Baseline", "Difference"], [
       ["Pay a week", money(c.weekly_total), money(b.weekly_total), money(c.weekly_total - b.weekly_total)],
       ["Pay a year (" + c.weeks_per_year + " weeks)", money(c.annual_total), money(b.annual_total), money(c.annual_total - b.annual_total)],
-      ["Paid hours a week", fmt(Object.values(c.paid_hours_by_role).reduce((a, x) => a + x, 0), 0), fmt(Object.values(b.paid_hours_by_role).reduce((a, x) => a + x, 0), 0), ""]], [1, 2, 3]),
+      ["Paid hours a week", hrs(Object.values(c.paid_hours_by_role).reduce((a, x) => a + x, 0)), hrs(Object.values(b.paid_hours_by_role).reduce((a, x) => a + x, 0)),
+        hrs(Object.values(c.paid_hours_by_role).reduce((a, x) => a + x, 0) - Object.values(b.paid_hours_by_role).reduce((a, x) => a + x, 0))]], [1, 2, 3]),
       h("p", { class: "ms-hint", text: nc + " Both use the same pay rates." }));
   }
 
@@ -1775,19 +1779,21 @@
     const head = ["", ...rows.map(r => r.name)];
     const line = (label, f) => [label, ...rows.map(f)];
     const status = (r) => { const s = statusFor(r.target_measure.mean, t.pct, r.target_status.status); return s ? s.text : "-"; };
+    // the same "what changes" sentences as the scenario cards
+    const changes = (r) => { const sc = (S.scenarios || []).find(x => x.id === r.id); return r.id === "baseline" ? "No changes" : sc && sc.changes && sc.changes.length ? sc.changes.join(" ") : "-"; };
     const body = [
+      line("What changes", changes),
       line("Left within " + timeWords(t.minutes), r => fmt(r.target_measure.mean, 1) + "%"),
       line("Change on the baseline", r => r.id === "baseline" ? "-" : signed(r.delta_vs_baseline_pts.mean, 1) + " points"),
       line("Against the " + t.pct + "% target", status),
       line("Gap to the target", r => r.remaining_gap_pts > 0 ? fmt(r.remaining_gap_pts, 1) + " points" : "none"),
       line("Time in department, typical patient", r => fmt(r.duration_median.mean, 0, " min")),
-      line("Time spent waiting, median", r => fmt(r.total_wait_median.mean, 0, " min")),
+      line("Time spent waiting, typical patient", r => fmt(r.total_wait_median.mean, 0, " min")),
       line("Over 12 hours in the department", r => fmt(r.twelve_hour.mean, 1, "%")),
       line("Left without being seen", r => fmt(r.lwbs.mean, 1, "%")),
       line("Extra shifts a week", r => String(r.extra_shifts_week)),
-      line("Extra paid hours a week", r => fmt(r.extra_paid_hours_week, 0)),
+      line("Extra paid hours a week", r => hrs(r.extra_paid_hours_week)),
       line("Extra pay a year", r => money(r.annual_pay_delta)),
-      line("Extra space or beds", r => r.estate.rows.length ? r.estate.rows.map(e => e.label + " " + (typeof e.change === "number" ? signed(e.change, 0) : e.change)).join("; ") : "none"),
       line("One-off cost", r => money(r.capital)),
       line("Other running costs a year", r => money(r.recurring_non_pay_annual)),
       line("Not costed yet", r => r.not_costed.length ? r.not_costed.join("; ") : "-"),
@@ -1969,7 +1975,7 @@
     myedAdd("user", q);
     const wait = myedAdd("bot", "Checking...");
     try {
-      const view = S.result ? { mode: S.mode, day: S.day, index: S.mode === "replay" ? idx() : null } : null;
+      const view = S.result ? { mode: S.mode, day: S.day, index: S.mode === "replay" ? idx() : null, hour: S.mode === "typical" ? hourOf() : null } : null;
       const d = await api("/api/m/ask", { message: q, scenario_id: S.current.id, view });
       wait.textContent = d.reply;
       const openPkg = (t) => {

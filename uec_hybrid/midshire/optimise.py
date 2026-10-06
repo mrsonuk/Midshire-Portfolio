@@ -31,6 +31,7 @@ within the tested options".
 from __future__ import annotations
 
 import copy
+from decimal import Decimal, ROUND_HALF_UP
 import time
 
 from . import config as mcfg
@@ -332,6 +333,23 @@ def _time_words(minutes) -> str:
     return f"{m // 60} hours" if m % 60 == 0 else f"{m} minutes"
 
 
+def num(x, dp: int = 0, sign: bool = False, comma: bool = False) -> str:
+    """A number exactly as the page shows it. The page rounds halves away from
+    zero (JavaScript's toFixed); Python's format rounds them to even, so 444.5
+    hours would read 444 here and 445 on screen. Every figure in a sentence
+    goes through this."""
+    q = Decimal(x).quantize(Decimal(1).scaleb(-dp), rounding=ROUND_HALF_UP)
+    out = f"{q:,}" if comma else f"{q}"
+    return ("+" + out) if sign and q > 0 else out
+
+
+def perf_words(minutes) -> str:
+    """'4-hour performance' (or '90-minute performance'): the one way the tool
+    names the target measure in sentences."""
+    m = int(minutes)
+    return f"{m // 60}-hour performance" if m % 60 == 0 else f"{m}-minute performance"
+
+
 def describe(result: dict) -> str:
     """The verdict in plain words, built from the structured fields (so a
     re-priced result never carries a stale sentence)."""
@@ -340,27 +358,27 @@ def describe(result: dict) -> str:
     rec = result.get("recommended")
     within = _time_words(tgt["minutes"])
     if out == "already_met":
-        return (f"The department already meets this target: {bmean:.1f}% of patients leave within "
+        return (f"The department already meets this target: {num(bmean, 1)}% of patients leave within "
                 f"{within}, against {tgt['pct']:g}%.")
     top = ((result.get("limits") or {}).get("top_waiting_states") or [{}])[0].get("label")
     if out == "met" and rec:
         f = rec["finance"]
-        cost = f"£{f['recurring_annual_total']:,.0f} a year"
+        cost = f"£{num(f['recurring_annual_total'], comma=True)} a year"
         if f.get("capital"):
-            cost += f" plus £{f['capital']:,.0f} one-off"
+            cost += f" plus £{num(f['capital'], comma=True)} one-off"
         v = next((x for x in (result.get("validation") or {}).get("packages", [])
                   if x["ids"] == rec["ids"]), None)
         held = ""
         if v and v.get("measure"):
-            held = (f" It held up when re-tested on different weeks ({v['measure']['mean']:.1f}%)."
+            held = (f" It held up when re-tested on different weeks ({num(v['measure']['mean'], 1)}%)."
                     if v["measure"]["mean"] >= tgt["pct"] else
-                    f" Re-tested on different weeks it reached {v['measure']['mean']:.1f}%, so treat it as borderline.")
-        return (f"This package takes performance from {bmean:.1f}% to {rec['measure']['mean']:.1f}%, "
-                f"meeting the {tgt['pct']:g}% target. It is the lowest-cost option the model found and costs "
+                    f" Re-tested on different weeks it reached {num(v['measure']['mean'], 1)}%, so treat it as borderline.")
+        return (f"This package takes {perf_words(tgt['minutes'])} from {num(bmean, 1)}% to "
+                f"{num(rec['measure']['mean'], 1)}% on a typical day, meeting the {tgt['pct']:g}% target. It is the lowest-cost option the model found and costs "
                 f"about {cost}.{held}")
     best = rec["measure"]["mean"] if rec and rec.get("measure") else bmean
-    txt = (f"None of the tested packages reaches {tgt['pct']:g}%. The best one takes performance from "
-           f"{bmean:.1f}% to {best:.1f}%, still {tgt['pct'] - best:.1f} points short.")
+    txt = (f"None of the tested packages reaches {tgt['pct']:g}%. The best one takes {perf_words(tgt['minutes'])} "
+           f"from {num(bmean, 1)}% to {num(best, 1)}% on a typical day, still {num(tgt['pct'] - best, 1)} points short.")
     if top:
         txt += f" The main remaining constraint is {wait_phrase(top)}."
     return txt

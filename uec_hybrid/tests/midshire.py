@@ -490,7 +490,28 @@ def check_app_and_assistant(base):
     top = res["result"]["pressure"][0]
     from ..midshire.optimise import wait_phrase
     assert wait_phrase(top["label"]) in a2["reply"] and f"{top['patient_hours_per_day']:.0f}" in a2["reply"]
-    for a in (a1, a2):
+    # the same figures as the page for the view on screen: a selected day, then a typical day at a set hour
+    rr = res["result"]
+    day_view = {"mode": "replay", "day": 0, "index": 40}
+    a5 = c.post("/api/m/ask", json={"message": "how are we doing?", "scenario_id": sid, "view": day_view}).get_json()
+    k0 = rr["replay"]["days"][0]
+    from ..midshire.runner import THRESHOLDS
+    w0 = k0["within"][THRESHOLDS.index(int(short["target"]["minutes"]))]
+    for want in (f"{k0['n_cohort']} patients arrived", f"{w0:.1f}%", f"{rr['replay']['census'][40]} patients in the department"):
+        assert want in a5["reply"], (want, a5["reply"])
+    a6 = c.post("/api/m/ask", json={"message": "where do patients wait longest?", "scenario_id": sid, "view": day_view}).get_json()
+    kinds = {(st["node"] + "|" + st["phase"]): (st["kind"], st["label"]) for g in mcfg.groups() for st in g["states"]}
+    by = {}
+    for key, ser in rr["replay"]["states"].items():       # the Overview's "Where waits build up" for day 0
+        if kinds.get(key, ("", ""))[0] == "waiting":
+            by[kinds[key][1]] = by.get(kinds[key][1], 0) + sum(ser[0:96]) * 0.25
+    lab, hrs_day = max(by.items(), key=lambda kv: kv[1])
+    assert wait_phrase(lab) in a6["reply"] and f"about {hrs_day:.0f} hours" in a6["reply"], (lab, hrs_day, a6["reply"])
+    a7 = c.post("/api/m/ask", json={"message": "how are we doing?", "scenario_id": sid,
+                                    "view": {"mode": "typical", "day": 0, "index": None, "hour": 12}}).get_json()
+    assert f"about {rr['profile']['census_avg'][12]:.0f} patients in the department" in a7["reply"], a7["reply"]
+    assert "on a typical day" in a7["reply"].lower() and "on a typical day" in a2["reply"].lower(), (a7["reply"], a2["reply"])
+    for a in (a1, a2, a5, a6, a7):
         assert not re.search(r"seed|run id|simulat|replication|Qbo", a["reply"], re.I), a["reply"]
     a3 = c.post("/api/m/ask", json={"message": "<img src=x onerror=alert(1)> tell me a joke", "scenario_id": sid}).get_json()
     assert a3["intent"] == "unsupported" and "can't" in a3["reply"]

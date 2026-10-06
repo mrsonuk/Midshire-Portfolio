@@ -120,6 +120,28 @@ when they entered and left each step, split into "waiting" and "being seen".
   moment of the day; the "most waiting now" badge is the box with the most
   patients waiting at the viewing time.
 
+**How numbers are shown (everywhere: every page, Scenarios and Ask My ED).**
+
+| Kind of number | Shown as | Example |
+|---|---|---|
+| Patients (present, waiting, arriving, leaving, decisions) | Whole patients. A Typical day average is rounded, and below one half shows as "<1" | 52, <1 |
+| Share of patients (within the target, over 12 hours, left without being seen, outcomes) | One decimal | 66.5% |
+| Change in a share | One decimal, signed, "points" | +3.9 points |
+| Time per patient | Whole minutes; "typical patient" is the median, "1 in 10 take longer than" is the 90th percentile | 182 min |
+| Patient time added up across patients | Whole hours | 406 hours a day |
+| How busy a resource is | Whole per cent | 52% |
+| Staff | Whole-time equivalent to one decimal; paid hours whole, or .5 where a half-hour break makes it so | 2.1, 8,561 |
+| Money | Whole pounds with commas | £152,000 |
+| Times and days | 24-hour clock; "every day", "Monday to Friday", "weekends" | 10:00 to 22:00 |
+
+Sentences written on the server (Ask My ED, the search verdict) use
+`optimise.num`, which rounds halves exactly as the page does, so a figure reads
+the same in a sentence as on a card. Ask My ED answers for the view on screen:
+a Selected day is that day's figures and a Typical day the average. The browser
+checks compare the same figures across the Overview, Patient flow, Workforce &
+investment, Scenarios, the comparison table and Ask My ED, for the baseline and
+with a scenario open.
+
 ## 5. The package search
 
 See the docstring of `uec_hybrid/midshire/optimise.py`, shown on screen under
@@ -206,7 +228,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
   runs finish without forkserver, without any start method and with a broken
   worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 77 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 81 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors. They cover
   every page in the baseline and with a scenario open, the Selected day view
   on every day offered (Tuesday to Sunday) at three times of day, the Typical

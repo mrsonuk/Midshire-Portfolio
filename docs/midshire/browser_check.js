@@ -42,6 +42,74 @@ async function techCheck(page, where) {
   ok("no technical wording on " + where, !m, m ? m[0] + " ... " + txt.slice(Math.max(0, m.index - 60), m.index + 60).replace(/\s+/g, " ") : "");
 }
 
+// Ask My ED from the page, for whatever is on screen, and return its reply
+async function askOnScreen(page, q) {
+  if (await page.$eval("#myedPanel", e => e.hidden)) await page.click("#myedOpen");
+  await page.fill("#myedIn", q);
+  await page.keyboard.press("Enter");
+  await page.waitForFunction(() => { const l = document.querySelector("#myedLog").lastElementChild; return l && l.classList.contains("bot") && !/Checking/.test(l.textContent); });
+  const reply = await page.$eval("#myedLog", e => e.lastElementChild.textContent);
+  await page.click("#myedClose");
+  return reply;
+}
+const num = (t) => (t || "").replace(/[^0-9.<-]/g, "");
+
+// The same figure must read the same on every feature that shows it: the
+// Overview, Patient flow, Workforce & investment, Scenarios and Ask My ED.
+async function consistency(page, label) {
+  const bad = [];
+  const same = (what, a, b) => { if (String(a) !== String(b)) bad.push(what + ": " + a + " vs " + b); };
+  await page.click("#tab-overview");
+  await page.click("#modeReplay");
+  await page.selectOption("#dayPick", "2");
+  await page.$eval("#timeSlider", (e) => { e.value = "48"; e.dispatchEvent(new Event("input", { bubbles: true })); });
+  // selected day
+  const lead = num(await page.$eval("#kpiPrimary .ms-tile-lead .v", e => e.textContent));
+  const census = num(await page.$eval("#kpiPrimary .ms-tile:nth-child(1) .v", e => e.textContent));
+  const narr = await page.textContent("#ovNarrative");
+  const arrived = (narr.match(/ (\d+) patients arrived/) || [])[1];
+  const topWait = num(await page.$eval("#pressureList li:first-child .val", e => e.textContent));
+  const lwbsCard = num(await page.$eval("#kpiSecondary .ms-tile:nth-child(3) .v", e => e.textContent));
+  let r = await askOnScreen(page, "How are we doing?");
+  same("Ask, 4-hour on the selected day", (r.match(/ ([0-9.]+)% left within/) || [])[1], lead);
+  same("Ask, patients arrived on the selected day", (r.match(/ (\d+) patients arrived/) || [])[1], arrived);
+  same("Ask, patients in the department at the time", (r.match(/there were (\d+) patients in the department/) || [])[1], census);
+  r = await askOnScreen(page, "Where do patients wait longest?");
+  same("Ask, hours waiting at the top stage on the selected day", (r.match(/about (\d+) hours/) || [])[1], topWait);
+  await page.click("#tab-flow");
+  const out = await page.$$eval("#outcomeRow .ms-tile", ts => ts.map(t => ({ v: t.querySelector(".v").textContent, c: t.querySelector(".cmp").textContent })));
+  same("Patient flow leaving cards add up to the patients who arrived", out.reduce((a, o) => a + parseInt(num(o.v), 10), 0), arrived);
+  same("left without being seen, Overview and leaving card", (out[2].c.match(/([0-9.]+)% of patients/) || [])[1], lwbsCard);
+  // typical day
+  await page.click("#tab-overview");
+  await page.click("#modeTypical");
+  const tLead = num(await page.$eval("#kpiPrimary .ms-tile-lead .v", e => e.textContent));
+  const tCensus = num(await page.$eval("#kpiPrimary .ms-tile:nth-child(1) .v", e => e.textContent));
+  const tNarr = await page.textContent("#ovNarrative");
+  const perDay = (tNarr.match(/about (\d+) patients arrive/) || [])[1];
+  const wholeDay = ((await page.textContent("#kpiPrimary")).match(/Whole day about (\d+) \//) || [])[1];
+  same("Overview arrivals a day, summary text and card", perDay, wholeDay);
+  r = await askOnScreen(page, "How are we doing?");
+  same("Ask, 4-hour on a typical day", (r.match(/ ([0-9.]+)% leave within/) || [])[1], tLead);
+  same("Ask, patients arriving a day", (r.match(/about (\d+) patients arrive/) || [])[1], perDay);
+  same("Ask, patients in the department at the hour", (r.match(/about (\d+) patients in the department/) || [])[1], tCensus);
+  const tTop = num(await page.$eval("#pressureList li:first-child .val", e => e.textContent));
+  r = await askOnScreen(page, "Where do patients wait longest?");
+  same("Ask, hours waiting a day at the top stage", (r.match(/about (\d+) hours a day/) || [])[1], tTop);
+  await page.click("#tab-flow");
+  const flowArr = ((await page.textContent("#groupRow")).match(/(\d+) a day on average/) || [])[1];
+  same("Patient flow arrivals a day", flowArr, perDay);
+  await page.click("#tab-workforce");
+  same("Workforce 'Now'", num(await page.$eval("#journey .ms-step .v", e => e.textContent)), tLead);
+  await page.click("#tab-scenarios");
+  const name = await page.$eval("#scenarioPick", e => e.options[e.selectedIndex].textContent);
+  const card = await page.$$eval("#scenarioTable .ms-sc-card", (cs, n) => { const c = cs.find(x => x.querySelector(".ms-sc-title").textContent === n); return c ? c.querySelector(".ms-sc-result strong").textContent : null; }, name);
+  same("Scenarios card for the scenario on screen", num(card), tLead);
+  await page.click("#tab-overview");
+  await page.click("#modeReplay");
+  ok("the same figures agree on every feature (" + label + ")", bad.length === 0, bad.join(" | "));
+}
+
 (async () => {
   const browser = await chromium.launch({ executablePath: process.env.CHROME || undefined }).catch(() =>
     chromium.launch({ executablePath: "/opt/pw-browsers/chromium-1194/chrome-linux/chrome" }));
@@ -202,12 +270,33 @@ async function techCheck(page, where) {
     await page.click("#draftDiscard");
     await techCheck(page, "Workforce & investment");
 
+    await consistency(page, "baseline");
+
     // Scenarios: cards; opening one puts it on every page and in the picker
     await page.click("#tab-scenarios");
     const cards = await page.$$eval("#scenarioTable .ms-sc-card", cs => cs.map(c => c.textContent));
     ok("every non-baseline scenario says what changes, why and what to look for",
       cards.length >= 2 && cards.slice(1).every(c => /What changes/.test(c) && /Why test it/.test(c) && /What to look for/.test(c)), String(cards.length));
     await techCheck(page, "Scenarios");
+    // comparing scenarios: the same figures and the same "what changes" wording as the cards
+    const ticks = await page.$$("#scenarioTable .ms-sc-card input[type=checkbox]");
+    for (const t of ticks.slice(0, 2)) await t.check();
+    await page.click("#compareGo");
+    await page.waitForSelector("#compareOut table", { timeout: 300000 });
+    const cmp = await page.$$eval("#compareOut table tr", trs => trs.map(tr => [...tr.children].map(c => c.textContent.trim())));
+    const head = cmp[0], rowOf = (k) => cmp.find(r => r[0] === k) || [];
+    const cardInfo = await page.$$eval("#scenarioTable .ms-sc-card", cs => cs.map(c => ({ name: c.querySelector(".ms-sc-title").textContent,
+      pct: (c.querySelector(".ms-sc-result strong") || {}).textContent, changes: [...c.querySelectorAll("li")].map(l => l.textContent).join(" ") })));
+    const cmpBad = [];
+    head.slice(1).forEach((name, i) => {
+      const card = cardInfo.find(c => c.name === name);
+      if (!card) { cmpBad.push("no card for " + name); return; }
+      if (rowOf("Left within 4 hours")[i + 1] !== card.pct) cmpBad.push(name + ": " + rowOf("Left within 4 hours")[i + 1] + " vs card " + card.pct);
+      if (name !== "Baseline" && rowOf("What changes")[i + 1] !== card.changes) cmpBad.push(name + " changes: " + rowOf("What changes")[i + 1] + " vs " + card.changes);
+    });
+    ok("the comparison shows the same figures and wording as the scenario cards", cmpBad.length === 0 && head.length >= 3, cmpBad.join(" | "));
+    await techCheck(page, "the scenario comparison");
+    for (const t of ticks.slice(0, 2)) await t.uncheck();
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(OUT, "04_scenarios_1366.png"), fullPage: true });
     const viewBtn = await page.$("#scenarioTable .ms-sc-card:nth-child(2) button:has-text('View on every page')");
@@ -223,6 +312,7 @@ async function techCheck(page, where) {
     ok("scenario typical-day narrative", /on a typical day/.test(await page.textContent("#ovNarrative")) && /The baseline is/.test(await page.textContent("#ovNarrative")));
     await page.click("#modeReplay");
     await techCheck(page, "the Overview with a scenario");
+    await consistency(page, "with a scenario open");
 
     // Ask My ED: plain text, plain words, suggestions
     await page.click("#myedOpen");
@@ -232,7 +322,7 @@ async function techCheck(page, where) {
     await page.waitForFunction(() => document.querySelectorAll("#myedLog .bot").length >= 2 && !/Checking/.test(document.querySelector("#myedLog").lastElementChild.textContent));
     ok("assistant renders untrusted text as text", await page.$eval("#myedLog", e => e.querySelectorAll("b").length === 0));
     const ans = await page.textContent("#myedLog");
-    ok("assistant answers in plain words from the waiting measure", /hours a day/.test(ans) && !TECH.test(ans), ans.slice(-200));
+    ok("assistant answers in plain words from the waiting measure", /On Thursday most waiting time went on/.test(ans) && / hours across all patients/.test(ans) && !TECH.test(ans), ans.slice(-200));
     ok("suggestions fold away once the conversation starts", !(await page.$eval("#myedSuggestWrap", e => e.open)));
     await page.click("#myedSuggestWrap > summary");
     await page.click("#myedSuggest .ms-chip >> nth=0");

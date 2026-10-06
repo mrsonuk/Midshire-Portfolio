@@ -24,6 +24,7 @@ import re
 from . import config as mcfg
 from . import metrics as M
 from .packages import apply_lever, _clock, _count_words, _days_words
+from .optimise import num
 from .packages import ROLE_WORDS as ROLE_NAMES, SPACE_WORDS as SPACE_NAMES
 
 NAME = "Ask My ED"
@@ -192,87 +193,142 @@ def _within(result: dict, minutes: int, day: int | None = None):
     return d["within"][i]
 
 
+def _day_index(result: dict, view: dict | None):
+    """The selected day on screen, or None for a typical day."""
+    rp = result.get("replay") or {}
+    if view and view.get("mode") == "replay" and rp.get("days") and view.get("day") is not None:
+        return max(0, min(int(view["day"]), len(rp["days"]) - 1))
+    return None
+
+
+def _day_name(result: dict, d: int) -> str:
+    rp = result["replay"]
+    return DAYS[int((rp["t0"] + d * 1440) // 1440) % 7]
+
+
+def _clock(minutes) -> str:
+    t = int(minutes) % 1440
+    return f"{t // 60:02d}:{t % 60:02d}"
+
+
 def explain_position(result: dict, target: dict, scenario: dict, view: dict | None,
                      baseline: dict | None = None) -> str:
     """How the department is doing, for what is on screen: the selected day or
-    a typical day."""
+    a typical day. The figures and rounding match the Overview."""
     from .optimise import wait_phrase
     within = _time_words(target["minutes"])
     rp = result.get("replay") or {}
     who = "" if scenario.get("id") in (None, "baseline") else f"With \"{scenario['name']}\", "
-    if view and view.get("mode") == "replay" and rp.get("days") and view.get("day") is not None:
-        d = max(0, min(int(view["day"]), len(rp["days"]) - 1))
+    other = baseline is not None and scenario.get("id") not in (None, "baseline")
+    d = _day_index(result, view)
+    if d is not None:
         k = rp["days"][d]
-        dayname = DAYS[int((rp["t0"] + d * 1440) // 1440) % 7]
+        dayname = _day_name(result, d)
         w = _within(result, target["minutes"], d)
-        txt = (f"{who}on {dayname} {k['n_cohort']} patients arrived and {w:.1f}% left within {within}, "
-               f"{_vs_aim(w, target['pct'])}. ")
+        txt = (f"{who}on {dayname} {k['n_cohort']} patients arrived and {num(w, 1)}% left within {within}, "
+               f"{_vs_aim(w, target['pct'])}.")
         txt = txt[0].upper() + txt[1:]
-        txt += f"{k['twelve_hour']:.1f}% were in the department for more than 12 hours."
+        if other and (baseline.get("replay") or {}).get("days"):
+            txt += f" The baseline on the same day was {num(_within(baseline, target['minutes'], d), 1)}%."
+        if k.get("duration_median") is not None:
+            txt += f" The typical patient spent {num(k['duration_median'])} minutes in the department"
+            txt += f" and {num(k['twelve_hour'], 1)}% were there for more than 12 hours."
         i = view.get("index")
         if i is not None and 0 <= int(i) < len(rp.get("times", [])):
             i = int(i)
-            tt = rp["times"][i] % 1440
-            txt += (f" At {int(tt // 60):02d}:{int(tt % 60):02d} there were {rp['census'][i]} patients "
+            txt += (f" At {_clock(rp['times'][i])} there were {rp['census'][i]} patients "
                     f"in the department and {rp['waiting'][i]} of them were waiting.")
         return txt
     s = result["summary"]
     w = _within(result, target["minutes"])
-    txt = f"{who}on a typical day {w:.1f}% of patients leave within {within}, {_vs_aim(w, target['pct'])}."
+    per_day = (s.get("per_day") or {}).get("mean")
+    arrive = f"about {num(per_day)} patients arrive and " if per_day else ""
+    txt = f"{who}on a typical day {arrive}{num(w, 1)}% leave within {within}, {_vs_aim(w, target['pct'])}."
     txt = txt[0].upper() + txt[1:]
-    if baseline is not None and scenario.get("id") not in (None, "baseline"):
+    if other:
         bw = _within(baseline, target["minutes"])
-        txt += f" The baseline is {bw:.1f}%, so that is {w - bw:+.1f} points."
+        txt += f" The baseline is {num(bw, 1)}%, so that is {num(w - bw, 1, sign=True)} points."
     if s.get("duration_median") and s["duration_median"].get("mean") is not None:
-        txt += f" The typical patient spends {s['duration_median']['mean']:.0f} minutes in the department"
-        txt += f", {s['twelve_hour']['mean']:.1f}% stay more than 12 hours"
-        txt += f" and {s['lwbs']['mean']:.1f}% leave without being seen."
+        txt += f" The typical patient spends {num(s['duration_median']['mean'])} minutes in the department"
+        txt += f", {num(s['twelve_hour']['mean'], 1)}% stay more than 12 hours"
+        txt += f" and {num(s['lwbs']['mean'], 1)}% leave without being seen."
+    h = (view or {}).get("hour")
+    prof = result.get("profile") or {}
+    if h is not None and 0 <= int(h) < 24 and prof.get("census_avg"):
+        h = int(h)
+        txt += (f" At {h:02d}:00 there are about {num(prof['census_avg'][h])} patients in the department "
+                f"and {num(prof['waiting_avg'][h])} of them are waiting.")
     top = (result.get("pressure") or [{}])[0].get("label")
     if top:
         txt += f" Most waiting time goes on {wait_phrase(top)}."
     return txt
 
 
-def where_waits(result: dict) -> str:
+def _waiting_by_stage(result: dict, day: int | None) -> list[tuple[str, float]]:
+    """Hours spent waiting at each stage, added up across all patients: for a
+    typical day the daily average, for a selected day that day only. The same
+    calculation as "Where waits build up" on the Overview."""
+    by: dict[str, float] = {}
+    if day is None:
+        for p in result.get("pressure") or []:
+            by[p["label"]] = by.get(p["label"], 0.0) + p["patient_hours_per_day"]
+    else:
+        table = mcfg.state_table()
+        a = day * 96
+        for key, ser in ((result.get("replay") or {}).get("states") or {}).items():
+            node, _, phase = key.partition("|")
+            st = table.get((node, phase))
+            if not st or st["kind"] != "waiting":
+                continue
+            tot = sum(v or 0 for v in ser[a:a + 96]) * 0.25
+            if tot > 0:
+                by[st["label"]] = by.get(st["label"], 0.0) + tot
+    return sorted(by.items(), key=lambda kv: -kv[1])
+
+
+def where_waits(result: dict, view: dict | None = None) -> str:
     from .optimise import wait_phrase
-    top = result["pressure"][:3]
+    d = _day_index(result, view)
+    top = _waiting_by_stage(result, d)[:3]
     if not top:
         return "There was no waiting to report in this scenario."
-    first = top[0]
-    txt = (f"Most waiting time goes on {wait_phrase(first['label'])}: about "
-           f"{first['patient_hours_per_day']:.0f} hours a day across all patients, which is "
-           f"roughly {first['patient_hours_per_day'] / 24:.0f} patients waiting at any one time.")
-    if len(top) > 1:
-        rest = [f"{wait_phrase(x['label'])} ({x['patient_hours_per_day']:.0f} hours)" for x in top[1:]]
-        txt += " Next come " + " and ".join(rest) + "."
+    (label, hours), rest = top[0], top[1:]
+    if d is None:
+        txt = (f"On a typical day most waiting time goes on {wait_phrase(label)}: about {num(hours)} hours a "
+               f"day across all patients, which is roughly {num(hours / 24)} patients waiting at any one time.")
+    else:
+        txt = (f"On {_day_name(result, d)} most waiting time went on {wait_phrase(label)}: about {num(hours)} "
+               f"hours across all patients, which is roughly {num(hours / 24)} patients waiting at any one time.")
+    if rest:
+        txt += (" Next come " if d is None else " Next came ") + " and ".join(
+            f"{wait_phrase(lb)} ({num(hr)} hours)" for lb, hr in rest) + "."
     txt += " The Patient flow page shows each stage in detail."
     return txt
 
 
 def format_whatif(base: dict, scen: dict, target: dict, notes: list, titles: list) -> str:
-    from .optimise import wait_phrase
+    from .optimise import perf_words, wait_phrase
     from .runner import within_at
     b = within_at(base, target["minutes"]); s = within_at(scen, target["minutes"])
     d = M.paired_delta(b, s)
     sb, ss = M.summarise(b), M.summarise(s)
     change = "; ".join(titles)
     change = change[0].upper() + change[1:]
-    m = int(target["minutes"])
-    perf = f"{m // 60}-hour performance" if m % 60 == 0 else f"{m}-minute performance"
+    perf = perf_words(target["minutes"])
     noise = "ci_low" in d and d["ci_low"] <= 0 <= d["ci_high"]
     if abs(d["mean"]) < 0.05:
-        txt = f"{change} makes no measurable difference to {perf} ({ss['mean']:.1f}% either way)."
+        txt = f"{change} makes no measurable difference to {perf} on a typical day ({num(ss['mean'], 1)}% either way)."
     else:
-        txt = (f"{change} {'improves' if d['mean'] > 0 else 'worsens'} {perf} from "
-               f"{sb['mean']:.1f}% to {ss['mean']:.1f}% ({d['mean']:+.1f} points)")
+        txt = (f"{change} {'improves' if d['mean'] > 0 else 'worsens'} {perf} on a typical day from "
+               f"{num(sb['mean'], 1)}% to {num(ss['mean'], 1)}% ({num(d['mean'], 1, sign=True)} points)")
         txt += (f", {_vs_aim(ss['mean'], target['pct'])}." if ss["mean"] >= target["pct"]
                 else f", still below the {target['pct']:g}% target.")
         if noise:
             txt += " That is within the normal week-to-week variation, so it may not make a real difference."
     lw = M.paired_delta([r["lwbs"] for r in base["reps"]], [r["lwbs"] for r in scen["reps"]])
     if lw and abs(lw["mean"]) >= 0.1:
-        txt += (f" Fewer patients leave without being seen ({abs(lw['mean']):.1f} points)." if lw["mean"] < 0
-                else f" More patients leave without being seen (+{lw['mean']:.1f} points).")
+        txt += (f" Fewer patients leave without being seen ({num(abs(lw['mean']), 1)} points)." if lw["mean"] < 0
+                else f" More patients leave without being seen (+{num(lw['mean'], 1)} points).")
     top = (scen.get("pressure") or [{}])[0].get("label")
     if top and ss["mean"] < target["pct"]:
         txt += f" The main remaining constraint is {wait_phrase(top)}."
@@ -323,7 +379,7 @@ def answer(message: str, ctx: dict) -> dict:
     if re.search(r"where.*wait|bottleneck|pinch|most waiting|queue|stuck|longest", ql):
         if not ctx["result"]:
             return {"reply": "This scenario hasn't been run yet. Run it first and ask me again.", "intent": "where"}
-        return {"reply": where_waits(ctx["result"]), "intent": "where"}
+        return {"reply": where_waits(ctx["result"], ctx.get("view")), "intent": "where"}
     if re.search(r"how are we|position|explain|overview|summary|performance|doing", ql):
         if not ctx["result"]:
             return {"reply": "This scenario hasn't been run yet. Run it first and ask me again.", "intent": "explain"}
