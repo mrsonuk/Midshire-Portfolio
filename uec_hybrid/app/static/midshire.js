@@ -37,7 +37,7 @@
   const fmt = (v, dp = 1, unit = "") => (v === null || v === undefined || Number.isNaN(v)) ? "not available" : Number(v).toFixed(dp) + unit;
   const fmtInt = (v) => (v === null || v === undefined) ? "not available" : Math.round(v).toLocaleString("en-GB");
   const money = (v) => (v === null || v === undefined) ? "not costed" : (v < 0 ? "-£" : "£") + Math.abs(Math.round(v)).toLocaleString("en-GB");
-  const signed = (v, dp = 1, unit = "") => (v === null || v === undefined) ? "not available" : (v > 0 ? "+" : v < 0 ? "−" : "") + Math.abs(v).toFixed(dp) + unit;
+  const signed = (v, dp = 1, unit = "") => (v === null || v === undefined) ? "not available" : (v > 0 ? "+" : v < 0 ? "-" : "") + Math.abs(v).toFixed(dp) + unit;
   const reducedMotion = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   class ApiError extends Error { constructor(msg, status, details) { super(msg); this.status = status; this.details = details || []; } }
@@ -68,11 +68,11 @@
     baselineResult: null, draft: null, draftHash: null, preview: null,
     mode: "replay", day: 2, slot: 48, openGroup: null, playing: null,
     seq: { result: 0, preview: 0, search: 0, draftcmp: 0 }, searchJob: null, draftJob: null,
-    covGroup: null, covDay: 0, compareSel: new Set(),
+    covGroup: null, covDay: null, compareSel: new Set(),
   };
 
   // ------------------------------------------------------------------ tabs
-  const TABS = ["overview", "flow", "workforce", "scenarios", "setup"];
+  const TABS = ["overview", "flow", "workforce", "scenarios"];
   function selectTab(name, focus) {
     for (const t of TABS) {
       const on = t === name;
@@ -105,9 +105,10 @@
   }
 
   // ------------------------------------------------------------------ charts
-  // One y-axis per chart; recessive hairline grid; 2px lines; legend for
-  // two or more series plus selective end labels; crosshair + tooltip on
-  // hover AND keyboard focus; every chart has a table view elsewhere.
+  // One y-axis per chart; recessive hairline grid; 3px lines (readable on a
+  // wall screen); legend for two or more series plus selective end labels;
+  // crosshair + tooltip on hover AND keyboard focus; every chart has a table
+  // view elsewhere.
   const tip = () => $("#tooltip");
   function showTip(x, y, title, rows) {
     const t = tip();
@@ -160,22 +161,27 @@
     if (cfg.yTitle) { const t = svgEl("text", { x: m.l, y: H - 2, class: "label" }); t.textContent = cfg.yTitle; grid.append(t); }
     svg.append(grid);
     if (cfg.marker !== null && cfg.marker !== undefined) {
-      svg.append(svgEl("line", { x1: x(cfg.marker), x2: x(cfg.marker), y1: m.t, y2: H - m.b, stroke: token("--nhs-text"), "stroke-width": 1 }));
+      svg.append(svgEl("line", { x1: x(cfg.marker), x2: x(cfg.marker), y1: m.t, y2: H - m.b, stroke: token("--nhs-text"), "stroke-width": 1.5, "stroke-dasharray": "4 3" }));
     }
-    cfg.series.forEach((s) => {
-      let d = "", pen = false;
+    cfg.series.forEach((s, si) => {
+      let d = "", pen = false, first = null, last = null;
       s.values.forEach((v, i) => {
         if (v === null || v === undefined) { pen = false; return; }
         d += (pen ? "L" : "M") + x(i).toFixed(1) + " " + y(v).toFixed(1) + " "; pen = true;
+        if (first === null) first = i; last = i;
       });
-      svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 2, "stroke-linejoin": "round", "stroke-linecap": "round" }));
+      if (si === 0 && cfg.area && first !== null) {
+        svg.append(svgEl("path", { d: d + "L" + x(last).toFixed(1) + " " + y(0).toFixed(1) + " L" + x(first).toFixed(1) + " " + y(0).toFixed(1) + " Z",
+          fill: s.color, opacity: 0.1, stroke: "none" }));
+      }
+      svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 3, "stroke-linejoin": "round", "stroke-linecap": "round" }));
       const li = s.values.length - 1;
       if (li >= 0 && s.values[li] !== null) {
-        svg.append(svgEl("circle", { cx: x(li), cy: y(s.values[li]), r: 4, fill: s.color, stroke: token("--nhs-surface"), "stroke-width": 2 }));
+        svg.append(svgEl("circle", { cx: x(li), cy: y(s.values[li]), r: 5, fill: s.color, stroke: token("--nhs-surface"), "stroke-width": 2 }));
         const t = svgEl("text", { x: x(li) + 8, y: y(s.values[li]) + 4, class: "label" }); t.textContent = s.name.split(" ")[0] + " " + (s.fmt ? s.fmt(s.values[li]) : s.values[li]); svg.append(t);
       }
       if (cfg.marker !== null && cfg.marker !== undefined && s.values[cfg.marker] !== null && s.values[cfg.marker] !== undefined) {
-        svg.append(svgEl("circle", { cx: x(cfg.marker), cy: y(s.values[cfg.marker]), r: 4, fill: s.color, stroke: token("--nhs-surface"), "stroke-width": 2 }));
+        svg.append(svgEl("circle", { cx: x(cfg.marker), cy: y(s.values[cfg.marker]), r: 6, fill: s.color, stroke: token("--nhs-surface"), "stroke-width": 2 }));
       }
     });
     const cross = svgEl("line", { y1: m.t, y2: H - m.b, stroke: token("--nhs-secondary-text"), "stroke-width": 1, visibility: "hidden" });
@@ -186,7 +192,7 @@
     const show = (i, cx, cy) => {
       i = Math.max(0, Math.min(n - 1, i));
       cross.setAttribute("x1", x(i)); cross.setAttribute("x2", x(i)); cross.setAttribute("visibility", "visible");
-      showTip(cx, cy, cfg.tipTitle(i), cfg.series.map(s => ({ name: s.name, color: s.color, value: s.values[i] === null || s.values[i] === undefined ? "no observations" : (s.fmt ? s.fmt(s.values[i]) : s.values[i]) })));
+      showTip(cx, cy, cfg.tipTitle(i), cfg.series.map(s => ({ name: s.name, color: s.color, value: s.values[i] === null || s.values[i] === undefined ? "none" : (s.fmt ? s.fmt(s.values[i]) : s.values[i]) })));
     };
     hit.addEventListener("pointermove", (e) => {
       const r = svg.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
@@ -204,19 +210,23 @@
   }
 
   function columnChart(box, cfg) {
-    // grouped columns: cfg {labels[], series:[{name,values,color}], yTitle, tipTitle(i), highlight}
+    // grouped columns: cfg {labels[], series:[{name,values,color}], lines?:[{name,values,color}],
+    // yTitle, tipTitle(i), highlight}. Lines share the axis and units of the columns.
     box.replaceChildren();
     const W = Math.max(320, box.clientWidth || 700), H = cfg.height || 200;
     const m = { l: 48, r: 16, t: 10, b: 34 };
+    const lines = cfg.lines || [];
     const n = cfg.labels.length, k = cfg.series.length;
-    const all = cfg.series.flatMap(s => s.values.filter(v => v !== null && v !== undefined));
+    const all = cfg.series.concat(lines).flatMap(s => s.values.filter(v => v !== null && v !== undefined));
     const ymax = niceMax(Math.max(1, ...all));
     const band = (W - m.l - m.r) / n;
-    const bw = Math.min(24, Math.max(3, (band - 2) / k - 2));
+    const bw = Math.min(lines.length ? 30 : 24, Math.max(3, (band - 2) / k - 2));
     const y = (v) => m.t + (H - m.t - m.b) * (1 - v / ymax);
-    const legend = h("div", { class: "legend" }, cfg.series.map(s => h("span", {}, h("span", { class: "key bar" }), s.name)));
-    $$(".key", legend).forEach((kk, i) => { kk.style.background = cfg.series[i].color; });
-    if (k > 1) box.append(legend);
+    const legend = h("div", { class: "legend" },
+      cfg.series.map(s => h("span", {}, h("span", { class: "key bar" }), s.name)),
+      lines.map(s => h("span", {}, h("span", { class: "key line" }), s.name)));
+    $$(".key", legend).forEach((kk, i) => { kk.style.background = (cfg.series.concat(lines))[i].color; });
+    if (k + lines.length > 1) box.append(legend);
     const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, "aria-hidden": "true", focusable: "false" });
     const g = svgEl("g", { class: "axis" });
     for (let q = 0; q <= 4; q++) {
@@ -241,16 +251,24 @@
         const x0 = gx + j * (bw + 2), y0 = y(v), y1 = y(0), hgt = Math.max(0, y1 - y0);
         const r = Math.min(rr, bw / 2, hgt);
         const d = `M${x0} ${y1} L${x0} ${y0 + r} Q${x0} ${y0} ${x0 + r} ${y0} L${x0 + bw - r} ${y0} Q${x0 + bw} ${y0} ${x0 + bw} ${y0 + r} L${x0 + bw} ${y1} Z`;
-        const p = svgEl("path", { d, fill: s.color, opacity: (cfg.highlight === undefined || cfg.highlight === null || cfg.highlight === i) ? 1 : 0.45 });
+        const on = cfg.highlight === undefined || cfg.highlight === null || cfg.highlight === i;
+        const p = svgEl("path", { d, fill: s.color, opacity: on ? 1 : (lines.length ? 0.6 : 0.75) });
         svg.append(p);
       });
       const hit = svgEl("rect", { x: m.l + band * i, y: m.t, width: band, height: H - m.t - m.b, fill: "transparent" });
       hit.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, cfg.tipTitle(i),
-        cfg.series.map(s => ({ name: s.name, color: s.color, value: s.values[i] === null ? "no observations" : (s.fmt ? s.fmt(s.values[i]) : s.values[i]) }))));
+        cfg.series.concat(lines).map(s => ({ name: s.name, color: s.color, value: s.values[i] === null ? "none" : (s.fmt ? s.fmt(s.values[i]) : s.values[i]) }))));
       hit.addEventListener("pointerleave", hideTip);
       svg.append(hit);
     }
     svg.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: y(0), y2: y(0), stroke: token("--chart-axis"), "stroke-width": 1 }));
+    lines.forEach((s) => {
+      let d = "";
+      s.values.forEach((v, i) => { if (v !== null && v !== undefined) d += (d ? "L" : "M") + (m.l + band * (i + 0.5)).toFixed(1) + " " + y(v).toFixed(1) + " "; });
+      svg.append(svgEl("path", { d, fill: "none", stroke: token("--nhs-surface"), "stroke-width": 7, "stroke-linejoin": "round", "stroke-linecap": "round", "pointer-events": "none" }));
+      svg.append(svgEl("path", { d, fill: "none", stroke: s.color, "stroke-width": 3.5, "stroke-linejoin": "round", "stroke-linecap": "round", "pointer-events": "none" }));
+      s.values.forEach((v, i) => { if (v !== null && v !== undefined) svg.append(svgEl("circle", { cx: m.l + band * (i + 0.5), cy: y(v), r: cfg.highlight === i ? 6 : 4, fill: s.color, stroke: token("--nhs-surface"), "stroke-width": 2, "pointer-events": "none" })); });
+    });
     if (cfg.yTitle) { const t = svgEl("text", { x: m.l, y: H - 2, class: "label" }); t.textContent = cfg.yTitle; svg.append(t); }
     let fi = cfg.highlight || 0;
     box.tabIndex = 0;
@@ -259,7 +277,7 @@
       e.preventDefault(); fi = Math.max(0, Math.min(n - 1, fi + (e.key === "ArrowRight" ? 1 : -1)));
       const r = svg.getBoundingClientRect();
       showTip(r.left + (m.l + band * (fi + 0.5)) * r.width / W, r.top + 30, cfg.tipTitle(fi),
-        cfg.series.map(s => ({ name: s.name, color: s.color, value: s.values[fi] === null ? "no observations" : (s.fmt ? s.fmt(s.values[fi]) : s.values[fi]) })));
+        cfg.series.concat(lines).map(s => ({ name: s.name, color: s.color, value: s.values[fi] === null ? "none" : (s.fmt ? s.fmt(s.values[fi]) : s.values[fi]) })));
     };
     box.onblur = hideTip;
     box.append(svg);
@@ -283,15 +301,18 @@
   function resultBadge(state, text) {
     const b = $("#resultBadge");
     b.className = "ms-badge " + (state || "");
-    b.textContent = text;
+    b.textContent = text || "";
+    b.hidden = !text;
   }
 
   async function loadScenarios() {
     const d = await api("/api/m/scenarios");
     S.scenarios = d.scenarios;
     S.applied = d.applied || "baseline";
+    // the picker lists the baseline and the scenarios you have opened, run or saved
     const sel = $("#scenarioPick");
-    sel.replaceChildren(...S.scenarios.map(sc => h("option", { value: sc.id, text: sc.name + (sc.kind === "baseline" ? " (baseline)" : sc.kind === "precomputed" ? " (precomputed)" : "") })));
+    const list = S.scenarios.filter(sc => sc.shown || sc.id === S.applied);
+    sel.replaceChildren(...list.map(sc => h("option", { value: sc.id, text: sc.name })));
     sel.value = S.applied;
     renderScenarioTable();
   }
@@ -299,7 +320,7 @@
   async function applyScenario(id) {
     await api("/api/m/apply", { scenario_id: id });
     S.applied = id;
-    $("#scenarioPick").value = id;
+    await loadScenarios();
     await loadCurrent();
   }
 
@@ -307,47 +328,56 @@
     const d = await api("/api/m/scenarios/" + encodeURIComponent(S.applied));
     S.current = d.scenario;
     S.draft = clone(S.current.inputs);
-    S.result = null;
+    S.result = null; S.search = null;
+    $("#searchResult").replaceChildren();
     renderAllEmpty();
     renderEditor();
     schedulePreview();
     await requestResult();
   }
 
+  // the baseline's result, for "compared with the baseline" figures
+  async function loadBaselineResult() {
+    try {
+      const d = await api("/api/m/result", { scenario_id: "baseline" });
+      S.baselineResult = d.status === "done" ? d.result : null;
+    } catch (e) { S.baselineResult = null; }
+  }
+
   // the result for the APPLIED scenario; stale responses are ignored
   async function requestResult() {
     const my = ++S.seq.result;
     const sid = S.current.id, mh = S.current.model_hash;
-    resultBadge("", "Loading results…");
+    resultBadge("", "Loading...");
     let d;
     try { d = await api("/api/m/result", { scenario_id: sid, request_id: my }); }
-    catch (e) { if (my === S.seq.result) { resultBadge("failed", "Could not load results"); showError("#globalError", e); } return; }
+    catch (e) { if (my === S.seq.result) { resultBadge("failed", "Couldn't load the results"); showError("#globalError", e); } return; }
     if (my !== S.seq.result || sid !== S.current.id) return;      // a newer request owns the screen
     if (d.status !== "done") {
       S.result = null;
-      resultBadge("missing", "Not yet simulated");
+      resultBadge("missing", "Not run yet");
       renderNotSimulated();
       return;
     }
     if (d.result.model_hash !== mh) return;                         // never show numbers for other inputs
     S.result = d.result;
     if (sid === "baseline") S.baselineResult = d.result;
-    const src = d.result.result_source === "precomputed" ? "Precomputed result" : "Simulated result";
-    resultBadge(d.result.result_source === "precomputed" ? "precomputed" : "", src + " · " + d.result.replications + " simulated weeks");
+    else if (!S.baselineResult) await loadBaselineResult();
+    resultBadge("", "");
     $("#globalError").hidden = true;
     renderAll();
   }
 
   async function simulateApplied() {
     const sid = S.current.id;
-    resultBadge("", "Simulating…");
+    resultBadge("", "Running...");
     try {
       const d = await api("/api/m/run", { scenario_id: sid });
       if (d.status === "done") return requestResult();
-      await pollJob(d.job.id, (j) => resultBadge("", (j.message || "Simulating") + " (" + Math.round(100 * j.progress) + "%)"));
+      await pollJob(d.job.id, (j) => resultBadge("", "Running (" + Math.round(100 * j.progress) + "%)"));
       if (S.current.id === sid) await requestResult();
-      renderScenarioTable();
-    } catch (e) { resultBadge("failed", "Simulation failed"); showError("#globalError", e); }
+      await loadScenarios();
+    } catch (e) { resultBadge("failed", "The run didn't finish"); showError("#globalError", e); }
   }
 
   function pollJob(id, onTick) {
@@ -357,12 +387,66 @@
         try { j = await api("/api/m/jobs/" + id); } catch (e) { reject(e); return; }
         if (onTick) onTick(j);
         if (j.status === "done") resolve(j);
-        else if (j.status === "failed") reject(new ApiError(j.message + " " + (j.error || ""), 500, j.details));
-        else if (j.status === "cancelled") reject(new ApiError("Cancelled - nothing was saved.", 499));
+        else if (j.status === "failed") reject(new ApiError(j.message, 500, j.details));
+        else if (j.status === "cancelled") reject(new ApiError("Cancelled. Nothing was saved.", 499));
         else setTimeout(tick, 900);
       };
       tick();
     });
+  }
+
+  // ================================================================ shared wording
+  const timeWords = (min) => (min % 60 ? min + " minutes" : (min / 60) + (min === 60 ? " hour" : " hours"));
+  const capFirst = (s) => s ? s[0].toUpperCase() + s.slice(1) : s;
+  const isBaseline = () => !S.current || S.current.id === "baseline";
+  function dayName(d) {
+    const rp = S.result && S.result.replay;
+    return rp ? DAYNAMES[Math.floor((rp.t0 + d * 1440) / 1440) % 7] : "";
+  }
+  function vsTarget(v, pct) { return v === null || v === undefined ? "" : (v >= pct ? "meeting the " : "below the ") + pct + "% target"; }
+  // "Waiting for an inpatient bed" -> "the wait for an inpatient bed"
+  function waitPhrase(label) {
+    const l = (label || "").trim(), low = l.charAt(0).toLowerCase() + l.slice(1);
+    if (low.startsWith("waiting for ")) return "the wait for " + low.slice(12);
+    if (low.startsWith("awaiting ")) return "waiting for " + low.slice(9).replace(" or decision", " or a decision");
+    return low;
+  }
+  function statusFor(v, pct, tsStatus) {
+    if (v === null || v === undefined) return null;
+    if (tsStatus === "met" || (tsStatus === undefined && v >= pct)) return { cls: "met", text: "On target" };
+    if ((tsStatus && tsStatus.startsWith("met")) || pct - v <= 2) return { cls: "near", text: "Close to target" };
+    return { cls: "not", text: "Below target" };
+  }
+  const thrIdx = (minutes) => Math.round(minutes / 15);
+  function withinTypical(res, minutes) {
+    if (!res) return null;
+    const i = res.within.thresholds.indexOf(minutes);
+    const v = res.within.by_rep.map(r => r[i]).filter(x => x !== null && x !== undefined);
+    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
+  }
+  function dayKpis(res, d) { return res && res.replay && res.replay.days ? res.replay.days[d] : null; }
+  function withinDay(res, d, minutes) { const k = dayKpis(res, d); return k ? k.within[thrIdx(minutes)] : null; }
+  // the baseline to compare with, when a scenario is on screen
+  const compareBase = () => (!isBaseline() && S.baselineResult) ? S.baselineResult : null;
+  function stateLabel(key) {
+    if (!S._labels) { S._labels = {}; for (const g of S.meta.groups) for (const st of g.states) S._labels[st.node + "|" + st.phase] = st.label; }
+    return S._labels[key] || key;
+  }
+  // hours patients spent waiting at each stage: the selected day (from that day's
+  // 15-minute counts) or a typical day (the whole-run measure), merged by stage name
+  function waitingByStage(res) {
+    const by = {};
+    if (typical()) {
+      for (const p of res.pressure) by[p.label] = (by[p.label] || 0) + p.patient_hours_per_day;
+    } else {
+      const a = S.day * STEPS_PER_DAY;
+      for (const [key, ser] of Object.entries(res.replay.states || {})) {
+        if (kindOf(key) !== "waiting") continue;
+        let s = 0; for (let j = a; j < a + STEPS_PER_DAY; j++) s += ser[j] || 0;
+        if (s > 0) by[stateLabel(key)] = (by[stateLabel(key)] || 0) + s * 0.25;
+      }
+    }
+    return Object.entries(by).map(([label, hours]) => ({ label, hours })).sort((x, y) => y.hours - x.hours);
   }
 
   // ================================================================ context
@@ -371,12 +455,7 @@
     const sel = $("#dayPick");
     if (!rp) { sel.replaceChildren(); return; }
     const ndays = Math.round((rp.times[rp.times.length - 1] - rp.t0) / 1440);
-    const opts = [];
-    for (let d = 0; d < ndays; d++) {
-      const abs = rp.t0 + d * 1440;
-      opts.push(h("option", { value: d, text: "Day " + (d + 1) + " (" + DAYNAMES[Math.floor(abs / 1440) % 7] + ")" }));
-    }
-    sel.replaceChildren(...opts);
+    sel.replaceChildren(...[...Array(ndays).keys()].map(d => h("option", { value: d, text: dayName(d) })));
     S.day = Math.min(S.day, ndays - 1);
     sel.value = S.day;
   }
@@ -389,23 +468,22 @@
     $("#modeReplay").setAttribute("aria-checked", typ ? "false" : "true");
     $("#modeTypical").setAttribute("aria-checked", typ ? "true" : "false");
     $("#modeReplay").tabIndex = typ ? -1 : 0; $("#modeTypical").tabIndex = typ ? 0 : -1;
+    $("#modeHelp").textContent = typ ? "The average of every modelled day." : "One modelled day, as it happened.";
     $("#dayWrap").hidden = typ;
     const slider = $("#timeSlider");
     slider.step = typ ? 4 : 1;
     if (typ) S.slot = hourOf() * 4;
     slider.value = S.slot;
     $("#timeOut").textContent = HHMM(S.slot * 15);
-    slider.setAttribute("aria-valuetext", HHMM(S.slot * 15) + (typ ? " (typical day)" : " on simulated day " + (S.day + 1)));
-    $("#timeHelp").textContent = typ ? "Hourly steps (average simulated patients)" : "15-minute steps";
-    const r = S.result, eng = S.current && S.current.inputs.engine;
-    if (r && eng) {
-      const dayTxt = typ ? "Typical day: hour-of-day AVERAGES over the observed days of one simulated week."
-        : "Single simulated day: day " + (S.day + 1) + " of " + eng.observed_days + " of ONE simulated week (seed " + r.replay.seed + ") - whole numbers of simulated patients.";
-      $("#periodText").textContent = "Scenario: " + S.current.name + ". Each simulated week = " + eng.warmup_days + "-day warm-up, " + eng.observed_days +
-        " observed days, " + eng.drain_hours + "-hour drain. " + dayTxt + " Whole-run figures use all " + r.replications + " weeks. Run " + r.run_id + ", " + r.timestamp.replace("T", " ") + ".";
-    } else if (S.current) {
-      $("#periodText").textContent = "Scenario: " + S.current.name + ". Not simulated yet.";
-    }
+    slider.setAttribute("aria-valuetext", HHMM(S.slot * 15) + (typ ? ", typical day" : ", " + dayName(S.day)));
+    $("#timeHelp").textContent = typ ? "Move through the day in hourly steps" : "Move through the day in 15-minute steps";
+    if (!S.current) return;
+    const name = S.current.name;
+    let txt;
+    if (!S.result) txt = "\"" + name + "\" hasn't been run yet.";
+    else if (isBaseline()) txt = typ ? "Baseline performance on a typical day." : "Baseline performance on " + dayName(S.day) + ".";
+    else txt = "Performance with \"" + name + "\"" + (typ ? " on a typical day." : " on " + dayName(S.day) + ".");
+    $("#periodText").textContent = txt;
   }
 
   function wireContext() {
@@ -419,7 +497,7 @@
         }
       });
     });
-    $("#dayPick").addEventListener("change", (e) => { S.day = +e.target.value; renderAll(); });
+    $("#dayPick").addEventListener("change", (e) => { S.day = +e.target.value; S.covDay = null; renderAll(); });
     $("#timeSlider").addEventListener("input", (e) => { S.slot = +e.target.value; renderTimeDependent(); });
     $("#timePrev").addEventListener("click", () => stepTime(-1));
     $("#timeNext").addEventListener("click", () => stepTime(1));
@@ -438,56 +516,99 @@
   }
 
   // ================================================================ overview
-  function tile(k, v, unit, scope, sub, cls, extra) {
-    return h("div", { class: "ms-tile " + (cls || "") },
-      h("p", { class: "k", text: k }),
-      h("p", { class: "v" }, v, unit ? h("small", { text: unit }) : null),
-      extra || null,
-      h("span", { class: "scope", text: scope }),
-      sub ? h("p", { class: "s", text: sub }) : null);
+  // a KPI card: name, (when), value, target or comparison, status - always in that order
+  function kpi(o) {
+    return h("div", { class: "ms-tile " + (o.cls || "") + (o.status ? " status-" + o.status.cls : "") },
+      h("p", { class: "k", text: o.label }),
+      o.context ? h("p", { class: "ctx", text: o.context }) : null,
+      h("p", { class: "v" }, o.value, o.unit ? h("small", { text: o.unit }) : null),
+      o.compare ? h("p", { class: "cmp", text: o.compare }) : null,
+      o.status ? h("span", { class: "ms-pill " + o.status.cls, text: o.status.text }) : null);
   }
-  function statusTag(ts) {
-    if (!ts || !ts.status) return null;
-    const cls = ts.status === "met" ? "met" : ts.status === "not met" ? "not" : "near";
-    const icon = cls === "met" ? "✓ " : cls === "not" ? "✗ " : "≈ ";
-    return h("span", { class: "ms-status-tag " + cls, text: icon + "Target " + ts.status });
-  }
+  const pct1 = (v) => fmt(v, 1);
+  const baseText = (v, f) => (v === null || v === undefined) ? null : "Baseline " + f(v);
   function sumLast(arr, i, n) { let s = 0; for (let k = Math.max(0, i - n + 1); k <= i; k++) s += arr[k] || 0; return s; }
+
+  function renderNarrative() {
+    const r = S.result, el = $("#ovNarrative");
+    if (!r) { el.textContent = ""; return; }
+    const tgt = S.current.inputs.target, B = compareBase();
+    const who = isBaseline() ? "" : "With \"" + S.current.name + "\", ";
+    let s;
+    if (!typical()) {
+      const k = dayKpis(r, S.day), w = withinDay(r, S.day, tgt.minutes);
+      if (!k) { el.textContent = ""; return; }
+      s = capFirst(who + "on " + dayName(S.day) + " " + k.n_cohort + " patients arrived and " + pct1(w) + "% left within " +
+        timeWords(tgt.minutes) + ", " + vsTarget(w, tgt.pct) + ".");
+      if (B && withinDay(B, S.day, tgt.minutes) !== null) s += " The baseline on the same day was " + pct1(withinDay(B, S.day, tgt.minutes)) + "%.";
+      const a = S.day * STEPS_PER_DAY, cen = r.replay.census.slice(a, a + STEPS_PER_DAY);
+      const pk = cen.indexOf(Math.max(...cen));
+      s += " The department was busiest at " + HHMM(pk * 15) + ", with " + cen[pk] + " patients";
+    } else {
+      const w = withinTypical(r, tgt.minutes);
+      s = capFirst(who + "on a typical day about " + fmt(r.summary.per_day && r.summary.per_day.mean, 0) + " patients arrive and " +
+        pct1(w) + "% leave within " + timeWords(tgt.minutes) + ", " + vsTarget(w, tgt.pct) + ".");
+      if (B) s += " The baseline is " + pct1(withinTypical(B, tgt.minutes)) + "%.";
+      const c = r.profile.census_avg, pk = c.indexOf(Math.max(...c));
+      s += " The department is busiest around " + HHMM(pk * 60) + ", with about " + Math.round(c[pk]) + " patients";
+    }
+    const top = waitingByStage(r)[0];
+    s += top ? ", and most waiting time " + (typical() ? "goes" : "went") + " on " + waitPhrase(top.label) + "." : ".";
+    el.textContent = s;
+  }
 
   function renderOverview() {
     const r = S.result;
     const p = $("#kpiPrimary"), s2 = $("#kpiSecondary");
     if (!r) return;
-    const tgt = S.current.inputs.target, ts = r.target_status, sm = r.summary;
-    const typ = S.mode === "typical", i = idx(), hr = hourOf(), rp = r.replay, prof = r.profile;
-    const when = typ ? "Typical day, " + HHMM(hr * 60) + " (average simulated patients)" : "Simulated day " + (S.day + 1) + ", " + HHMM(viewTime()) + " (one simulated day)";
-    const census = typ ? fmt(prof.census_avg[hr], 1) : fmtInt(rp.census[i]);
-    const waiting = typ ? fmt(prof.waiting_avg[hr], 1) : fmtInt(rp.waiting[i]);
-    const arr = typ ? fmt(prof.arrivals_per_hour[hr], 1) : fmtInt(sumLast(rp.arrivals, i, 4));
-    const dep = typ ? fmt(prof.departures_per_hour[hr], 1) : fmtInt(sumLast(rp.departures, i, 4));
-    const t4 = ts.value;
-    const cls = ts.status === "met" ? "status-met" : ts.status === "not met" ? "status-not" : "status-near";
+    renderNarrative();
+    const tgt = S.current.inputs.target, ts = r.target_status, sm = r.summary, B = compareBase();
+    const typ = typical(), i = idx(), hr = hourOf(), rp = r.replay, prof = r.profile, k = dayKpis(r, S.day), bk = dayKpis(B, S.day);
+    const at = typ ? "Average at " + HHMM(hr * 60) : "At " + HHMM(viewTime());
+    const day = typ ? "Typical day" : dayName(S.day);
+    const num = (v) => typ ? fmt(v, 0) : fmtInt(v);
+    const pick = (res, typF, dayF) => res ? (typ ? typF(res) : dayF(res)) : null;
+    const census = pick(r, x => x.profile.census_avg[hr], x => x.replay.census[i]);
+    const waiting = pick(r, x => x.profile.waiting_avg[hr], x => x.replay.waiting[i]);
+    const w = typ ? withinTypical(r, tgt.minutes) : withinDay(r, S.day, tgt.minutes);
+    const bw = B ? (typ ? withinTypical(B, tgt.minutes) : withinDay(B, S.day, tgt.minutes)) : null;
+    const arr = typ ? prof.arrivals_per_hour[hr] : sumLast(rp.arrivals, i, 4);
+    const dep = typ ? prof.departures_per_hour[hr] : sumLast(rp.departures, i, 4);
+    const med = typ ? sm.duration_median && sm.duration_median.mean : k && k.duration_median;
+    const bmed = B ? (typ ? B.summary.duration_median && B.summary.duration_median.mean : bk && bk.duration_median) : null;
+    // Supporting line: the baseline when a scenario is shown, otherwise a fact
+    // from the same day (or typical day) that helps read the number.
+    const a0 = S.day * STEPS_PER_DAY, daySum = (arr) => arr.slice(a0 + 1, a0 + STEPS_PER_DAY + 1).reduce((x, y) => x + (y || 0), 0);   // slot i counts the 15 minutes ending at times[i]
+    const cen = typ ? prof.census_avg : rp.census.slice(a0, a0 + STEPS_PER_DAY), pk = cen.indexOf(Math.max(...cen));
+    const busiest = typ ? "Busiest around " + HHMM(pk * 60) + ", about " + Math.round(cen[pk]) : "Busiest " + cen[pk] + " at " + HHMM(pk * 15);
+    const sumAll = (arr) => arr.reduce((x, y) => x + (y || 0), 0);
+    const dayTotals = typ ? "Whole day about " + fmt(sumAll(prof.arrivals_per_hour), 0) + " / " + fmt(sumAll(prof.departures_per_hour), 0)
+      : "Whole day " + daySum(rp.arrivals) + " / " + daySum(rp.departures);
     p.replaceChildren(
-      tile("Patients in the department", census, "", when, "Arrived and not yet left (including SDEC)."),
-      tile("Patients waiting", waiting, "", when, "Waiting for streaming, handover, RAT, a space or clinician, diagnostics, results or a decision, a bed or a porter."),
-      tile("Completed within " + (tgt.minutes / 60 === Math.round(tgt.minutes / 60) ? (tgt.minutes / 60) + " hours" : tgt.minutes + " minutes"),
-        fmt(t4 && t4.mean, 1), "%", "Whole run: " + r.replications + " simulated weeks",
-        "Planning target " + tgt.pct + "% (a selected demonstration target). Range across weeks " + fmt(t4 && t4.min, 1) + "–" + fmt(t4 && t4.max, 1) + "%; gap " + fmt(ts.gap_pts, 1) + " percentage points.", cls, statusTag(ts)),
-      tile(typ ? "Arrivals and departures per hour" : "Arrivals and departures, hour to " + HHMM(viewTime()),
-        arr + " in · " + dep + " out", "", typ ? "Typical day, hour starting " + HHMM(hr * 60) + " (average per day)" : when, "Interval flows, not queue sizes.", "pair"),
-      tile("Time in the department (median)", fmt(sm.duration_median && sm.duration_median.mean, 0), " min",
-        "Whole run: " + r.replications + " simulated weeks",
-        "Arrival to leaving, per patient. Median total waiting " + fmt(sm.total_wait_median && sm.total_wait_median.mean, 0) + " min (each patient's own waiting intervals, added up).")
+      kpi({ label: "In the department", context: at, value: num(census),
+        compare: B ? baseText(pick(B, x => x.profile.census_avg[hr], x => x.replay.census[i]), num) : busiest }),
+      kpi({ label: "Waiting", context: at, value: num(waiting),
+        compare: B ? baseText(pick(B, x => x.profile.waiting_avg[hr], x => x.replay.waiting[i]), num) : "Of " + num(census) + " in the department" }),
+      kpi({ label: "Left within " + timeWords(tgt.minutes), context: day, value: pct1(w), unit: "%", cls: "ms-tile-lead",
+        compare: "Target " + tgt.pct + "%" + (bw !== null ? " · baseline " + pct1(bw) + "%" : ""),
+        status: statusFor(w, tgt.pct, typ ? ts.status : undefined) }),
+      kpi({ label: "Arrivals / departures", context: typ ? HHMM(hr * 60) + " to " + HHMM((hr + 1) * 60) + ", average" : "Hour to " + HHMM(viewTime()),
+        value: (typ ? fmt(arr, 0) : String(arr)) + " / " + (typ ? fmt(dep, 0) : String(dep)), cls: "pair", compare: dayTotals }),
+      kpi({ label: "Time in department", context: day + ", typical patient", value: fmt(med, 0), unit: " min",
+        compare: bmed !== null && bmed !== undefined ? "Baseline " + fmt(bmed, 0) + " min" : "Half of patients leave sooner" }),
     );
-    const ov = typ ? null : rp.over_target[i];
+    const sec = (label, v, unit, bv, extra) => kpi(Object.assign({ label, context: day, value: fmt(v, 1), unit,
+      compare: bv !== null && bv !== undefined ? "Baseline " + fmt(bv, 1) + unit : null }, extra || {}));
+    const pickK = (res, key) => res ? (typ ? (res.summary[key] && res.summary[key].mean) : (dayKpis(res, S.day) || {})[key]) : null;
     s2.replaceChildren(
-      tile("Over 12 hours from arrival", fmt(sm.twelve_hour.mean, 1), "%", "Whole run", "Counted from arrival, not from decision to admit."),
-      tile("Ambulance handover within 45 min", fmt(sm.handover_45 && sm.handover_45.mean, 1), "%", "Whole run", "Arrival to the start of handover."),
-      tile("Left without being seen", fmt(sm.lwbs.mean, 1), "%", "Whole run", "Kept separate from discharges - a guardrail."),
-      tile("Unfinished when a week ends", fmt(sm.wip_end.mean, 0), "", "Whole run, per simulated week", "Still in the department after the 12-hour drain - counted as over target, never dropped."),
-      tile("Went through SDEC", fmt(sm.sdec_pct.mean, 1), "%", "Whole run", "SDEC time counts inside the ED attendance."),
-      typ ? tile("Decisions to admit", fmt(sm.dta_per_day && sm.dta_per_day.mean, 1), " a day", "Whole run (events)", "A decision is an event, not a place - see Patient flow.")
-        : tile("In the department longer than " + tgt.minutes + " min", fmtInt(ov), "", when, "Patients present at this moment who arrived more than the target time ago.")
+      sec("Over 12 hours in the department", pickK(r, "twelve_hour"), "%", pickK(B, "twelve_hour")),
+      sec("Ambulance handover within 45 minutes", pickK(r, "handover_45"), "%", pickK(B, "handover_45")),
+      sec("Left without being seen", pickK(r, "lwbs"), "%", pickK(B, "lwbs")),
+      sec("Treated in SDEC", pickK(r, "sdec_pct"), "%", pickK(B, "sdec_pct")),
+      typ ? kpi({ label: "Decisions to admit", context: "Per day", value: fmt(sm.dta_per_day && sm.dta_per_day.mean, 0),
+              compare: B ? "Baseline " + fmt(B.summary.dta_per_day && B.summary.dta_per_day.mean, 0) : null })
+        : kpi({ label: "Here longer than " + timeWords(tgt.minutes), context: at, value: fmtInt(rp.over_target[i]),
+              compare: B ? "Baseline " + fmtInt(B.replay.over_target[i]) : null }),
     );
     renderPressure();
     renderCharts();
@@ -495,63 +616,68 @@
 
   function renderPressure() {
     const r = S.result;
-    const top = r.pressure.slice(0, 6);
-    const mx = Math.max(1, ...top.map(x => x.patient_hours_per_day));
-    const groups = Object.fromEntries(S.meta.groups.map(g => [g.id, g.label]));
+    const top = waitingByStage(r).slice(0, 6);
+    const mx = Math.max(1, ...top.map(x => x.hours));
+    const groupOf = {};
+    for (const g of S.meta.groups) for (const st of g.states) groupOf[st.label] = g.label;
+    $("#pressureNote").textContent = "Hours patients spent waiting at each stage " + (typical() ? "on a typical day" : "on " + dayName(S.day)) +
+      ", added up across all patients. The longest bar is where waiting builds up most.";
     const ul = h("ul", { class: "ms-bars" }, top.map(x => {
       const fill = h("span", { class: "fill" });
-      fill.style.width = (100 * x.patient_hours_per_day / mx).toFixed(1) + "%";
+      fill.style.width = (100 * x.hours / mx).toFixed(1) + "%";
       return h("li", {},
-        h("span", {}, h("strong", { text: x.label }), h("br"), h("span", { class: "ms-hint", text: groups[x.group] || "" })),
+        h("span", {}, h("strong", { text: x.label }), h("br"), h("span", { class: "ms-hint", text: groupOf[x.label] || "" })),
         h("span", { class: "track" }, fill),
-        h("span", { class: "val", text: fmt(x.patient_hours_per_day, 0) + " patient-hours/day" }));
+        h("span", { class: "val", text: fmt(x.hours, 0) + " hours" }));
     }));
-    $("#pressureList").replaceChildren(ul, h("p", { class: "ms-hint", text: "Median completed wait at the top stage: " + fmt(top[0] && top[0].completed_median, 0, " min") + ". Values are means across " + r.replications + " simulated weeks." }));
+    $("#pressureList").replaceChildren(ul);
   }
 
   function renderChartsImpl() {
     const r = S.result;
     if (!r || $("#panel-overview").hidden) return;
     const typ = S.mode === "typical", rp = r.replay, prof = r.profile;
-    const c1 = token("--chart-1"), c2 = token("--chart-2"), c3 = token("--chart-3");
+    const c1 = token("--chart-1"), c2 = token("--chart-2"), c3 = token("--chart-dep");
     let labels, census, waiting, arr, dep, marker;
     if (typ) {
       labels = [...Array(24).keys()].map(hh => HHMM(hh * 60));
       census = prof.census_avg; waiting = prof.waiting_avg; arr = prof.arrivals_per_hour; dep = prof.departures_per_hour; marker = hourOf();
-      $("#dayChartTitle").textContent = "Typical day: average simulated patients by hour";
-      $("#dayChartNote").textContent = "Averages over the observed days of one simulated week, sampled every 15 minutes. Arrivals and departures are per hour, divided by the same number of observed days.";
+      $("#dayChartTitle").textContent = "Typical day: patients in the department and waiting";
+      $("#dayChartNote").textContent = "The average for each hour across every modelled day. The dashed line marks the time selected above.";
     } else {
       const a = S.day * STEPS_PER_DAY;
       labels = rp.times.slice(a, a + STEPS_PER_DAY + 1).map(t => HHMM(t));
       census = rp.census.slice(a, a + STEPS_PER_DAY + 1); waiting = rp.waiting.slice(a, a + STEPS_PER_DAY + 1); marker = S.slot;
       arr = []; dep = [];
       for (let hh = 0; hh < 24; hh++) { arr.push(sumLast(rp.arrivals, a + (hh + 1) * 4, 4)); dep.push(sumLast(rp.departures, a + (hh + 1) * 4, 4)); }
-      $("#dayChartTitle").textContent = "Simulated day " + (S.day + 1) + ": patients in the department and waiting";
-      $("#dayChartNote").textContent = "Whole numbers of patients at each 15-minute point of ONE simulated day. The vertical line is the viewing time.";
+      $("#dayChartTitle").textContent = dayName(S.day) + ": patients in the department and waiting";
+      $("#dayChartNote").textContent = "Every 15 minutes through the day. The dashed line marks the time selected above.";
     }
+    $("#flowChartNote").textContent = "Bars show patients arriving each hour and the line shows patients leaving. When the line is below the bars, the department is filling up." +
+      (typ ? " Averages across every modelled day." : "");
     lineChart($("#chartCensus"), {
-      labels, marker, height: 250, yTitle: "patients",
-      series: [{ name: "In the department", values: census, color: c1, fmt: (v) => typ ? v.toFixed(1) : String(v) },
-               { name: "Waiting", values: waiting, color: c2, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
+      labels, marker, height: 260, yTitle: "patients", area: true,
+      series: [{ name: "In the department", values: census, color: c1, fmt: (v) => typ ? v.toFixed(0) : String(v) },
+               { name: "Waiting", values: waiting, color: c2, fmt: (v) => typ ? v.toFixed(0) : String(v) }],
       xTick: (i) => (typ ? i % 3 === 0 : i % 12 === 0) ? labels[i] : null,
       tipTitle: (i) => (typ ? "Average at " : "At ") + labels[i],
     });
     $("#chartCensus").setAttribute("aria-label", "Line chart: patients in the department and patients waiting through the day. A table version follows.");
     columnChart($("#chartFlow"), {
-      labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 190, yTitle: typ ? "patients per hour (average)" : "patients per hour",
-      series: [{ name: "Arrivals", values: arr, color: c1, fmt: (v) => typ ? v.toFixed(1) : String(v) },
-               { name: "Departures", values: dep, color: c3, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
+      labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 220, yTitle: "patients per hour",
+      series: [{ name: "Arrivals", values: arr, color: c1, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
+      lines: [{ name: "Departures", values: dep, color: c3, fmt: (v) => typ ? v.toFixed(1) : String(v) }],
       xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null, highlight: hourOf(),
-      tipTitle: (i) => "Hour " + HHMM(i * 60) + "–" + HHMM((i + 1) * 60),
+      tipTitle: (i) => HHMM(i * 60) + " to " + HHMM((i + 1) * 60),
     });
-    $("#chartFlow").setAttribute("aria-label", "Column chart: arrivals and departures per hour. A table version follows.");
+    $("#chartFlow").setAttribute("aria-label", "Chart: arrivals per hour as bars and departures per hour as a line. A table version follows.");
     const rows = [];
     for (let hh = 0; hh < 24; hh++) {
       const at = typ ? hh : hh * 4;
-      rows.push([HHMM(hh * 60), typ ? fmt(census[hh], 1) : String(census[at]), typ ? fmt(waiting[hh], 1) : String(waiting[at]), typ ? fmt(arr[hh], 1) : String(arr[hh]), typ ? fmt(dep[hh], 1) : String(dep[hh])]);
+      rows.push([HHMM(hh * 60), typ ? fmt(census[hh], 0) : String(census[at]), typ ? fmt(waiting[hh], 0) : String(waiting[at]), typ ? fmt(arr[hh], 1) : String(arr[hh]), typ ? fmt(dep[hh], 1) : String(dep[hh])]);
     }
-    $("#dayTable").replaceChildren(table(typ ? "Typical day (averages)" : "Simulated day " + (S.day + 1),
-      ["Time", typ ? "In department (average at hh:00)" : "In department at hh:00", typ ? "Waiting (average at hh:00)" : "Waiting at hh:00", "Arrivals in the hour", "Departures in the hour"], rows, [1, 2, 3, 4]));
+    $("#dayTable").replaceChildren(table(typ ? "Typical day (averages)" : dayName(S.day),
+      ["Time", "In the department", "Waiting", "Arrivals in the hour", "Departures in the hour"], rows, [1, 2, 3, 4]));
   }
 
   // ================================================================ patient flow
@@ -565,7 +691,7 @@
   // between boxes over the whole run (result.flows, from the metric layer);
   // the moving dots only show direction and can be paused.
   const FM = { maps: {}, raf: null, last: 0, paused: false };
-  const OUTCOME_LABEL = { discharged: "Discharged", admitted: "Admitted (ward transfer complete)", left_without_being_seen: "Left without being seen" };
+  const OUTCOME_LABEL = { discharged: "Discharged", admitted: "Admitted to a ward", left_without_being_seen: "Left without being seen" };
   const typical = () => S.mode === "typical";
 
   function kindOf(key) {
@@ -603,7 +729,7 @@
   }
   const nval = (v) => typical() ? fmt(v, 1) : fmtInt(v);
   const whenText = () => typical() ? "average at " + HHMM(hourOf() * 60) : "at " + HHMM(viewTime());
-  const hourText = () => typical() ? "in the hour from " + HHMM(hourOf() * 60) + " (average)" : "in the hour to " + HHMM(viewTime());
+  const hourText = () => typical() ? "in the hour from " + HHMM(hourOf() * 60) + ", on average" : "in the hour to " + HHMM(viewTime());
   const linkList = (obj) => Object.entries(obj || {}).map(([k, v]) => { const [s, d] = k.split(">"); return { s, d, v }; });
   const keysOf = (states) => states.map(st => typeof st === "string" ? st : st.node + "|" + st.phase);
   const tipRows = (pairs) => pairs.filter(Boolean).map(([name, value]) => ({ name, value: String(value), color: "transparent" }));
@@ -749,7 +875,7 @@
       const hit = svgEl("path", { d: L.path.getAttribute("d"), class: "fm-hit", "stroke-width": Math.max(14, L.w + 6).toFixed(1), fill: "none" });
       hit.addEventListener("mousemove", (e) => {
         L.path.classList.add("on");
-        showTip(e.clientX, e.clientY, name(L.l.s) + " → " + name(L.l.d), tipRows([["patients a day moving along this route (whole-run average)", fmt(L.l.v, 1)]]));
+        showTip(e.clientX, e.clientY, name(L.l.s) + " → " + name(L.l.d), tipRows([["patients a day on this route, on average", fmt(L.l.v, 1)]]));
       });
       hit.addEventListener("mouseleave", () => { L.path.classList.remove("on"); hideTip(); });
       svg.append(hit);
@@ -822,19 +948,20 @@
     const gs = r.stages.groups[g.id] || {};
     const entering = typical() ? null : sumLast(r.replay.groups[g.id].entries, idx(), 4);
     return { num: nval(present), cap: (typical() ? "average present at " : "present at ") + HHMM(typical() ? hourOf() * 60 : viewTime()),
-      lines: [nval(waiting) + (typical() ? " waiting on average" : " waiting") + (el ? " · longest " + el.max + " min" : "")],
+      lines: [nval(waiting) + (typical() ? " waiting on average" : " waiting") + (el && el.max > 0 ? " · longest " + el.max + " min" : "")],
       status: busyStatus(present, stDay(keys)), waiting,
       tip: tipRows([["present " + whenText(), nval(present)], ["waiting " + whenText(), nval(waiting)],
-        el ? ["longest current wait (median " + el.med + " min)", el.max + " min"] : null,
+        el ? ["longest time here so far", el.max + " min"] : null,
+        el ? ["typical time here so far", el.med + " min"] : null,
         entering !== null ? ["came into this group in the hour before", entering] : null,
-        ["waiting patient-hours per day (whole run)", fmt(gs.waiting_patient_hours_per_day, 0)],
-        ["patients entering per day (whole run)", fmt(gs.entries_per_day, 0)]]) };
+        ["hours spent waiting here a day, on average", fmt(gs.waiting_patient_hours_per_day, 0)],
+        ["patients coming into this group a day, on average", fmt(gs.entries_per_day, 0)]]) };
   }
   function arrivalsContent() {
     const r = S.result, n = typical() ? r.profile.arrivals_per_hour[hourOf()] : sumLast(r.replay.arrivals, idx(), 4);
     const perDay = linkList(r.flows.group).filter(l => l.s === "arrival").reduce((a, l) => a + l.v, 0);
-    return { num: nval(n), cap: "arrived " + hourText(), lines: [fmt(perDay, 0) + " a day (whole run)"],
-      tip: tipRows([["arrivals " + hourText(), nval(n)], ["arrivals per day (whole run)", fmt(perDay, 1)]]) };
+    return { num: nval(n), cap: "arrived " + hourText(), lines: [fmt(perDay, 0) + " a day on average"],
+      tip: tipRows([["arrivals " + hourText(), nval(n)], ["arrivals a day, on average", fmt(perDay, 1)]]) };
   }
   function outcomeNodes(summary) {
     const present = new Set(S.result.model.nodes);
@@ -844,26 +971,27 @@
     const r = S.result, nodes = outcomeNodes(summary);
     const n = nodes.reduce((a, o) => a + eventsNow((r.replay.departures_by_outcome || {})[o.node], (r.profile.departures_by_outcome_per_hour || {})[o.node]), 0);
     const perDay = linkList(r.flows.group).filter(l => l.d === summary).reduce((a, l) => a + l.v, 0);
-    const sub = nodes.map(o => [o.label + " (a day)", fmt(linkList(r.flows.unit).filter(l => l.d === o.node).reduce((a, l) => a + l.v, 0), 1)]);
-    return { num: nval(n), cap: "left " + hourText(), lines: [fmt(perDay, 0) + " a day (whole run)"],
-      tip: tipRows([["left " + hourText(), nval(n)], ["per day (whole run)", fmt(perDay, 1)], ...sub]) };
+    const sub = nodes.map(o => [o.label + ", a day", fmt(linkList(r.flows.unit).filter(l => l.d === o.node).reduce((a, l) => a + l.v, 0), 1)]);
+    return { num: nval(n), cap: "left " + hourText(), lines: [fmt(perDay, 0) + " a day on average"],
+      tip: tipRows([["left " + hourText(), nval(n)], ["a day, on average", fmt(perDay, 1)], ...sub]) };
   }
   function unitKeys(u) { return (u.states || []).filter(k => (S.result.replay.states || {})[k] !== undefined || (S.result.profile.states_avg || {})[k] !== undefined); }
   function unitContent(u) {
     const r = S.result, um = (r.stages.units || {})[u.id] || {};
     if (u.milestone) {
       const n = eventsNow((r.replay.milestones || {})[u.milestone], (r.profile.milestones_per_hour || {})[u.milestone]);
-      return { num: nval(n), cap: "decisions " + hourText(), lines: ["an event, not a place · " + fmt(um.entries_per_day, 1) + " a day"],
-        tip: tipRows([["decisions " + hourText(), nval(n)], ["decisions per day (whole run)", fmt(um.entries_per_day, 1)]]) };
+      return { num: nval(n), cap: "decisions " + hourText(), lines: ["a decision, not a wait · " + fmt(um.entries_per_day, 0) + " a day"],
+        tip: tipRows([["decisions " + hourText(), nval(n)], ["decisions a day, on average", fmt(um.entries_per_day, 1)]]) };
     }
     const keys = unitKeys(u), o = occupancy(keys);
     const stay = um.stay_median !== null && um.stay_median !== undefined ? "usual stay " + fmt(um.stay_median, 0) + " min" : null;
     return { num: nval(o.present), cap: (typical() ? "average present at " : "present at ") + HHMM(typical() ? hourOf() * 60 : viewTime()),
       lines: [nval(o.waiting) + (typical() ? " waiting on average" : " waiting") + (stay ? " · " + stay : "")], status: busyStatus(o.present, stDay(keys)), waiting: o.waiting,
       tip: tipRows([["present " + whenText(), nval(o.present)], ["waiting " + whenText(), nval(o.waiting)],
-        ["time here, median / 90th percentile (completed stays, whole run)", um.stay_median !== null && um.stay_median !== undefined ? fmt(um.stay_median, 0) + " / " + fmt(um.stay_p90, 0) + " min" : "not available"],
-        ["waiting patient-hours per day (whole run)", fmt(um.waiting_patient_hours_per_day, 0)],
-        ["patients entering per day (whole run)", fmt(um.entries_per_day, 0)]]) };
+        ["usual time here", um.stay_median !== null && um.stay_median !== undefined ? fmt(um.stay_median, 0) + " min" : "not available"],
+        um.stay_p90 !== null && um.stay_p90 !== undefined ? ["1 in 10 stay longer than", fmt(um.stay_p90, 0) + " min"] : null,
+        ["hours spent waiting here a day, on average", fmt(um.waiting_patient_hours_per_day, 0)],
+        ["patients a day, on average", fmt(um.entries_per_day, 0)]]) };
   }
 
   // ------------------------------------------------------------ the three maps
@@ -918,9 +1046,9 @@
         const flowsIn = links.filter(l => l.s === s.key).reduce((a, l) => a + l.v, 0), flowsOut = links.filter(l => l.d === s.key).reduce((a, l) => a + l.v, 0);
         boxes.push({ id: s.key, col: side === "left" ? -1 : maxCol + 1, row: list.length === 1 ? (nRows - 1) / 2 : k * (nRows - 1) / Math.max(1, list.length - 1),
           kind: s.key.startsWith("out:") ? "stub fm-stub-out" : "stub", name: s.label,
-          content: () => ({ lines: [flowsIn > 0.05 ? fmt(flowsIn, 1) + " a day into this group" : null, flowsOut > 0.05 ? fmt(flowsOut, 1) + " a day from this group" : null],
-            tip: tipRows([flowsIn > 0.05 ? ["patients a day coming into " + g.label + " (whole run)", fmt(flowsIn, 1)] : null,
-              flowsOut > 0.05 ? ["patients a day going here from " + g.label + " (whole run)", fmt(flowsOut, 1)] : null]) }) });
+          content: () => ({ lines: [flowsIn > 0.05 ? fmt(flowsIn, 0) + " a day into this group" : null, flowsOut > 0.05 ? fmt(flowsOut, 0) + " a day from this group" : null],
+            tip: tipRows([flowsIn > 0.05 ? ["patients a day coming into " + g.label + ", on average", fmt(flowsIn, 1)] : null,
+              flowsOut > 0.05 ? ["patients a day going here from " + g.label + ", on average", fmt(flowsOut, 1)] : null]) }) });
       });
     }
     return flowMap(host, { key: "detail", boxes, links, vertical: false, arch: false, compact: true, rowH: 112, padX: 26, boxW: 210,
@@ -964,16 +1092,14 @@
     if (!r || !S.meta) return;
     const panel = $("#panel-flow");
     if (panel.hidden) { S.flowKey = null; return; }          // drawn when shown (it needs its width)
-    if (!r.flows) { $("#groupRow").replaceChildren(h("p", { class: "ms-warning", text: "This result was produced before the flow maps existed. Simulate the scenario again to draw them." })); return; }
+    if (!r.flows) { $("#groupRow").replaceChildren(h("p", { class: "ms-warning", text: "Run this scenario again to draw the patient flow." })); return; }
     const host = $("#groupRow");
     const wide = mapWidth(host) >= 760;
     const key = [r.run_id, S.mode, wide ? "h" : "v", Math.round(mapWidth(host) / 40)].join("|");
     $("#flowLegend").textContent = (typical()
-      ? "Boxes: AVERAGE simulated patients at the selected time of day across the whole run. "
-      : "Boxes: whole numbers of patients at the viewing time on simulated day " + (S.day + 1) + ". ")
-      + "Lines: patients a day moving between groups over the whole run (thicker = more); the dots only show direction. "
-      + "Top border and the word under the number: how full the box is compared with its own busiest moment of the "
-      + (typical() ? "typical day." : "day.") + " Arrivals and the outcome boxes count people in an hour, not people waiting.";
+      ? "Numbers show the average number of patients in each group at " + HHMM(hourOf() * 60) + " on a typical day. "
+      : "Numbers show the patients in each group at " + HHMM(viewTime()) + " on " + dayName(S.day) + ". ")
+      + "Thicker lines carry more patients a day; the moving dots show the direction. The coloured top edge shows how busy a group is compared with its busiest time of day.";
     if (S.flowKey !== key) { S.flowKey = key; S.detailKey = null; FM.maps = {}; buildSummaryMap(host); }
     else FM.maps.summary && FM.maps.summary.update();
     renderSummaryTable();
@@ -987,8 +1113,8 @@
     const rows = linkList(r.flows.group).sort((a, b) => b.v - a.v).map(l => [name(l.s), name(l.d), fmt(l.v, 1)]);
     const now = S.meta.groups.map(g => { const c = groupContent(g); return [g.order + ". " + g.label, c.num, c.lines[0], c.status.text]; });
     $("#flowTable").replaceChildren(
-      table((typical() ? "Average at " + HHMM(hourOf() * 60) : "At " + HHMM(viewTime()) + ", simulated day " + (S.day + 1)), ["Group", "Present", "Waiting", "Compared with its busiest moment"], now, [1]),
-      table("Patients moving between groups (whole run, a day)", ["From", "To", "Patients a day"], rows, [2]));
+      table((typical() ? "Average at " + HHMM(hourOf() * 60) + " on a typical day" : "At " + HHMM(viewTime()) + " on " + dayName(S.day)), ["Group", "Patients", "Waiting", "How busy"], now, [1]),
+      table("Patients moving between groups, a day on average", ["From", "To", "Patients a day"], rows, [2]));
   }
 
   function toggleGroup(id) {
@@ -1026,7 +1152,7 @@
       h("div", { class: "ms-detail-head" }, h("div", {}, h("h3", { text: g.order + ". " + g.label }), h("p", { class: "ms-hint", text: g.description }),
         h("p", { class: "ms-hint", id: "detailWhen", text: detailWhen() })), close),
       mapHost,
-      h("p", { class: "ms-hint", text: "Select an area to see its day, what serves it, and where its patients come from and go to. Boxes on the left and right are the other groups and the outcomes this group connects to; the figures on them are patients a day over the whole run." }),
+      h("p", { class: "ms-hint", text: "Select an area to see its day, the staff and space it has, and where its patients come from and go to. The boxes at the sides are the other groups and outcomes; their figures are patients a day on average." }),
       h("div", { id: "unitDrill", class: "fm-drill", tabindex: "-1", hidden: true }),
       g.id === "treatment" ? h("p", { class: "ms-info", text: S.meta.sdec.reporting_note + " " + S.meta.sdec.selection_caveat }) : null,
       g.id === "next_destination" ? h("p", { class: "ms-info", text: "The admission sequence is: decision to admit (an event) → waiting for an inpatient bed (patients still occupy their ED trolley) → transfer to the ward → departure. " + S.meta.downstream.aggregate_assumption }) : null,
@@ -1052,8 +1178,8 @@
     }));
   }
   function detailWhen() {
-    return typical() ? "Showing the typical day at " + HHMM(hourOf() * 60) + " (averages across the whole run)."
-      : "Showing simulated day " + (S.day + 1) + " at " + HHMM(viewTime()) + " (the same time as the summary above).";
+    return typical() ? "Showing a typical day at " + HHMM(hourOf() * 60) + " (averages)."
+      : "Showing " + dayName(S.day) + " at " + HHMM(viewTime()) + ", the same time as the map above.";
   }
 
   // the drill-down for one area: its day, who serves it, where patients come from and go to
@@ -1075,15 +1201,15 @@
       if (seen.has(res)) continue; seen.add(res);
       const oc = r.model.open_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
       const isStaff = !!Object.values(S.meta.roles).some(ro => ro.staffs === res);
-      resRows.push([labelFor(res), isStaff ? "staff on shift" : "spaces open", oc ? String(oc.week[how]) : "–", fmt(ut, 0, "%")]);
+      resRows.push([labelFor(res), isStaff ? "staff on shift" : "spaces open", oc ? String(oc.week[how]) : "-", fmt(ut, 0, "%")]);
     }
     box.replaceChildren(...[
       h("div", { class: "ms-detail-head" }, h("h4", { text: u.label }), close),
       h("div", { class: "fm-drill-stats" },
         ...(c.tip || []).map(t => h("div", { class: "fm-stat" }, h("span", { class: "k", text: t.name }), h("span", { class: "v", text: t.value })))),
-      u.milestone ? null : h("h5", { text: typical() ? "Through the typical day (average present at each hour)" : "Through simulated day " + (S.day + 1) + " (present on the hour)" }),
+      u.milestone ? null : h("h5", { text: typical() ? "Through a typical day (average patients here each hour)" : "Through " + dayName(S.day) + " (patients here on the hour)" }),
       u.milestone ? null : chart,
-      resRows.length ? table("What serves this area at " + HHMM(viewTime()) + " (" + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)] + ")", ["Resource", "Type", "Available now", "Utilisation (whole run)"], resRows, [2, 3]) : null,
+      resRows.length ? table("Staff and space for this area at " + HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)], ["Staff or space", "Type", "Available now", "How busy, on average"], resRows, [2, 3]) : null,
       h("div", { class: "fm-drill-flows" },
         h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])),
         h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + fmt(l.v, 1) + " a day" })) : [h("li", { text: "none in this run" })])))].filter(Boolean));
@@ -1108,25 +1234,25 @@
       !(st.phase === "queue" && !(r.model.node_resources[st.node] || []).length));
     const rows = states.map(st => {
       const key = st.node + "|" + st.phase, sm = r.stages.states[key] || {};
-      return [st.label, h("span", { class: "ms-kind " + st.kind, text: st.kind === "waiting" ? "Waiting" : "Being seen / in progress" }),
-        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), st.kind === "waiting" ? fmt(sm.patient_hours_per_day, 0) : "–",
-        sm.n_completed ? fmt(sm.completed_median, 0) + " / " + fmt(sm.completed_p90, 0) : "no observations", fmt(sm.entries_per_day, 1)];
+      return [st.label, h("span", { class: "ms-kind " + st.kind, text: st.kind === "waiting" ? "Waiting" : "Being seen" }),
+        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), st.kind === "waiting" ? fmt(sm.patient_hours_per_day, 0) : "-",
+        sm.n_completed ? fmt(sm.completed_median, 0) + " (" + fmt(sm.completed_p90, 0) + ")" : "none", fmt(sm.entries_per_day, 0)];
     });
-    const parts = [table(null, ["Step", "Kind", typ ? "Average at " + HHMM(hourOf() * 60) : "Now (" + HHMM(viewTime()) + ")", "Average present (whole run)", "Waiting patient-hours/day", "Time in step, minutes: median / 90th percentile (completed)", "Entries per day"], rows, [2, 3, 4, 5, 6])];
+    const parts = [table(null, ["Step", "Kind", typ ? "Average at " + HHMM(hourOf() * 60) : "At " + HHMM(viewTime()), "Average patients", "Hours spent waiting a day", "Usual minutes here (1 in 10 longer than)", "Patients a day"], rows, [2, 3, 4, 5, 6])];
     const nodes = [...new Set(states.map(s => s.node))], resRows = [], seen = new Set();
     const how = Math.floor((viewTime() % 10080) / 60);
     for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
       if (seen.has(res)) continue; seen.add(res);
       const oc = r.model.open_capacity[res], ph = r.model.physical_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
       const isStaff = !!(S.meta.roles && Object.values(S.meta.roles).some(ro => ro.staffs === res));
-      resRows.push([labelFor(res), isStaff ? "Staff (on shift)" : "Space / equipment (open)", oc ? String(oc.week[how]) : "–", ph && !isStaff ? String(ph.max) : "–", fmt(ut, 0, "%")]);
+      resRows.push([labelFor(res), isStaff ? "Staff on shift" : "Space or equipment open", oc ? String(oc.week[how]) : "-", ph && !isStaff ? String(ph.max) : "-", fmt(ut, 0, "%")]);
     }
-    if (resRows.length) parts.push(h("h4", { text: "What serves these steps" }),
-      table(null, ["Resource", "Type", "Available at " + HHMM(viewTime()) + " (" + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)] + ")", "Physical spaces", "Utilisation (whole run)"], resRows, [2, 3, 4]),
-      h("p", { class: "ms-hint", text: "A space only opens when the staff to cover it are on shift (the space-staffing ratios on the Workforce screen). Utilisation alone does not make a bottleneck - compare it with the waiting measures above." }));
+    if (resRows.length) parts.push(h("h4", { text: "Staff and space" }),
+      table(null, ["Staff or space", "Type", "Available at " + HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)], "Spaces in total", "How busy, on average"], resRows, [2, 3, 4]),
+      h("p", { class: "ms-hint", text: "A space can only be used when there are staff on shift to cover it. Being busy doesn't make something a bottleneck on its own; the waiting figures above show where patients actually wait." }));
     const ms = S.meta.milestones.filter(m => m.group === g.id && (r.replay.milestones || {})[m.node]);
-    if (ms.length) parts.push(h("h4", { text: "Decisions and events (counted, not occupancy)" }),
-      table(null, ["Event", typ ? "In the hour from " + HHMM(hourOf() * 60) + " (average)" : "In the hour to " + HHMM(viewTime()), "Per day (whole run)"],
+    if (ms.length) parts.push(h("h4", { text: "Decisions (counted, not patients waiting)" }),
+      table(null, ["Decision", typ ? "In the hour from " + HHMM(hourOf() * 60) + ", on average" : "In the hour to " + HHMM(viewTime()), "A day, on average"],
         ms.map(m => [m.label, typ ? fmt(((r.profile.milestones_per_hour || {})[m.node] || [])[hourOf()], 1) : String(sumLast(r.replay.milestones[m.node], i, 4)), fmt(r.stages.milestones_per_day[m.node], 1)]), [1, 2]));
     body.replaceChildren(...parts);
   }
@@ -1140,43 +1266,45 @@
   }
 
   function renderOutcomes() {
-    const r = S.result, typ = S.mode === "typical", i = idx();
+    const r = S.result, typ = typical();
     const present = new Set(r.model.nodes);
-    const op = {};
-    for (const rep of r.reps) for (const [k, v] of Object.entries(rep.outcomes_per_day || {})) op[k] = (op[k] || 0) + v / r.reps.length;
     const groups = { discharged: [], admitted: [], left_without_being_seen: [] };
     for (const o of S.meta.outcomes) if (present.has(o.node)) groups[o.summary].push(o);
-    const tileFor = (title, list, note) => {
-      const perDay = list.reduce((a, o) => a + (op[o.node] || 0), 0);
-      const inHour = list.reduce((a, o) => a + sumLast(r.replay.departures_by_outcome[o.node] || [], i, 4), 0);
-      const sub = list.map(o => o.label + ": " + fmt(op[o.node] || 0, 1) + " a day").join(" · ");
-      return tile(title, fmt(perDay, 1), " a day", "Whole run (completed departures)" + (typ ? "" : " · " + inHour + " in the hour to " + HHMM(viewTime())), sub + (note ? " " + note : ""));
+    // a typical day: the average over every modelled day; a selected day: that day's patients
+    const per = {};
+    if (typ) { for (const rep of r.reps) for (const [k, v] of Object.entries(rep.outcomes_per_day || {})) per[k] = (per[k] || 0) + v / r.reps.length; }
+    else { const k = dayKpis(r, S.day) || {}; Object.assign(per, k.outcomes_per_day || {}); }
+    const total = Object.values(per).reduce((a, v) => a + v, 0) || 1;          // everyone who arrived
+    $("#outcomeNote").textContent = typ ? "Patients leaving on a typical day." : "Patients who arrived on " + dayName(S.day) + ", by how they left.";
+    const card = (title, list, note) => {
+      const n = list.reduce((a, o) => a + (per[o.node] || 0), 0);
+      return kpi({ label: title, value: typ ? fmt(n, 0) : fmtInt(n), unit: " a day", compare: fmt(100 * n / total, 0) + "% of patients" + (note ? " · " + note : "") });
     };
     $("#outcomeRow").replaceChildren(
-      tileFor("Discharged", groups.discharged, ""),
-      tileFor("Admitted (transfer complete)", groups.admitted, "Counted when the ward transfer is complete, not at the decision."),
-      tileFor("Left without being seen", groups.left_without_being_seen, "Not a successful discharge."));
+      card("Went home", groups.discharged, groups.discharged.some(o => o.node === "discharged_sdec") ? "including from SDEC" : ""),
+      card("Admitted", groups.admitted, "after moving to a ward"),
+      card("Left without being seen", groups.left_without_being_seen, ""));
   }
 
   function renderExpert() {
     const r = S.result, det = $("#expertView"), host = $("#expertMap");
     if (!det.open || !r.flows) { delete FM.maps.expert; S.expertKey = null; return; }
     if (mapWidth(host) >= 900) {
-      $("#expertNote").textContent = "Every modelled step, in the column of its summary group. Decision and routing points (dashed) count events in the hour; outcomes count departures. Lines are patients a day over the whole run.";
+      $("#expertNote").textContent = "Every step a patient can go through, under its group. Dashed boxes are decisions and count decisions in the hour; the boxes on the right count patients leaving. Lines are patients a day on average.";
       if (S.expertKey !== S.flowKey || !FM.maps.expert) { S.expertKey = S.flowKey; buildExpertMap(host); }
       else FM.maps.expert.update();
     } else {
       delete FM.maps.expert; S.expertKey = null; host.replaceChildren(); host.style.height = "";
-      $("#expertNote").textContent = "The full map needs a wider screen. Every step and its routes are listed in the table below.";
+      $("#expertNote").textContent = "This map needs a wider screen. Every step and where patients go next is listed below.";
     }
     if (S.expertTable === r.run_id) return;
     S.expertTable = r.run_id;
     const labels = S.meta.labels, name = (id) => labels[id] || id;
-    const rows = r.model.pathway.map(n => [name(n.id), n.type === "sink" ? "outcome" : n.milestone ? "decision (event)" : "step",
-      (n.resources || []).map(labelFor).join(", ") || "–",
-      n.open_hours ? HHMM(n.open_hours[0] * 60) + "–" + HHMM(n.open_hours[1] * 60) + " (closed: " + name(n.closed_fallback) + ")" : "always",
-      n.routes.map(rt => rt.when + ": " + rt.to.map(([t, p]) => name(t) + " " + Math.round(p * 1000) / 10 + "%").join(", ")).join(" | ") || "–"]);
-    $("#expertTable").replaceChildren(table("Every modelled step, its resources and its onward routes", ["Step", "Kind", "Uses", "Open", "Goes to"], rows));
+    const rows = r.model.pathway.map(n => [name(n.id), n.type === "sink" ? "leaving" : n.type === "source" ? "arrival" : n.milestone ? "decision" : "step",
+      (n.resources || []).map(labelFor).join(", ") || "-",
+      n.open_hours ? HHMM(n.open_hours[0] * 60) + " to " + HHMM(n.open_hours[1] * 60) + " (when closed: " + name(n.closed_fallback) + ")" : "always",
+      n.routes.map(rt => rt.when.replace("otherwise", "all patients") + ": " + rt.to.map(([t, p]) => name(t) + " " + Math.round(p * 1000) / 10 + "%").join(", ")).join("; ") || "-"]);
+    $("#expertTable").replaceChildren(table("Every step, what it uses and where patients go next", ["Step", "Type", "Uses", "Open", "Goes to"], rows));
   }
 
   // ================================================================ render orchestration
@@ -1189,10 +1317,12 @@
   function renderNotSimulated() {
     renderAllEmpty();
     renderContext();
-    const btn = h("button", { class: "ms-btn", type: "button", text: "Simulate this scenario" });
+    const btn = h("button", { class: "ms-btn", type: "button", text: "Run this scenario" });
     btn.addEventListener("click", simulateApplied);
-    $("#kpiPrimary").replaceChildren(h("div", { class: "ms-warning" }, h("p", { text: "\"" + S.current.name + "\" has not been simulated with these inputs yet, so there are no results to show. Nothing old is shown in their place." }), btn));
-    $("#groupRow").replaceChildren(h("p", { class: "ms-hint", text: "Simulate the scenario to see patient flow." }));
+    $("#ovNarrative").textContent = "";
+    renderTargetNow();
+    $("#kpiPrimary").replaceChildren(h("div", { class: "ms-warning" }, h("p", { text: "\"" + S.current.name + "\" hasn't been run yet, so there are no results to show. Running it takes a minute or two." }), btn));
+    $("#groupRow").replaceChildren(h("p", { class: "ms-hint", text: "Run the scenario to see patient flow." }));
   }
   function renderTimeDependent() {
     if (!S.result) return;
@@ -1201,23 +1331,63 @@
   function renderAll() {
     if (!S.result) { renderNotSimulated(); return; }
     dayOptions();
-    renderContext(); renderOverview(); renderFlow(); renderSetup();
+    renderContext(); renderOverview(); renderFlow(); renderSetup(); renderTargetNow();
   }
   window.addEventListener("resize", () => { clearTimeout(S._rs); S._rs = setTimeout(() => { renderChartsImpl(); renderCoverageImpl(); if (S.result) renderFlow(); }, 150); });
 
   // ================================================================ workforce: target search
+  const leverInfo = (id) => (S.meta.lever_text || {})[id] || { name: id, change: "" };
+  const moneyShort = (v) => {
+    if (v === null || v === undefined) return "not costed";
+    const a = Math.abs(v), s = v < 0 ? "-£" : "£";
+    if (a >= 1e6) return s + (a / 1e6).toFixed(a >= 1e7 ? 0 : 2).replace(/\.?0+$/, "") + "m";
+    if (a >= 1e4) return s + Math.round(a / 1000) + "k";
+    return s + Math.round(a).toLocaleString("en-GB");
+  };
+
+  // the decision journey: now -> target -> changes -> expected -> cost
+  function renderJourney(j) {
+    const tgt = j.target || S.current.inputs.target;
+    const step = (k, v, sub, cls) => h("li", { class: "ms-step " + (cls || "") }, h("span", { class: "k", text: k }), h("span", { class: "v", text: v }), sub ? h("span", { class: "s", text: sub }) : null);
+    const now = j.now !== undefined ? j.now : (S.result ? withinTypical(S.result, tgt.minutes) : null);
+    const items = [
+      step("Now", now === null || now === undefined ? "-" : fmt(now, 1) + "%", "leave within " + timeWords(tgt.minutes)),
+      step("Target", tgt.pct + "%", "within " + timeWords(tgt.minutes)),
+    ];
+    if (j.changes) {
+      items.push(step("Changes", j.changes.length + (j.changes.length === 1 ? " change" : " changes"), j.changes.slice(0, 2).join("; ") + (j.changes.length > 2 ? "; ..." : "")));
+      const reached = j.expected >= tgt.pct;
+      items.push(step("Expected", fmt(j.expected, 1) + "%", (j.delta !== null && j.delta !== undefined ? signed(j.delta, 1) + " points, " : "") + (reached ? "on target" : "below target"), reached ? "ok" : "short"));
+      const f = j.finance || {};
+      items.push(step("Extra cost", moneyShort(f.recurring_annual_total) + " a year", f.capital ? "plus " + moneyShort(f.capital) + " one-off" : "no one-off cost"));
+    } else {
+      items.push(step("Changes", "-", "find a package or try your own"), step("Expected", "-", ""), step("Extra cost", "-", ""));
+    }
+    $("#journey").replaceChildren(...items);
+  }
+
   function initTargetForm() {
     const t = S.current.inputs.target;
     $("#tgtPct").value = t.pct;
     const mins = $("#tgtMin");
     const opts = [];
-    for (let m = 60; m <= 720; m += 15) opts.push(h("option", { value: m, text: (m % 60 ? m + " minutes" : (m / 60) + " hours") }));
+    for (let m = 60; m <= 720; m += 15) opts.push(h("option", { value: m, text: timeWords(m) }));
     mins.replaceChildren(...opts);
     mins.value = t.minutes;
-    $("#tgtMode").replaceChildren(...Object.entries(S.meta.search.modes).map(([k, v]) => h("option", { value: k, text: v })));
+    const modes = S.meta.search.modes, order = ["workforce", "estate", "combined"].filter(k => modes[k]);
+    $("#tgtMode").replaceChildren(...order.map(k => h("option", { value: k, text: modes[k] })));
     $("#tgtMode").value = "combined";
-    $("#targetNote").textContent = S.meta.target.note + " The search re-runs the full model for every package it tries (" +
-      S.meta.search.reps + " matched simulated weeks each), so a new search takes a few minutes; results are kept.";
+    $("#targetNote").textContent = "Counted from arrival until the patient leaves the department, whether they are admitted, transferred or go home. " +
+      "The model tries each change on its own and in combination, then picks the cheapest set that reaches the target. The first search takes a few minutes.";
+    renderTargetNow();
+  }
+  function renderTargetNow() {
+    const t = S.current && S.current.inputs.target;
+    if (!t) return;
+    const now = S.result ? withinTypical(S.result, t.minutes) : null;
+    $("#targetNow").textContent = now === null ? "Run the scenario to see the current position."
+      : "Now: " + fmt(now, 1) + "% of patients leave the department within " + timeWords(t.minutes) + " on a typical day" + (isBaseline() ? "." : " with \"" + S.current.name + "\".");
+    if (!S.search) renderJourney({});
   }
 
   async function runSearch(ev) {
@@ -1231,7 +1401,7 @@
     }
     const my = ++S.seq.search, sid = S.current.id;
     $("#searchResult").replaceChildren();
-    const note = S.draftHash && S.draftHash !== S.current.model_hash ? h("p", { class: "ms-warning", text: "The search uses the saved scenario \"" + S.current.name + "\", not your unsaved edits below." }) : null;
+    const note = S.draftHash && S.draftHash !== S.current.model_hash ? h("p", { class: "ms-warning", text: "This search uses \"" + S.current.name + "\" as it is saved, not your unsaved changes below." }) : null;
     try {
       let d = await api("/api/m/search", { scenario_id: sid, target: { pct, minutes }, mode, request_id: my });
       if (d.status !== "done") {
@@ -1250,101 +1420,110 @@
     }
   }
 
-  function measureCell(m) { return m ? fmt(m.mean, 1) + "% (" + fmt(m.min, 1) + "–" + fmt(m.max, 1) + ")" : "not available"; }
-  function deltaCell(d) {
-    if (!d) return "–";
-    return signed(d.mean, 1, " pts") + (d.ci_low !== undefined ? " (" + signed(d.ci_low, 1) + " to " + signed(d.ci_high, 1) + ")" : "");
+  function deltaWords(d) { return d ? signed(d.mean, 1) + " points" : "-"; }
+  // how much to trust an improvement, from the re-test on different weeks
+  function retestSentence(v) {
+    if (!v || !v.delta_vs_baseline_pts) return "";
+    const d = v.delta_vs_baseline_pts;
+    if (d.ci_low !== undefined && d.ci_low > 0) return "We re-tested this package on different weeks and the improvement held up (" + signed(d.mean, 1) + " points).";
+    if (d.mean > 0) return "On different test weeks the improvement was smaller (" + signed(d.mean, 1) + " points) and could be down to chance.";
+    return "On different test weeks this package made no clear difference, so treat the result with caution.";
   }
 
   function renderSearch(res, note) {
     const box = $("#searchResult");
     const parts = [];
     if (note) parts.push(note);
-    const outcomeCls = res.outcome === "not_reached" ? "ms-warning" : "ms-success";
-    const label = { already_met: "Target already met", met: "Target met in the tested model", not_reached: "Target not reached within the tested options" }[res.outcome];
-    parts.push(h("div", { class: outcomeCls }, h("h4", { text: label }), h("p", { text: res.headline }),
-      h("p", { class: "ms-hint", text: (res.result_source === "precomputed" ? "Precomputed search result (labelled; you can re-run it). " : "") +
-        res.evaluations.packages + " packages, " + res.evaluations.replications + " simulated weeks in total. " + res.bounds.mode_label + "." })));
-    const rec = res.recommended;
+    const tgt = res.target, rec = res.recommended;
+    const title = { already_met: "Already on target", met: "Reaches the " + tgt.pct + "% target",
+      not_reached: "The tested changes don't reach " + tgt.pct + "%" }[res.outcome];
+    parts.push(h("div", { class: res.outcome === "not_reached" ? "ms-warning" : "ms-success" }, h("h4", { text: title }), h("p", { text: res.headline })));
+    const v = (res.validation && res.validation.packages || []).find(x => rec && JSON.stringify(x.ids) === JSON.stringify(rec.ids));
     if (rec && rec.ids && rec.ids.length) {
       const f = rec.finance;
-      parts.push(h("h4", { text: res.outcome === "met" ? "Lowest-cost package found within the tested options" : "Best tested package" }));
-      parts.push(h("ul", { class: "ms-list" }, rec.titles.map(t => h("li", { text: t }))));
-      if (!f.rota_rows.length) parts.push(h("p", { class: "ms-info", text: "This package adds no rota rows: the model has no staffing ratio for these items (see the notes against them), or the current rota already covers them." }));
-      else parts.push(table("Additional rota (aggregate planning rota - not a named-person or clinically approved roster)",
-        ["Role", "Area", "Days", "Hours", "Baseline staff", "Proposed", "Change", "Extra paid hours / week", "WTE", "Weekly cost", "Annual cost", "Why"],
-        f.rota_rows.map(rw => [rw.role_label, rw.area, rw.days, HHMM(rw.start * 60) + "–" + HHMM(rw.end * 60), String(rw.baseline_staff), String(rw.proposed_staff),
-          "+" + rw.change, fmt(rw.extra_paid_hours_week, 1), fmt(rw.wte, 2), money(rw.weekly_cost), money(rw.annual_cost), rw.why]), [4, 5, 6, 7, 8, 9, 10]));
-      if (f.estate_rows.length) parts.push(table("Additional estate and hospital capacity",
-        ["Item", "Change", "Before → after", "One-off capital", "Recurring non-pay a year", "Note"],
-        f.estate_rows.map(e => [e.label, "+" + e.quantity + " " + e.unit + (e.quantity === 1 ? "" : "s"), e.before + " → " + e.after, money(e.capital), money(e.recurring_non_pay_annual), e.note || ""]), [3, 4]));
-      parts.push(table("Cost (same cost tables price the baseline and the proposal)", ["Measure", "Value"], [
-        ["Extra pay a week", money(f.weekly_pay_delta)], ["Extra pay a year (" + f.weeks_per_year + " weeks)", money(f.annual_pay_delta)],
-        ["Extra paid hours a week", fmt(f.extra_paid_hours_week, 1)], ["Extra whole-time equivalents (WTE)", fmt(f.extra_wte, 2)],
-        ["One-off capital", money(f.capital)], ["Recurring non-pay a year", money(f.recurring_non_pay_annual)],
-        ["Recurring cost a year (pay + non-pay)", money(f.recurring_annual_total)],
-        ["Annualised comparison cost (ranking only)", money(f.annualised_comparison_cost) + " = recurring + capital / " + f.capital_years + " years"],
-        ["Not costed", f.not_costed.length ? f.not_costed.join("; ") : "nothing - fully costed"]], [1]));
-      parts.push(h("p", { class: "ms-hint", text: f.method }));
-      const v = (res.validation && res.validation.packages || []).find(x => JSON.stringify(x.ids) === JSON.stringify(rec.ids));
-      parts.push(table("Modelled impact (" + res.bounds.replications_per_package + " matched selection weeks" + (v ? "; and " + res.validation.seeds.length + " separate validation weeks" : "") + ")",
-        ["Measure", "Baseline", "Package", "Difference (simulation-noise interval)"], [
-          ["Completed within " + res.target.minutes + " min", measureCell(res.baseline.measure), measureCell(rec.measure), deltaCell(rec.delta_vs_baseline_pts)],
-          v ? ["… on the separate validation weeks", measureCell(res.validation.baseline.measure), measureCell(v.measure), deltaCell(v.delta_vs_baseline_pts)] : null,
-          ["Over 12 hours from arrival", fmt(res.baseline.twelve_hour.mean, 1) + "%", fmt(rec.twelve_hour.mean, 1) + "%", ""],
-          ["Left without being seen", fmt(res.baseline.lwbs.mean, 1) + "%", fmt(rec.lwbs.mean, 1) + "%", signed(rec.guardrails.lwbs_delta_pts, 1, " pts")],
-          ["Unfinished when a week ends", fmt(res.baseline.wip_end.mean, 0), fmt(rec.wip_end.mean, 0), signed(rec.guardrails.wip_delta, 1)],
-          ["Median time in department", fmt(res.baseline.duration_median.mean, 0) + " min", fmt(rec.duration_median.mean, 0) + " min", ""],
-          ["Guardrails (walk-outs, unfinished)", "", rec.guardrails.ok ? "kept" : "BREACHED", ""],
-        ].filter(Boolean), [1, 2, 3]));
-      const openBtn = h("button", { class: "ms-btn-secondary", type: "button", text: "Open this package in the rota editor" });
-      openBtn.addEventListener("click", () => { S.draft = clone(res.package_inputs); renderEditor(); schedulePreview(); $("#editorCard").scrollIntoView(); $("#rotaTable").focus(); });
+      renderJourney({ now: res.baseline.measure.mean, target: tgt, changes: rec.ids.map(id => leverInfo(id).name),
+        expected: rec.measure.mean, delta: rec.delta_vs_baseline_pts && rec.delta_vs_baseline_pts.mean, finance: f });
+      parts.push(h("h4", { text: res.outcome === "met" ? "The lowest-cost package" : "The strongest package tested" }));
+      parts.push(h("ul", { class: "ms-changes" }, rec.ids.map(id => h("li", {}, h("strong", { text: leverInfo(id).name }), h("span", { text: leverInfo(id).change })))));
+      const b = res.baseline;
+      parts.push(table("Effect on patients, typical day", ["", "Now", "With these changes"], [
+        ["Left within " + timeWords(tgt.minutes), fmt(b.measure.mean, 1) + "%", fmt(rec.measure.mean, 1) + "% (" + deltaWords(rec.delta_vs_baseline_pts) + ")"],
+        ["Over 12 hours in the department", fmt(b.twelve_hour.mean, 1) + "%", fmt(rec.twelve_hour.mean, 1) + "%"],
+        ["Left without being seen", fmt(b.lwbs.mean, 1) + "%", fmt(rec.lwbs.mean, 1) + "%"],
+        ["Time in department, typical patient", fmt(b.duration_median.mean, 0) + " min", fmt(rec.duration_median.mean, 0) + " min"],
+      ], [1, 2]));
+      const rt = retestSentence(v);
+      if (rt) parts.push(h("p", { class: "ms-hint", text: rt }));
+      parts.push(table("What it costs", ["", "Amount"], [
+        ["Extra staff", f.extra_wte ? fmt(f.extra_wte, 1) + " whole-time equivalent (" + fmt(f.extra_paid_hours_week, 0) + " paid hours a week)" : "none"],
+        ["Extra pay a year", money(f.annual_pay_delta)],
+        ["One-off building and equipment cost", money(f.capital)],
+        ["Other running costs a year", money(f.recurring_non_pay_annual)],
+        ["Total running cost a year", money(f.recurring_annual_total)],
+        f.not_costed.length ? ["Not costed yet", f.not_costed.join("; ")] : null].filter(Boolean), [1]));
+      const det = [];
+      if (f.rota_rows.length) det.push(table("Extra shifts (a planning rota, not named staff)",
+        ["Role", "Area", "Days", "Hours", "Staff now", "Staff with package", "Extra paid hours a week", "Whole-time equivalent", "Cost a week", "Cost a year", "Why"],
+        f.rota_rows.map(rw => [rw.role_label, rw.area, rw.days, HHMM(rw.start * 60) + " to " + HHMM(rw.end * 60), String(rw.baseline_staff), String(rw.proposed_staff),
+          fmt(rw.extra_paid_hours_week, 1), fmt(rw.wte, 2), money(rw.weekly_cost), money(rw.annual_cost), rw.why]), [4, 5, 6, 7, 8, 9]));
+      else det.push(h("p", { class: "ms-hint", text: "This package needs no extra shifts." }));
+      if (f.estate_rows.length) det.push(table("Extra space, equipment and beds",
+        ["Item", "Change", "Now and after", "One-off cost", "Running cost a year", "Note"],
+        f.estate_rows.map(e => [e.label, "+" + e.quantity + " " + e.unit + (e.quantity === 1 ? "" : "s"), e.before + " to " + e.after, money(e.capital), money(e.recurring_non_pay_annual), e.note || ""]), [3, 4]));
+      det.push(h("p", { class: "ms-hint", text: "To compare packages fairly, one-off costs are spread over " + f.capital_years + " years and added to the running cost: " +
+        money(f.annualised_comparison_cost) + " a year for this package. Pay is a cost, not a saving." }));
+      parts.push(h("details", { class: "ms-details" }, h("summary", { text: "Show the extra shifts and the cost breakdown" }), ...det));
       const saveBtn = h("button", { class: "ms-btn", type: "button", text: "Save as a scenario" });
       saveBtn.addEventListener("click", async () => {
         try {
-          const d = await api("/api/m/search/save", { scenario_id: S.current.id, lever_ids: rec.ids, name: (res.outcome === "met" ? "Package for " : "Best tested package for ") + res.target.pct + "% (" + res.bounds.mode + ")" });
+          const d = await api("/api/m/search/save", { scenario_id: S.current.id, lever_ids: rec.ids, target: tgt, mode: res.bounds.mode, outcome: res.outcome });
           await loadScenarios();
-          $("#scenarioMsg").textContent = "Saved \"" + d.scenario.name + "\". Apply it from the Scenarios screen or the scenario picker.";
-          saveBtn.replaceWith(h("p", { class: "ms-success", text: "Saved as \"" + d.scenario.name + "\". Choose it in the scenario picker to apply it to every screen." }));
+          saveBtn.replaceWith(h("p", { class: "ms-success", text: "Saved as \"" + d.scenario.name + "\". Choose it in the scenario list at the top to see it on every page." }));
         } catch (e) { showError("#tgtError", e); }
       });
-      const retimeBtn = h("button", { class: "ms-btn-secondary", type: "button", text: "Build a re-timing alternative (same paid hours)" });
+      const openBtn = h("button", { class: "ms-btn-secondary", type: "button", text: "Open in the rota editor" });
+      openBtn.addEventListener("click", () => { S.draft = clone(res.package_inputs); renderEditor(); schedulePreview(); $("#editorCard").scrollIntoView(); $("#rotaTable").focus(); });
+      const retimeBtn = h("button", { class: "ms-btn-secondary", type: "button", text: "Move existing shifts instead (no extra hours)" });
       retimeBtn.addEventListener("click", async () => {
         try {
           const d = await api("/api/m/retime", { scenario_id: S.current.id, lever_ids: rec.ids });
           S.draft = d.inputs; renderEditor(); schedulePreview();
           $("#draftResult").replaceChildren(h("div", { class: "ms-info" }, h("p", { text: d.note }),
             h("ul", { class: "ms-list" }, d.moves.map(mv => h("li", { text: "Move " + mv.count + " " + mv.role + " (" + mv.days + ") from " + mv.from + " to " + mv.to })),
-              d.infeasible.map(x => h("li", { text: "Not re-timed - " + x }))),
-            h("p", { class: "ms-hint", text: "Change in paid hours a week: " + fmt(d.paid_hours_delta, 1) + ". Simulate it to see its effect." })));
+              d.infeasible.map(x => h("li", { text: "Can't be moved: " + x }))),
+            h("p", { class: "ms-hint", text: "Change in paid hours a week: " + fmt(d.paid_hours_delta, 1) + ". Run these changes to see the effect." })));
           $("#editorCard").scrollIntoView();
         } catch (e) { showError("#tgtError", e); }
       });
-      parts.push(h("div", { class: "ms-actions" }, openBtn, retimeBtn, saveBtn));
+      parts.push(h("div", { class: "ms-actions" }, saveBtn, openBtn, retimeBtn));
+    } else {
+      renderJourney({ now: res.baseline.measure.mean, target: tgt });
     }
     if (res.limits) {
-      parts.push(h("h4", { text: "What limits it (evidence from the best package's run)" }));
+      parts.push(h("h4", { text: "What still holds performance back" }));
       parts.push(h("ul", { class: "ms-list" },
-        res.limits.top_waiting_states.slice(0, 3).map(x => h("li", { text: x.label + ": " + fmt(x.patient_hours_per_day, 0) + " waiting patient-hours a day" })),
-        res.limits.busy_resources.slice(0, 4).map(x => h("li", { text: labelFor(x.resource) + " busy " + fmt(x.utilisation, 0) + "% of the time" })),
+        res.limits.top_waiting_states.slice(0, 3).map(x => h("li", { text: capFirst(waitPhrase(x.label)) + ": about " + fmt(x.patient_hours_per_day, 0) + " hours of waiting a day" })),
         res.limits.fixed_in_this_model.map(t => h("li", { text: t }))));
     }
     if ((res.feasible || []).length > 1 || (res.partially_costed_feasible || []).length) {
-      parts.push(table("Other packages that meet the target and keep the guardrails, ranked by annualised comparison cost",
-        ["Rank", "Changes", "Within target", "Recurring a year", "Capital", "Annualised"],
-        res.feasible.map((p, k) => [String(k + 1), p.titles.join(" + "), measureCell(p.measure), money(p.finance.recurring_annual_total), money(p.finance.capital), money(p.finance.annualised_comparison_cost)]), [2, 3, 4, 5]));
-      if ((res.partially_costed_feasible || []).length) parts.push(table("Meets the target but PARTIALLY COSTED (never ranked as cheapest)",
-        ["Changes", "Within target", "Not costed"], res.partially_costed_feasible.map(p => [p.titles.join(" + "), measureCell(p.measure), p.finance.not_costed.join("; ")])));
+      parts.push(table("Other packages that also reach the target, cheapest first",
+        ["", "Changes", "Left within " + timeWords(tgt.minutes), "Running cost a year", "One-off cost"],
+        res.feasible.map((p, k) => [String(k + 1), p.ids.map(id => leverInfo(id).name).join("; "), fmt(p.measure.mean, 1) + "%", money(p.finance.recurring_annual_total), money(p.finance.capital)]), [2, 3, 4]));
+      if ((res.partially_costed_feasible || []).length) parts.push(table("Also reach the target, but some costs are missing",
+        ["Changes", "Left within " + timeWords(tgt.minutes), "Not costed"], res.partially_costed_feasible.map(p => [p.ids.map(id => leverInfo(id).name).join("; "), fmt(p.measure.mean, 1) + "%", p.finance.not_costed.join("; ")])));
     }
-    if (res.singles) parts.push(h("details", { class: "ms-details" }, h("summary", { text: "Each change tested on its own (" + res.singles.length + ")" }),
-      table(null, ["Change", "Within target", "Difference vs baseline", "Reading"], res.singles.map(s => [s.titles[0], measureCell(s.measure), deltaCell(s.delta_vs_baseline_pts),
-        s.delta_vs_baseline_pts && s.delta_vs_baseline_pts.ci_low !== undefined && s.delta_vs_baseline_pts.ci_low <= 0 && s.delta_vs_baseline_pts.ci_high >= 0
-          ? "No clear effect on its own (may not be the binding constraint; can still matter in combination)" : (s.delta_vs_baseline_pts && s.delta_vs_baseline_pts.mean > 0 ? "Helps on its own" : "Worse on its own")]), [1, 2]),
-      h("p", { class: "ms-hint", text: "A change that does nothing on its own is still tried in combination: extra space may only help once the staff to open it are there." })));
-    parts.push(h("details", { class: "ms-details" }, h("summary", { text: "Search method, bounds and limits" }),
-      h("p", { class: "ms-hint", text: res.bounds.note }),
-      h("p", { class: "ms-hint", text: "Changes tested: " + res.bounds.levers.map(l => l.title).join("; ") + ". Up to " + res.bounds.max_steps + " changes per package; a step is kept only if it adds at least " + res.bounds.min_step_gain_pts + " percentage points. Selection seeds " + res.bounds.selection_seeds.join(", ") + "; validation seeds " + res.bounds.validation_seeds.join(", ") + ". Guardrails: walk-outs no more than " + res.bounds.guardrails.max_lwbs_increase_pts + " point higher; unfinished patients no more than " + res.bounds.guardrails.max_wip_increase_pct + "% higher." }),
-      h("pre", { class: "ms-hint", text: res.method })));
+    if (res.singles) parts.push(h("details", { class: "ms-details" }, h("summary", { text: "Each change on its own" }),
+      table(null, ["Change", "Left within " + timeWords(tgt.minutes), "Difference", "What it means"], res.singles.map(s => {
+        const d = s.delta_vs_baseline_pts;
+        const reading = d && d.ci_low !== undefined && d.ci_low <= 0 && d.ci_high >= 0 ? "No clear effect on its own" : (d && d.mean > 0 ? "Helps on its own" : "Makes things worse on its own");
+        return [leverInfo(s.ids[0]).name, fmt(s.measure.mean, 1) + "%", deltaWords(d), reading];
+      }), [1, 2]),
+      h("p", { class: "ms-hint", text: "A change with no clear effect on its own can still help in a package: for example, extra space only helps once there are staff to open it." })));
+    parts.push(h("details", { class: "ms-details" }, h("summary", { text: "How the search works" }),
+      h("p", { text: "The model tries each change below on its own, then builds packages one change at a time, keeping a change only if it adds at least " +
+        res.bounds.min_step_gain_pts + " points. Every package is run in full, and the best ones are re-tested on different weeks so a lucky result isn't mistaken for a real one. " +
+        "Packages that increase the number of patients leaving without being seen, or leave more patients in the department, are ruled out. It only tests these changes, at these sizes, so \"not reached\" doesn't mean the target is impossible in practice." }),
+      h("ul", { class: "ms-list" }, res.bounds.levers.map(l => h("li", { text: leverInfo(l.id).name + ": " + leverInfo(l.id).change })))));
     box.replaceChildren(...parts);
   }
 
@@ -1358,11 +1537,11 @@
   }
   function renderEditor() {
     const d = S.draft;
-    $("#editorSource").textContent = "Editing a draft copy of \"" + S.current.name + "\". Nothing changes on other screens until you simulate and save. Rota provenance: " + S.meta.rota_provenance;
-    $("#rotaConvention").textContent = S.meta.rota_convention + " Counts are staff on shift; a blank count is an error (enter 0 if nobody is rostered).";
+    $("#editorSource").textContent = "You're changing a copy of \"" + S.current.name + "\". Nothing else changes until you run these changes and save them. The rota is illustrative, not a real roster.";
+    $("#rotaConvention").textContent = "Whole hours only. A shift that ends at or before its start time runs past midnight. Enter 0 if nobody is on.";
     const roleOpts = Object.entries(S.meta.roles);
     const tbl = $("#rotaTable");
-    const head = h("thead", {}, h("tr", {}, ["Role", "Area", "Days", "Start", "End", "Staff", "Unpaid break (min)", ""].map(c => h("th", { scope: "col", text: c }))));
+    const head = h("thead", {}, h("tr", {}, ["Role", "Area", "Days", "Start", "End", "Staff", "Unpaid break (minutes)", ""].map(c => h("th", { scope: "col", text: c }))));
     const body = h("tbody");
     d.rota.forEach((row, i) => {
       const role = h("select", { class: "role", "aria-label": "Role, row " + (i + 1) }, roleOpts.map(([k, v]) => h("option", { value: k, text: v.label })));
@@ -1399,23 +1578,23 @@
   }
   function renderCostEditor() {
     const ct = S.draft.cost_table;
-    $("#costInclusions").textContent = S.meta.cost_status + " " + S.meta.cost_inclusions + " A blank rate means NOT COSTED (never £0); 0 means £0.";
+    $("#costInclusions").textContent = "These rates are illustrative, not actual NHS pay rates. Leave a rate blank if you don't know it: it shows as \"not costed\" rather than £0. An all-in rate, if entered, is used as it is.";
     const rates = (S.preview && S.preview.rates) || {};
     const rows = Object.entries(ct.roles).map(([role, e]) => {
       const lbl = (S.meta.roles[role] || {}).label || role;
       const f = (k, step) => numInput(e[k], k.replace(/_/g, " ") + ", " + lbl, (v) => { e[k] = v; }, { step });
       const er = rates[role];
       return [lbl, f("base_hourly_rate", 0.5), f("employer_on_cost_pct", 1), f("enhancement_pct", 1), f("agency_share_pct", 1), f("agency_hourly_rate", 0.5),
-        f("fully_loaded_hourly_rate", 0.5), f("contracted_hours_per_week", 0.5), er ? (er.rate === null ? "not costed" : "£" + er.rate.toFixed(2)) : "–"];
+        f("fully_loaded_hourly_rate", 0.5), f("contracted_hours_per_week", 0.5), er ? (er.rate === null ? "not costed" : "£" + er.rate.toFixed(2)) : "-"];
     });
-    $("#costTable").replaceChildren(...Array.from(table(null, ["Role", "Basic £/h", "On-cost %", "Enhancement %", "Bank/agency share %", "Agency £/h", "Fully loaded £/h (overrides)", "Contracted h/week", "Effective £/h"], rows).firstChild.childNodes));
+    $("#costTable").replaceChildren(...Array.from(table(null, ["Role", "Basic £ an hour", "On-costs %", "Unsocial hours %", "Bank or agency share %", "Agency £ an hour", "All-in £ an hour", "Contracted hours a week", "Cost per hour"], rows).firstChild.childNodes));
   }
   function renderCapEditor() {
-    const d = S.draft, prov = S.meta.capacity_provenance;
-    $("#capTable").replaceChildren(...Array.from(table("Physical spaces (0 = we don't have this)", ["Space", "Count", "Source"],
+    const d = S.draft;
+    $("#capTable").replaceChildren(...Array.from(table("Spaces (0 means the department doesn't have this)", ["Space", "Number"],
       Object.entries(d.capacity).filter(([k]) => k !== "minor_injury_space").map(([k, v]) =>
-        [labelFor(k), numInput(v, "Count, " + labelFor(k), (x) => { d.capacity[k] = x === null ? "" : x; }, { step: 1 }), prov[k] || "Scenario input"])).firstChild.childNodes));
-    $("#ratioTable").replaceChildren(...Array.from(table("Space-staffing ratios (editable planning assumptions, not safe-staffing standards)", ["Space", "Opened by", "Spaces per member of staff"],
+        [labelFor(k), numInput(v, "Number of " + labelFor(k), (x) => { d.capacity[k] = x === null ? "" : x; }, { step: 1 })])).firstChild.childNodes));
+    $("#ratioTable").replaceChildren(...Array.from(table("How many spaces one member of staff can open (a planning assumption, not a safe staffing standard)", ["Space", "Opened by", "Spaces per person"],
       d.space_staffing.map(e => [labelFor(e.space), labelFor(e.staff), numInput(e.spaces_per_staff, "Spaces per staff, " + labelFor(e.space), (x) => { e.spaces_per_staff = x; }, { step: 0.5, min: 0.5 })])).firstChild.childNodes));
     const sd = d.sdec, ds = d.downstream;
     const sOpen = hourSelect(sd.hours[0], false, "SDEC opens"), sClose = hourSelect(sd.hours[1], true, "SDEC closes");
@@ -1424,19 +1603,19 @@
     const f = (lbl, el) => h("div", { class: "ms-field" }, h("label", { text: lbl }), el);
     const beds = numInput(ds.inpatient_beds, "Inpatient beds", (x) => { ds.inpatient_beds = x; }, { step: 1 });
     const disch = numInput(ds.ward_discharge_capacity_per_hour, "Ward discharges per hour at baseline occupancy", (x) => { ds.ward_discharge_capacity_per_hour = x; }, { step: 0.1 });
-    const dem = numInput(d.cohort.demand_scale ?? 1, "Demand scale", (x) => { d.cohort.demand_scale = x; }, { step: 0.05, min: 0.2 });
+    const dem = numInput(d.cohort.demand_scale ?? 1, "Demand, 1 is today's level", (x) => { d.cohort.demand_scale = x; }, { step: 0.05, min: 0.2 });
     $("#otherInputs").replaceChildren(f("SDEC opens", sOpen), f("SDEC closes", sClose), f("Inpatient beds", beds), f("Ward discharges an hour", disch),
-      f("Demand scale (1 = baseline demand)", dem), h("p", { class: "ms-hint", text: "Changing demand changes the comparison basis - the baseline keeps 1.0. " + S.meta.downstream.aggregate_assumption }));
+      f("Demand (1 is today's level)", dem), h("p", { class: "ms-hint", text: "If you change demand, the comparison is no longer like for like, because the baseline stays at today's level. The hospital's beds are treated as one pool." }));
   }
   function renderEstateEditor() {
     const it = S.draft.estates.items;
-    $("#estateNote").textContent = S.draft.estates.status + " " + S.draft.estates.annualisation.note;
-    $("#estateTable").replaceChildren(...Array.from(table(null, ["Item", "Unit", "One-off capital per unit", "Recurring non-pay a year per unit", "Note"],
+    $("#estateNote").textContent = "Illustrative costs. A blank cost shows as \"not costed\", never £0.";
+    $("#estateTable").replaceChildren(...Array.from(table(null, ["Item", "Unit", "One-off cost each", "Running cost a year each", "Note"],
       Object.entries(it).map(([k, e]) => [e.label, e.unit, numInput(e.capital, "Capital, " + e.label, (x) => { e.capital = x; }, { step: 100 }),
         numInput(e.recurring_non_pay, "Recurring, " + e.label, (x) => { e.recurring_non_pay = x; }, { step: 100 }), e.note || e.staffing_not_modelled || ""])).firstChild.childNodes));
   }
 
-  // instant preview: coverage and cost, no simulation; stale replies dropped
+  // instant update of staffing and cost as the draft changes; stale replies dropped
   function schedulePreview() { clearTimeout(S._pv); S._pv = setTimeout(previewDraft, 250); }
   async function previewDraft() {
     const my = ++S.seq.preview;
@@ -1449,7 +1628,7 @@
     $$("#rotaTable tr").forEach(tr => tr.classList.remove("ms-row-error"));
     const box = $("#rotaErrors");
     if (d.errors && d.errors.length) {
-      showError(box, new ApiError("Fix these before simulating:", 400, d.errors));
+      showError(box, new ApiError("Please fix these first:", 400, d.errors));
       d.errors.forEach(e => { if (e.field === "rota" && e.row) { const tr = $("#rota-row-" + e.row); if (tr) tr.classList.add("ms-row-error"); } });
     } else box.hidden = true;
     renderDraftBanner();
@@ -1460,7 +1639,7 @@
     if (!S.preview || !S.preview.rates) return;
     $$("#costTable tbody tr").forEach((tr, i) => {
       const role = Object.keys(S.draft.cost_table.roles)[i], er = S.preview.rates[role], td = tr.lastChild;
-      if (td) td.textContent = er ? (er.rate === null ? "not costed" : "£" + er.rate.toFixed(2)) : "–";
+      if (td) td.textContent = er ? (er.rate === null ? "not costed" : "£" + er.rate.toFixed(2)) : "-";
     });
   }
   function renderDraftBanner() {
@@ -1469,21 +1648,21 @@
     const finDirty = S.preview && S.preview.finance_hash !== (S.current.finance_hash || S.preview.finance_hash);
     if (!dirty && !finDirty) { b.hidden = true; return; }
     b.hidden = false;
-    b.replaceChildren(h("strong", { text: dirty ? "Changes not yet simulated." : "Cost changes only." }), " ",
-      dirty ? (S.preview.simulated ? "These inputs have been simulated but not saved: save them as a scenario to apply them to every screen. Overview and Patient flow still show \"" + S.current.name + "\"."
-        : "Coverage and cost below update instantly; performance on every screen is still the last completed simulation of \"" + S.current.name + "\".")
-        : "Cost edits re-price everything instantly and never change simulated performance.");
+    b.replaceChildren(h("strong", { text: dirty ? (S.preview.simulated ? "Changes run but not saved." : "Changes not run yet.") : "Cost changes only." }), " ",
+      dirty ? (S.preview.simulated ? "Save them as a scenario to see them on every page. The Overview and Patient flow still show \"" + S.current.name + "\"."
+        : "The staffing chart and costs below update straight away. The Overview and Patient flow still show \"" + S.current.name + "\" until you run and save these changes.")
+        : "Costs update straight away; patient flow doesn't change.");
   }
 
   function renderCostSummary() {
     const p = S.preview;
     const c = p.cost, b = p.baseline_cost;
-    const nc = c.uncosted_roles.length ? "Not costed: " + c.uncosted_roles.map(r => (S.meta.roles[r] || {}).label || r).join(", ") + " (their hours are counted; their pay is not priced at £0)." : "Every rota role is costed.";
-    $("#costSummary").replaceChildren(table("Pay for this rota (instant, from the cost table above)", ["Measure", "This draft", "Demo baseline rota (same rates)", "Difference"], [
+    const nc = c.uncosted_roles.length ? "Not costed: " + c.uncosted_roles.map(r => (S.meta.roles[r] || {}).label || r).join(", ") + ". Their hours count, but their pay isn't priced." : "Every role on the rota is costed.";
+    $("#costSummary").replaceChildren(table("Pay for this rota", ["", "Your changes", "Baseline", "Difference"], [
       ["Pay a week", money(c.weekly_total), money(b.weekly_total), money(c.weekly_total - b.weekly_total)],
       ["Pay a year (" + c.weeks_per_year + " weeks)", money(c.annual_total), money(b.annual_total), money(c.annual_total - b.annual_total)],
       ["Paid hours a week", fmt(Object.values(c.paid_hours_by_role).reduce((a, x) => a + x, 0), 0), fmt(Object.values(b.paid_hours_by_role).reduce((a, x) => a + x, 0), 0), ""]], [1, 2, 3]),
-      h("p", { class: "ms-hint", text: nc + " Annual pay is a cost, not a cashable saving; no return on investment is calculated." }));
+      h("p", { class: "ms-hint", text: nc + " Both use the same pay rates." }));
   }
 
   function renderCoverageImpl() {
@@ -1498,21 +1677,26 @@
       dsel.onchange = () => { S.covDay = +dsel.value; renderCoverageImpl(); };
     }
     if (!S.covGroup || !keys.includes(S.covGroup)) S.covGroup = keys.includes("ed_nurse") ? "ed_nurse" : keys[0];
-    gsel.value = S.covGroup; dsel.value = S.covDay;
-    const st = p.staffing[S.covGroup], a = S.covDay * 24;
+    // the staffing chart follows the day chosen at the top until a day is picked here
+    const rp = S.result && S.result.replay;
+    const cd = S.covDay !== null ? S.covDay : (rp ? Math.floor((rp.t0 + S.day * 1440) / 1440) % 7 : 0);
+    gsel.value = S.covGroup; dsel.value = cd;
+    const st = p.staffing[S.covGroup], a = cd * 24;
     columnChart($("#chartCoverage"), {
-      labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 190, yTitle: "staff on shift",
-      series: [{ name: "Demo baseline", values: st.baseline_week.slice(a, a + 24), color: token("--chart-1") },
-               { name: "This draft", values: st.week.slice(a, a + 24), color: token("--chart-2") }],
+      labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 200, yTitle: "staff on shift",
+      series: [{ name: "Baseline", values: st.baseline_week.slice(a, a + 24), color: token("--chart-1") },
+               { name: "Your changes", values: st.week.slice(a, a + 24), color: token("--chart-2") }],
       xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null,
-      tipTitle: (i) => st.label + ", " + DAYNAMES[S.covDay] + " " + HHMM(i * 60),
+      tipTitle: (i) => st.label + ", " + DAYNAMES[cd] + " " + HHMM(i * 60),
     });
+    // the selected day only: lowest to highest number open during that day
+    const day = (w) => w && w.length ? w.slice(a, a + 24) : null;
+    const rng = (w) => w && w.length ? (Math.min(...w) === Math.max(...w) ? String(Math.max(...w)) : Math.min(...w) + " to " + Math.max(...w)) : "-";
     const rows = Object.entries(p.spaces).map(([k, s]) => {
-      const ow = s.open_week || [], bw = s.baseline_open_week || ow, pw = s.physical_week;
-      const rng = (w) => w && w.length ? (Math.min(...w) === Math.max(...w) ? String(Math.max(...w)) : Math.min(...w) + "–" + Math.max(...w)) : "–";
-      return [labelFor(k), pw ? rng(pw) : "–", rng(ow), rng(bw)];
+      const ow = day(s.open_week) || [], bw = day(s.baseline_open_week) || ow, pw = day(s.physical_week);
+      return [labelFor(k), pw ? String(Math.max(...pw)) : "-", rng(ow), rng(bw)];
     });
-    $("#spaceSummary").replaceChildren(...[table("Spaces: physical and open (open = covered by staff on shift; ranges over the week; 0 when the area is closed or unstaffed)", ["Space", "Physical", "Open in this draft", "Open in the baseline"], rows, [1, 2, 3]),
+    $("#spaceSummary").replaceChildren(...[table("Spaces open on " + DAYNAMES[cd] + " (a space needs staff on shift to open; 0 when an area is closed)", ["Space", "Spaces in total", "Open with your changes", "Open in the baseline"], rows, [1, 2, 3]),
       (p.warnings || []).length ? h("div", { class: "ms-warning" }, h("ul", {}, p.warnings.map(w => h("li", { text: w })))) : null].filter(Boolean));
   }
 
@@ -1524,58 +1708,84 @@
       let d = await api("/api/m/run", { inputs: S.draft });
       if (d.status !== "done") {
         S.draftJob = d.job.id; $("#draftProgress").hidden = false;
-        await pollJob(d.job.id, (j) => { $("#draftProgressText").textContent = j.message; $("#draftBar").value = j.progress; });
+        await pollJob(d.job.id, (j) => { $("#draftProgressText").textContent = "Running your changes"; $("#draftBar").value = j.progress; });
       }
-      // the baseline must be simulated too for a matched comparison
+      // the baseline must have run too, for a like-for-like comparison
       const b = await api("/api/m/run", { scenario_id: "baseline" });
-      if (b.status !== "done") await pollJob(b.job.id, (j) => { $("#draftProgressText").textContent = "Baseline: " + j.message; $("#draftBar").value = j.progress; });
+      if (b.status !== "done") await pollJob(b.job.id, (j) => { $("#draftProgressText").textContent = "Running the baseline"; $("#draftBar").value = j.progress; });
       const cmp = await api("/api/m/compare-draft", { inputs: S.draft, request_id: my });
       if (my !== S.seq.draftcmp || cmp.model_hash !== S.draftHash || hash !== S.draftHash) return;     // edited since: discard
-      renderComparison($("#draftResult"), cmp);
+      renderOwnResult($("#draftResult"), cmp);
       schedulePreview();
     } catch (e) { if (my === S.seq.draftcmp) showError($("#draftResult"), e); }
     finally { $("#draftProgress").hidden = true; S.draftJob = null; }
   }
 
+  // your own changes, as the same journey: now -> target -> changes -> expected -> cost
+  function renderOwnResult(box, cmp) {
+    const base = cmp.rows.find(r => r.id === "baseline"), mine = cmp.rows.find(r => r.id === "draft");
+    if (!base || !mine) { box.replaceChildren(h("p", { class: "ms-warning", text: "These changes couldn't be compared with the baseline. Please try again." })); return; }
+    const t = cmp.target, now = base.target_measure.mean, exp = mine.target_measure.mean, d = mine.delta_vs_baseline_pts;
+    renderJourney({ now, target: t, changes: cmp.changes || [], expected: exp, delta: d && d.mean,
+      finance: { recurring_annual_total: (mine.annual_pay_delta || 0) + (mine.recurring_non_pay_annual || 0), capital: mine.capital } });
+    const clear = d && d.ci_low !== undefined && (d.ci_low > 0 || d.ci_high < 0);
+    const verdict = (exp >= t.pct ? "This meets the " + t.pct + "% target. " : "This is still below the " + t.pct + "% target. ") +
+      (d ? "4-hour performance goes from " + fmt(now, 1) + "% to " + fmt(exp, 1) + "% (" + signed(d.mean, 1) + " points)" + (clear ? "." : ", which is within normal week-to-week variation, so it may make no real difference.") : "");
+    box.replaceChildren(
+      h("div", { class: exp >= t.pct ? "ms-success" : "ms-info" }, h("h4", { text: "Your changes" }),
+        h("ul", { class: "ms-list" }, (cmp.changes || []).map(c => h("li", { text: c }))), h("p", { text: verdict })),
+      table("Effect on patients, typical day", ["", "Baseline", "Your changes"], [
+        ["Left within " + timeWords(t.minutes), fmt(now, 1) + "%", fmt(exp, 1) + "%"],
+        ["Over 12 hours in the department", fmt(base.twelve_hour.mean, 1) + "%", fmt(mine.twelve_hour.mean, 1) + "%"],
+        ["Left without being seen", fmt(base.lwbs.mean, 1) + "%", fmt(mine.lwbs.mean, 1) + "%"],
+        ["Time in department, typical patient", fmt(base.duration_median.mean, 0) + " min", fmt(mine.duration_median.mean, 0) + " min"]], [1, 2]),
+      table("What it costs", ["", "Amount"], [
+        ["Extra paid hours a week", fmt(mine.extra_paid_hours_week, 0)],
+        ["Extra pay a year", money(mine.annual_pay_delta)],
+        ["One-off building and equipment cost", money(mine.capital)],
+        ["Other running costs a year", money(mine.recurring_non_pay_annual)],
+        mine.not_costed.length ? ["Not costed yet", mine.not_costed.join("; ")] : null].filter(Boolean), [1]),
+      h("p", { class: "ms-hint", text: cmp.note }));
+  }
+
+  // several scenarios side by side, against the baseline
   function renderComparison(box, cmp) {
     const rows = cmp.rows;
-    if (!rows.length) { box.replaceChildren(h("p", { class: "ms-warning", text: "Nothing to compare yet: " + (cmp.missing || []).map(m => m.name + " has not been simulated").join("; ") })); return; }
+    if (!rows.length) { box.replaceChildren(h("p", { class: "ms-warning", text: "Nothing to compare yet. Run " + (cmp.missing || []).map(m => "\"" + m.name + "\"").join(", ") + " first." })); return; }
     const t = cmp.target;
-    const head = ["Measure", ...rows.map(r => r.name + (r.result_source === "precomputed" ? " (precomputed)" : ""))];
+    const head = ["", ...rows.map(r => r.name)];
     const line = (label, f) => [label, ...rows.map(f)];
+    const status = (r) => { const s = statusFor(r.target_measure.mean, t.pct, r.target_status.status); return s ? s.text : "-"; };
     const body = [
-      line("Planning target", () => t.pct + "% within " + t.minutes + " min"),
-      line("Completed within target (mean, range across weeks)", r => measureCell(r.target_measure)),
-      line("Difference vs baseline (percentage points, noise interval)", r => r.id === "baseline" ? "–" : deltaCell(r.delta_vs_baseline_pts)),
-      line("Verdict", r => r.target_status.status),
-      line("Remaining gap to target (points)", r => fmt(r.remaining_gap_pts, 1)),
-      line("Median time in department", r => fmt(r.duration_median.mean, 0, " min")),
-      line("Median total waiting", r => fmt(r.total_wait_median.mean, 0, " min")),
-      line("Over 12 hours from arrival", r => fmt(r.twelve_hour.mean, 1, "%")),
+      line("Left within " + timeWords(t.minutes), r => fmt(r.target_measure.mean, 1) + "%"),
+      line("Change on the baseline", r => r.id === "baseline" ? "-" : signed(r.delta_vs_baseline_pts.mean, 1) + " points"),
+      line("Against the " + t.pct + "% target", status),
+      line("Gap to the target", r => r.remaining_gap_pts > 0 ? fmt(r.remaining_gap_pts, 1) + " points" : "none"),
+      line("Time in department, typical patient", r => fmt(r.duration_median.mean, 0, " min")),
+      line("Time spent waiting, median", r => fmt(r.total_wait_median.mean, 0, " min")),
+      line("Over 12 hours in the department", r => fmt(r.twelve_hour.mean, 1, "%")),
       line("Left without being seen", r => fmt(r.lwbs.mean, 1, "%")),
-      line("Unfinished when a week ends", r => fmt(r.wip_end.mean, 0)),
       line("Extra shifts a week", r => String(r.extra_shifts_week)),
-      line("Extra paid hours a week", r => fmt(r.extra_paid_hours_week, 1)),
+      line("Extra paid hours a week", r => fmt(r.extra_paid_hours_week, 0)),
       line("Extra pay a year", r => money(r.annual_pay_delta)),
-      line("Extra estate", r => r.estate.rows.length ? r.estate.rows.map(e => e.label + " " + (typeof e.change === "number" ? signed(e.change, 0) : e.change)).join("; ") : "none"),
-      line("One-off capital", r => money(r.capital)),
-      line("Recurring non-pay a year", r => money(r.recurring_non_pay_annual)),
-      line("Not costed", r => r.not_costed.length ? r.not_costed.join("; ") : "–"),
-      line("Simulated weeks (seeds)", r => r.replications + " (" + r.seeds[0] + "–" + r.seeds[r.seeds.length - 1] + ")"),
+      line("Extra space or beds", r => r.estate.rows.length ? r.estate.rows.map(e => e.label + " " + (typeof e.change === "number" ? signed(e.change, 0) : e.change)).join("; ") : "none"),
+      line("One-off cost", r => money(r.capital)),
+      line("Other running costs a year", r => money(r.recurring_non_pay_annual)),
+      line("Not costed yet", r => r.not_costed.length ? r.not_costed.join("; ") : "-"),
     ];
-    box.replaceChildren(table("Compared with the demo baseline", head, body), h("p", { class: "ms-hint", text: cmp.note }));
+    box.replaceChildren(table("Compared with the baseline, typical day", head, body), h("p", { class: "ms-hint", text: cmp.note }));
   }
 
   async function draftSave() {
-    const name = window.prompt("Name for this scenario", "My scenario");
+    const name = window.prompt("Name this scenario", "My changes");
     if (name === null) return;
-    if (!name.trim()) { showError("#rotaErrors", new ApiError("A scenario needs a name.")); return; }
+    if (!name.trim()) { showError("#rotaErrors", new ApiError("Please give the scenario a name.")); return; }
     try {
       const d = await api("/api/m/scenarios", { name: name.trim(), inputs: S.draft });
       await loadScenarios();
-      const apply = h("button", { class: "ms-btn", type: "button", text: "Apply \"" + d.scenario.name + "\" to every screen" });
+      const apply = h("button", { class: "ms-btn", type: "button", text: "Show \"" + d.scenario.name + "\" on every page" });
       apply.addEventListener("click", () => applyScenario(d.scenario.id).then(() => selectTab("overview", true)).catch(e => showError("#globalError", e)));
-      $("#draftResult").replaceChildren(h("div", { class: "ms-success" }, h("p", { text: "Saved \"" + d.scenario.name + "\". The demo baseline is unchanged." }), apply));
+      $("#draftResult").replaceChildren(h("div", { class: "ms-success" }, h("p", { text: "Saved \"" + d.scenario.name + "\". The baseline hasn't changed." }), apply));
     } catch (e) { showError("#rotaErrors", e); }
   }
 
@@ -1617,56 +1827,79 @@
   }
 
   // ================================================================ scenarios
+  // each scenario as a card: what changes, why you would test it, what to look
+  // for, and its result once it has been run
   function renderScenarioTable() {
-    const tbl = $("#scenarioTable");
-    const head = h("thead", {}, h("tr", {}, ["Compare", "Scenario", "Kind", "Last changed", "Note", "Actions"].map(c => h("th", { scope: "col", text: c }))));
-    const body = h("tbody", {}, S.scenarios.map(sc => {
-      const cb = h("input", { type: "checkbox", "aria-label": "Compare " + sc.name, disabled: sc.id === "baseline" ? true : null, checked: S.compareSel.has(sc.id) ? true : null });
-      cb.addEventListener("change", () => { cb.checked ? S.compareSel.add(sc.id) : S.compareSel.delete(sc.id); });
-      const apply = h("button", { class: "ms-btn-small", type: "button", text: sc.id === S.applied ? "Applied" : "Apply", disabled: sc.id === S.applied ? true : null });
-      apply.addEventListener("click", () => applyScenario(sc.id).then(() => { renderScenarioTable(); $("#scenarioMsg").textContent = "Applied \"" + sc.name + "\" to every screen."; }).catch(e => showError("#globalError", e)));
-      const sim = h("button", { class: "ms-btn-small", type: "button", text: "Simulate" });
-      sim.addEventListener("click", async () => {
-        $("#scenarioMsg").textContent = "Simulating \"" + sc.name + "\"…";
-        try { const d = await api("/api/m/run", { scenario_id: sc.id }); if (d.status !== "done") await pollJob(d.job.id, j => { $("#scenarioMsg").textContent = sc.name + ": " + j.message; }); $("#scenarioMsg").textContent = "\"" + sc.name + "\" simulated."; }
-        catch (e) { $("#scenarioMsg").textContent = "Simulation failed: " + e.message; }
+    const box = $("#scenarioTable");
+    const cards = S.scenarios.map(sc => {
+      const isBase = sc.id === "baseline", info = sc.info || {}, res = sc.result;
+      const head = h("div", { class: "ms-sc-head" },
+        h("h3", { class: "ms-sc-title", text: sc.name }),
+        sc.id === S.applied ? h("span", { class: "ms-pill met", text: "On screen now" }) : null,
+        !res ? h("span", { class: "ms-pill near", text: "Not run yet" }) : null);
+      const parts = [head];
+      if (!isBase) parts.push(h("p", { class: "ms-sc-label", text: "What changes" }), h("ul", { class: "ms-list" }, (sc.changes || []).map(c => h("li", { text: c }))));
+      if (info.why) parts.push(h("p", { class: "ms-sc-label", text: isBase ? "What it is" : "Why test it" }), h("p", { text: info.why }));
+      if (info.look_for) parts.push(h("p", { class: "ms-sc-label", text: isBase ? "How to use it" : "What to look for" }), h("p", { text: info.look_for }));
+      if (res) {
+        const tw = timeWords(res.target.minutes);
+        parts.push(h("p", { class: "ms-sc-result" }, h("strong", { text: fmt(res.within_pct, 1) + "%" }), " left within " + tw + " on a typical day" +
+          (res.delta_pts !== undefined && res.delta_pts !== null ? " (" + signed(res.delta_pts, 1) + " points on the baseline)" : "") + "."));
+      }
+      const view = h("button", { class: "ms-btn-small", type: "button", text: sc.id === S.applied ? "On screen" : "View on every page", disabled: sc.id === S.applied ? true : null });
+      view.addEventListener("click", () => applyScenario(sc.id).then(() => { $("#scenarioMsg").textContent = "\"" + sc.name + "\" is now on every page."; }).catch(e => showError("#globalError", e)));
+      const run = res ? null : h("button", { class: "ms-btn-small", type: "button", text: "Run" });
+      if (run) run.addEventListener("click", async () => {
+        $("#scenarioMsg").textContent = "Running \"" + sc.name + "\"...";
+        try {
+          const d = await api("/api/m/run", { scenario_id: sc.id });
+          if (d.status !== "done") await pollJob(d.job.id, j => { $("#scenarioMsg").textContent = "Running \"" + sc.name + "\" (" + Math.round(100 * j.progress) + "%)"; });
+          $("#scenarioMsg").textContent = "\"" + sc.name + "\" has been run.";
+          await loadScenarios();
+        } catch (e) { $("#scenarioMsg").textContent = e.message; }
       });
-      const del = sc.id === "baseline" ? null : h("button", { class: "ms-btn-small", type: "button", text: "Delete" });
+      const cb = isBase ? null : h("input", { type: "checkbox", id: "cmp-" + sc.id, checked: S.compareSel.has(sc.id) ? true : null });
+      if (cb) cb.addEventListener("change", () => { cb.checked ? S.compareSel.add(sc.id) : S.compareSel.delete(sc.id); renderExports(); });
+      const del = isBase ? null : h("button", { class: "ms-btn-small", type: "button", text: "Delete" });
       if (del) del.addEventListener("click", async () => {
-        if (!window.confirm("Delete \"" + sc.name + "\"? The demo baseline is not affected.")) return;
+        if (!window.confirm("Delete \"" + sc.name + "\"? The baseline isn't affected.")) return;
         await api("/api/m/scenarios/" + encodeURIComponent(sc.id), undefined, "DELETE");
         S.compareSel.delete(sc.id);
         await loadScenarios(); if (S.applied !== $("#scenarioPick").value) await loadCurrent();
       });
-      return h("tr", {}, h("td", {}, cb), h("th", { scope: "row", text: sc.name }), h("td", { text: sc.kind === "precomputed" ? "precomputed (labelled)" : sc.kind }),
-        h("td", { text: sc.updated_at.replace("T", " ") }), h("td", { text: sc.note || "" }), h("td", {}, h("div", { class: "ms-actions" }, apply, sim, del)));
-    }));
-    tbl.replaceChildren(h("caption", { class: "ms-visually-hidden", text: "Saved scenarios" }), head, body);
+      parts.push(h("div", { class: "ms-actions ms-sc-actions" }, view, run,
+        cb ? h("label", { class: "ms-check", for: "cmp-" + sc.id }, cb, " Compare") : null, del));
+      return h("article", { class: "ms-sc-card" + (isBase ? " ms-sc-base" : ""), role: "listitem", "aria-label": sc.name }, ...parts);
+    });
+    box.replaceChildren(...cards);
+    renderExports();
+  }
+  function renderExports() {
     const sid = encodeURIComponent(S.applied);
     $("#exportLinks").replaceChildren(
-      h("li", {}, h("a", { href: "/api/m/export/inputs.json?scenario_id=" + sid, text: "Inputs (JSON) for the applied scenario" })),
-      h("li", {}, h("a", { href: "/api/m/export/rota.csv?scenario_id=" + sid, text: "Rota (CSV) for the applied scenario" })),
-      h("li", {}, h("a", { href: "/api/m/export/results.json?scenario_id=" + sid, text: "Results with metric definitions and run metadata (JSON)" })),
-      h("li", {}, h("a", { href: "/api/m/export/comparison.csv?scenario_id=" + sid + "&ids=" + [...S.compareSel].map(encodeURIComponent).join(","), id: "cmpCsv", text: "Comparison with the baseline (CSV)" })));
+      h("li", {}, h("a", { href: "/api/m/export/inputs.json?scenario_id=" + sid, text: "The scenario on screen: its inputs (JSON)" })),
+      h("li", {}, h("a", { href: "/api/m/export/rota.csv?scenario_id=" + sid, text: "The scenario on screen: its rota (CSV)" })),
+      h("li", {}, h("a", { href: "/api/m/export/results.json?scenario_id=" + sid, text: "The scenario on screen: its results (JSON)" })),
+      h("li", {}, h("a", { href: "/api/m/export/comparison.csv?scenario_id=" + sid + "&ids=" + [...S.compareSel].map(encodeURIComponent).join(","), id: "cmpCsv", text: "The ticked scenarios compared with the baseline (CSV)" })));
   }
   function wireScenarios() {
     $("#compareGo").addEventListener("click", async () => {
-      $("#compareOut").replaceChildren(h("p", { class: "ms-hint", text: "Comparing…" }));
+      if (!S.compareSel.size) { $("#compareOut").replaceChildren(h("p", { class: "ms-hint", text: "Tick one or more scenarios above to compare them with the baseline." })); return; }
+      $("#compareOut").replaceChildren(h("p", { class: "ms-hint", text: "Comparing..." }));
       try {
         const cmp = await api("/api/m/compare", { scenario_ids: [...S.compareSel], target: S.current.inputs.target });
         renderComparison($("#compareOut"), cmp);
-        if (cmp.missing.length) $("#compareOut").prepend(h("p", { class: "ms-warning", text: "Not simulated yet (use Simulate first): " + cmp.missing.map(m => m.name).join(", ") }));
-        renderScenarioTable();
+        if (cmp.missing.length) $("#compareOut").prepend(h("p", { class: "ms-warning", text: "Not run yet, so not compared: " + cmp.missing.map(m => m.name).join(", ") + ". Use Run on its card first." }));
       } catch (e) { showError($("#compareOut"), e); }
     });
     $("#resetBaseline").addEventListener("click", async () => {
-      if (!window.confirm("Reset to the demo baseline? Your saved scenarios are kept; the applied scenario returns to the baseline.")) return;
+      if (!window.confirm("Go back to the baseline? Your saved scenarios are kept.")) return;
       try { const d = await api("/api/m/reset", {}); await loadScenarios(); await loadCurrent(); $("#scenarioMsg").textContent = d.note; }
       catch (e) { showError("#globalError", e); }
     });
   }
 
-  // ================================================================ set up / assumptions
+  // ================================================================ data sources and model notes (not in the navigation)
   function renderSetup() {
     const m = S.meta, r = S.result;
     const dl = (pairs) => h("dl", { class: "ms-dl" }, pairs.flatMap(([k, v]) => [h("dt", { text: k }), h("dd", { text: v })]));
@@ -1702,59 +1935,67 @@
         Object.values(m.definitions).map(d => [d.label, d.population, d.units, d.window, d.aggregation, d.start, d.end, d.in_progress])));
     parts.push(h("p", { class: "ms-hint", text: "Uncertainty: the range shown is the lowest to highest of the simulated weeks; intervals are simulation-noise intervals of a mean (a t-interval over the weeks). Neither is a calibrated forecast of real weeks." }));
     $("#setupBody").replaceChildren(...parts);
-    $("#footerText").textContent = m.product_title + " - a fictional adult ED planning demonstrator built on a model derived from a real trust's data (see Set up / assumptions); not a live patient feed, not an NHS service and not a clinically validated staffing tool. Fixture " + m.fixture_version + ".";
+    $("#footerText").textContent = m.footer || "Midshire University Hospitals Trust Control";
   }
 
-  // ================================================================ Ask Qbo ED
-  function qboAdd(role, text, meta) {
-    const m = h("div", { class: "ms-qbo-msg " + role, text });
+  // ================================================================ Ask My ED
+  function myedAdd(role, text, meta) {
+    const m = h("div", { class: "ms-myed-msg " + role, text });
     if (meta) m.append(h("span", { class: "meta", text: meta }));
-    $("#qboLog").append(m); $("#qboLog").scrollTop = $("#qboLog").scrollHeight;
+    $("#myedLog").append(m); $("#myedLog").scrollTop = $("#myedLog").scrollHeight;
     return m;
   }
-  async function qboAsk(q) {
-    qboAdd("user", q);
-    const wait = qboAdd("bot", "Checking the model…");
+  async function myedAsk(q) {
+    $("#myedSuggestWrap").open = false;   // give the conversation the room once it starts
+    myedAdd("user", q);
+    const wait = myedAdd("bot", "Checking...");
     try {
-      const view = S.mode === "replay" && S.result ? { index: idx() } : null;
+      const view = S.result ? { mode: S.mode, day: S.day, index: S.mode === "replay" ? idx() : null } : null;
       const d = await api("/api/m/ask", { message: q, scenario_id: S.current.id, view });
       wait.textContent = d.reply;
-      wait.append(h("span", { class: "meta", text: (d.intent || "") + (d.run_id ? " · run " + d.run_id : "") + " · scenario " + (S.current ? S.current.name : "") }));
       const openPkg = (t) => {
-        const b = h("button", { class: "ms-link-btn", type: "button", text: "Open the package, rota and costs" });
+        const b = h("button", { class: "ms-link-btn", type: "button", text: "See the changes and costs" });
         b.addEventListener("click", () => { $("#tgtPct").value = t.pct; $("#tgtMin").value = t.minutes; $("#tgtMode").value = t.mode; selectTab("workforce"); runSearch(); });
         return b;
       };
       if (d.intent === "target" && d.search_key && d.target) wait.append(h("br"), openPkg(d.target));
       if (d.job) {
-        const prog = qboAdd("bot", "Working…");
-        const j = await pollJob(d.job.id, (jj) => { prog.textContent = jj.message + " (" + Math.round(100 * jj.progress) + "%)"; });
+        const prog = myedAdd("bot", "Working on it...");
+        const j = await pollJob(d.job.id, (jj) => { prog.textContent = "Working on it (" + Math.round(100 * jj.progress) + "%)"; });
         if (d.intent === "what_if") {
           let w;
           for (let k = 0; k < 120; k++) { w = await api("/api/m/ask/whatif/" + j.id); if (w.status === "done") break; await new Promise(r => setTimeout(r, 1000)); }
-          prog.textContent = w.reply || w.message || "No answer.";
+          prog.textContent = w.reply || w.message || "Sorry, I couldn't get an answer for that.";
         } else if (d.intent === "target") {
           const again = await api("/api/m/ask", { message: q, scenario_id: S.current.id });
           prog.textContent = again.reply;
           if (again.target) prog.append(h("br"), openPkg(again.target));
         }
       }
-    } catch (e) { wait.textContent = "Sorry - " + e.message; }
+    } catch (e) { wait.textContent = "Sorry, " + e.message.charAt(0).toLowerCase() + e.message.slice(1); }
   }
-  function wireQbo() {
-    const open = $("#qboOpen"), panel = $("#qboPanel");
+  function renderSuggestions() {
+    $("#myedSuggest").replaceChildren(...(S.meta.assistant_suggestions || []).map(q => {
+      const b = h("button", { type: "button", class: "ms-chip", text: q });
+      b.addEventListener("click", () => myedAsk(q));
+      return b;
+    }));
+  }
+  function wireAskMyEd() {
+    const open = $("#myedOpen"), panel = $("#myedPanel");
     const setOpen = (on) => {
       panel.hidden = !on; open.setAttribute("aria-expanded", on ? "true" : "false");
       if (on) {
-        if (!$("#qboLog").children.length) qboAdd("bot", "Hello. I'm Ask Qbo ED. I answer from the simulation results for the scenario on screen - for example \"how are we doing?\", \"where do patients wait longest?\", \"what if we add 2 nurses 08:00-20:00?\" or \"what workforce and space changes would get 90% through within four hours?\"");
-        $("#qboIn").focus();
+        if (!$("#myedLog").children.length) myedAdd("bot", "Hello. Ask me how the department is doing, where patients wait, what a change would do, or what it would take to reach a target. Here are some to start with.");
+        renderSuggestions();
+        $("#myedIn").focus();
       } else open.focus();
     };
     open.addEventListener("click", () => setOpen(panel.hidden));
-    $("#qboClose").addEventListener("click", () => setOpen(false));
+    $("#myedClose").addEventListener("click", () => setOpen(false));
     panel.addEventListener("keydown", (e) => { if (e.key === "Escape") setOpen(false); });
-    $("#qboForm").addEventListener("submit", (e) => {
-      e.preventDefault(); const q = $("#qboIn").value.trim(); if (!q) return; $("#qboIn").value = ""; qboAsk(q);
+    $("#myedForm").addEventListener("submit", (e) => {
+      e.preventDefault(); const q = $("#myedIn").value.trim(); if (!q) return; $("#myedIn").value = ""; myedAsk(q);
     });
   }
 
@@ -1762,10 +2003,10 @@
   async function init() {
     try {
       S.meta = await api("/api/m/meta");
-      $("#statusMore").textContent = "Fictional demonstration identity. Inputs: a real trust's published and extract data plus labelled illustrative assumptions (rota, costs, SDEC) - see Set up / assumptions.";
-      wireTabs(); wireContext(); wireEditor(); wireScenarios(); wireQbo(); wireFlowControls();
+      wireTabs(); wireContext(); wireEditor(); wireScenarios(); wireAskMyEd(); wireFlowControls();
       $("#expertView").addEventListener("toggle", () => { S.expertKey = null; if (S.result) renderExpert(); });
       await loadScenarios();
+      await loadBaselineResult();
       await loadCurrent();
       initTargetForm();
       renderSetup();

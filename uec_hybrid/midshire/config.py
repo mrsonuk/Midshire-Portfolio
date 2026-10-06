@@ -21,7 +21,7 @@ FIXTURE = DATA_DIR / "midshire_demo.json"
 PRECOMPUTED_DIR = DATA_DIR / "precomputed"
 
 PATHWAY_VERSION = "midshire-adult-pathway-v1"
-METRICS_VERSION = "midshire-metrics-v2"
+METRICS_VERSION = "midshire-metrics-v3"
 
 # parts of the scenario inputs that drive the SIMULATION (hashed for the cache)
 MODEL_KEYS = ("cohort", "areas", "capacity", "space_staffing", "rota", "downstream",

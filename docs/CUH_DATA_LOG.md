@@ -169,9 +169,9 @@ extract, which is the open question on the imaging denominator (see above).
 
 | Source | What it settled |
 |---|---|
-| **Diagnostic Imaging Dataset**, Table 1 modality × provider | CUH's ED imaging is ~⅓ of ALL trust imaging on both modalities (CT 32.3%, plain radiography 33.2%) — internally consistent, so `investigation_rates` is the right order of magnitude. It does **not** resolve the SDEC denominator: both readings land near a third. Also an adjacent-year comparison (DID is FY 2025/26, CHEQS is May–Aug 2026), so a magnitude check, not a reconciliation |
+| **Diagnostic Imaging Dataset**, Table 1 modality × provider | CUH's ED imaging is ~⅓ of ALL trust imaging on both modalities (CT 32.3%, plain radiography 33.2%) — internally consistent, so `investigation_rates` is the right order of magnitude. It does **not** resolve the SDEC denominator: both readings land near a third. Also an adjacent-year comparison (DID is FY 2025/26, CHEQS is May-Aug 2026), so a magnitude check, not a reconciliation |
 | **ECDS Activity**, Frailty tabs | **Dead end.** RGT records *no* Clinical Frailty Scale score at all — "No CFS Score Recorded" is 100% on both tabs (3,230 T1&2 and 4,160 all-types eligible attendances). The model's frailty area cannot be calibrated from ECDS and stays a template assumption. This is a CUH data-quality gap, not a modelling choice, and no other national file will fix it |
-| **UEC SitRep beds**, Apr–Jun 2026 | Adds two things KH03 does not carry: **11.76 escalation beds** on top of 1,086.67 core, and the **length-of-stay mix** — 60% of occupied beds held by 7+ day stayers, 38% by 14+, 27% by 21+. Occupancy 0.90 corroborates the KH03 89.26% the model uses |
+| **UEC SitRep beds**, Apr-Jun 2026 | Adds two things KH03 does not carry: **11.76 escalation beds** on top of 1,086.67 core, and the **length-of-stay mix** — 60% of occupied beds held by 7+ day stayers, 38% by 14+, 27% by 21+. Occupancy 0.90 corroborates the KH03 89.26% the model uses |
 
 The length-of-stay mix is the significant one. The SD model has a single
 `ward_discharge_capacity_per_hour` (template default 6.4) and no long-stay
@@ -191,13 +191,13 @@ analysis. Committed as `data/cuh/CUH_ED_Operational_Inputs.xlsx` and
 that had been bounding everything else.
 
 **Areas — three the model was running are not real.** EEMAC is a trial only
-(piloted 08:00–00:00, 22 spaces, needs a staffing uplift), CUH runs **no CDU**,
+(piloted 08:00-00:00, 22 spaces, needs a staffing uplift), CUH runs **no CDU**,
 and there is **no dedicated mental-health area** (one assessment room exists,
 but no area). Six areas are live: RAT, UTC, fit-to-sit, paeds, SDEC, frailty.
 
 **Hours — the template was wrong on three of them.** Fit-to-sit, paeds and SDEC
-all run **24/7**, against template assumptions of 08–22, 08–22 and 08–20. UTC
-runs two streams: minor injuries 08:00–00:30 and GP stream 08:00–22:30.
+all run **24/7**, against template assumptions of 08-22, 08-22 and 08-20. UTC
+runs two streams: minor injuries 08:00-00:30 and GP stream 08:00-22:30.
 
 **Capacity — real counts at last:**
 
@@ -246,14 +246,14 @@ the two gaps already logged above.
 
 ### SDEC: the model independently reproduced CUH's own finding
 
-`sdec_chair` is set to **60** (EAU3 30 + SAU 30). EAU4 is excluded at 93–96%
+`sdec_chair` is set to **60** (EAU3 30 + SAU 30). EAU4 is excluded at 93-96%
 occupied continuously, and Clinic 5 is excluded because only **0.5%** of its
 attendances arrive from ED (40 of 7,896 over six months). Full per-unit detail
 is in the workbook's `SDEC_Detail` tab.
 
 Two checks worth recording. Sixty chairs at the observed ~4.4h median SDEC stay
 implies roughly 327/day of theoretical throughput against 143.8 observed
-attendances/day — about 44% utilisation, sitting squarely inside the 35–69% the
+attendances/day — about 44% utilisation, sitting squarely inside the 35-69% the
 deck measures. And rerunning with `sdec_chair` back at 12 moved the 4-hour
 figure by **0.0 points**: SDEC chairs are not the binding constraint in the
 model either. That is the deck's own conclusion — "there is some capacity but
@@ -264,7 +264,7 @@ at independently.
 
 The ops return's one-line definition — *"at CUH this [RAT] is for assessment of
 patients arriving by ambulance only"* — turned out to matter more than it
-looked. The template routed **every** Acuity 1–3 patient through RAT. At the
+looked. The template routed **every** Acuity 1-3 patient through RAT. At the
 template's acuity mix that was borderline; at Cambridge's real mix (A2 18.9% +
 A3 42.2%) it pushed ~63% of adults (~250/day) into a step staffed for ~127/day.
 The queue grew for four simulated days without clearing, priority let sicker
@@ -280,7 +280,7 @@ there too.
 
 After the fix, on the full Cambridge build: RAT wait mean **6 min** (median 0,
 p95 29, max 167) — which is what CUH's own CHEQS medians say (arrival to initial
-assessment 0.5–2.3 min in the ambulance-fed areas). The 12-hour figure fell from
+assessment 0.5-2.3 min in the ambulance-fed areas). The 12-hour figure fell from
 19.1% to **8.0%** against the observed from-arrival ~10% — the old figure was
 mostly the artefact. 4-hour moved 61.9% → 65.6% (internal basis 60.9%); the
 residual is service-time calibration, which is what auto-calibration is for.
@@ -322,8 +322,8 @@ Cambridge department the ranking is quite different:
 | Move | Δ 4-hour | 95% lower bound |
 |---|---|---|
 | **20 more community / virtual-ward discharge places** | **+5.1** | **+2.0** |
-| Add 1 triage nurse 10:00–14:00 | +2.5 | −0.3 |
-| Add 1 EM junior doctor 08:00–15:00 | **−1.9** | −3.5 |
+| Add 1 triage nurse 10:00-14:00 | +2.5 | −0.3 |
+| Add 1 EM junior doctor 08:00-15:00 | **−1.9** | −3.5 |
 
 That top result is the model reading CUH's own data back: community capacity is
 **1/day**, so discharge places are the binding lever. And note the SHO scoring
@@ -424,7 +424,7 @@ tower with it in the flow. Optional components carry data-backed defaults where
 data exists:
 
 * **EEMAC** — off, but its capacity is recorded as the REAL pilot (22 spaces,
-  08:00–00:00), so enabling it later starts from the pilot, not a guess.
+  08:00-00:00), so enabling it later starts from the pilot, not a guess.
 * **CDU** — off, with deliberately NO count (the `cdu: no` toggle carries
   nonexistence; if ever enabled, the template default applies and is labelled an
   assumption — no CUH figure exists).
@@ -439,7 +439,7 @@ fit-to-sit area — a **LABELLED ASSUMPTION**, since no data says where CUH's
 overnight minors actually go. That question joins the CUH ask list:
 
 * **Where are minor injuries seen between 00:30 and 08:00?** (UTC minors hours
-  are 08:00–00:30; arrivals data shows minors do arrive overnight.)
+  are 08:00-00:30; arrivals data shows minors do arrive overnight.)
 
 Effect on the simulated Cambridge build: 4-hour 59.1% (vs 61.9% before the
 re-route; CUH internal basis 60.88%), LWBS 0.4%, 12-hour unchanged — and no
@@ -483,7 +483,7 @@ patients wait in a waiting area, not on a trolley.
 | 4-hour | 54.4% ±4.0 | 52.93% |
 | 12-hour (DTA) | 6.9% ±1.2 | 3.7% |
 | Acuity mix | 2.67 / 18.8 / 41.5 / 37.0 | 2.51 / 18.88 / 42.21 / 36.41 |
-| Per-area volumes | 0.73–0.89x | — |
+| Per-area volumes | 0.73-0.89x | — |
 
 Volumes and case-mix are now right. The residual ~0.85x on volumes is the
 documented counting-basis gap (model runs at the published 400.5/day, CUH's
@@ -627,7 +627,7 @@ so they are recorded here with the measured effect, not just the intent.
    lodged together. Patients already being seen still finish.
 2. **Zero staff stays zero.** `staffing_by_hour` floored every hour to one, so
    an hour nobody was rostered for had a fictitious member of staff (Cambridge:
-   one SDEC doctor 23:00–08:00 that the template rota does not contain). The
+   one SDEC doctor 23:00-08:00 that the template rota does not contain). The
    builder's nurse-ratio and explicit-capacity floors went the same way. A real
    zero now builds a parked unit the engine never serves from, and the builder
    warns where a node has no capacity at any hour.

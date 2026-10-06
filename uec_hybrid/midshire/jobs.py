@@ -11,10 +11,14 @@ the inputs that produced them.
 """
 from __future__ import annotations
 
+import logging
 import threading
 import time
 import traceback
 import uuid
+
+log = logging.getLogger(__name__)
+FAILED_MESSAGE = "This run couldn't be completed. Please try again. If it keeps happening, restart the tool."
 
 _jobs: dict[str, dict] = {}
 _by_key: dict[str, str] = {}
@@ -35,7 +39,7 @@ def start(kind: str, key: str, fn, meta: dict | None = None) -> dict:
             return _public(_jobs[jid])
         jid = uuid.uuid4().hex[:12]
         job = {"id": jid, "kind": kind, "key": key, "status": "queued", "progress": 0.0,
-               "message": "Queued", "started": time.time(), "finished": None,
+               "message": "Starting", "started": time.time(), "finished": None,
                "result_ref": None, "error": None, "meta": meta or {},
                "cancel_flag": threading.Event()}
         _jobs[jid] = job
@@ -58,21 +62,29 @@ def start(kind: str, key: str, fn, meta: dict | None = None) -> dict:
             ref = fn(progress, cancelled)
             with _lock:
                 if cancelled():
-                    job["status"], job["message"] = "cancelled", "Cancelled - nothing was saved."
+                    job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
                 else:
                     job["status"], job["result_ref"] = "done", ref
-                    job["progress"], job["message"] = 1.0, "Finished"
+                    job["progress"], job["message"] = 1.0, "Done"
         except Exception as e:                                   # explicit failed state
             name = type(e).__name__
             with _lock:
                 if name in ("Cancelled", "SearchCancelled") or cancelled():
-                    job["status"], job["message"] = "cancelled", "Cancelled - nothing was saved."
+                    job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
                 else:
                     job["status"] = "failed"
-                    job["error"] = f"{name}: {e}"
-                    job["details"] = getattr(e, "details", None)
-                    job["trace"] = traceback.format_exc()[-2000:]
-                    job["message"] = "The run failed - no new results were produced."
+                    details = getattr(e, "details", None)
+                    if name == "BuildError" and details:
+                        # the inputs cannot be modelled: say which, in the user's terms
+                        job["message"] = "These changes can't be modelled. Please check the highlighted inputs."
+                        job["details"] = details
+                    else:
+                        # never show a Python exception on screen; it goes to the server log
+                        job["message"] = FAILED_MESSAGE
+                        job["details"] = None
+                    job["error"] = None
+                    log.error("Midshire %s job %s failed: %s: %s\n%s", kind, jid, name, e,
+                              traceback.format_exc())
         finally:
             job["finished"] = time.time()
 
@@ -94,7 +106,7 @@ def cancel(jid: str) -> bool:
         if not j or j["status"] not in ("queued", "running"):
             return False
         j["cancel_flag"].set()
-        j["message"] = "Cancelling..."
+        j["message"] = "Stopping..."
         return True
 
 

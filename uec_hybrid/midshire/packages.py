@@ -289,3 +289,154 @@ def retime_alternative(base_inputs: dict, records: list[dict]) -> dict:
             "note": "Re-timing moves existing shifts into the window the package needed, keeping paid "
                     "hours the same. It takes cover away from the hours the shifts move FROM - check "
                     "those hours before using it. Simulate it like any other scenario."}
+
+
+# --------------------------------------------------------------------------- #
+# plain-language descriptions (what a scenario or package changes)
+# --------------------------------------------------------------------------- #
+NUMBER_WORDS = {1: "one", 2: "two", 3: "three", 4: "four", 5: "five", 6: "six", 7: "seven",
+                8: "eight", 9: "nine", 10: "ten", 20: "twenty"}
+SPACE_WORDS = {"cubicle": "majors cubicle", "resus_bay": "resus bay", "fit_to_sit_chair": "fit-to-sit space",
+               "utc_room": "UTC room", "sdec_chair": "SDEC chair", "handover_bay": "ambulance handover bay",
+               "ct_scanner": "CT scanner", "xray_room": "X-ray room", "fau_bed": "frailty unit bed",
+               "minor_injury_space": "minor injury space"}
+ROLE_WORDS = {"streaming_nurse": "streaming nurse", "rat_consultant": "senior RAT clinician",
+              "ed_consultant": "ED consultant", "em_registrar": "ED registrar", "em_sho": "ED junior doctor",
+              "sdec_doctor": "SDEC doctor", "frailty_pract": "frailty practitioner",
+              "mh_liaison": "mental health liaison clinician", "band6_nurse": "Band 6 ED nurse",
+              "band5_nurse": "Band 5 ED nurse", "enp": "emergency nurse practitioner",
+              "hca": "healthcare assistant", "porter": "porter", "receptionist": "receptionist",
+              "resus_nurse": "resus nurse", "utc_practitioner": "UTC practitioner", "sdec_nurse": "SDEC nurse"}
+STAFF_WORDS = {"ed_nurse": "nurse", "resus_nurse": "resus nurse", "utc_clinician": "UTC practitioner",
+               "sdec_nurse": "SDEC nurse"}
+AREA_WORDS = {"sdec": "SDEC", "utc": "the UTC", "frailty": "the frailty unit", "rat": "RAT",
+              "fit_to_sit": "fit-to-sit"}
+DAY_WORDS = {"Mon-Sun": "every day", "Mon-Fri": "Monday to Friday", "Sat-Sun": "at weekends",
+             "Mon": "on Mondays", "Tue": "on Tuesdays", "Wed": "on Wednesdays", "Thu": "on Thursdays",
+             "Fri": "on Fridays", "Sat": "on Saturdays", "Sun": "on Sundays"}
+
+
+def _count_words(n: int, noun: str) -> str:
+    word = NUMBER_WORDS.get(n, str(n))
+    return f"{word} {noun}{'' if n == 1 else 's'}"
+
+
+def _clock(h: int, end: bool = False) -> str:
+    h = int(h)
+    if end and h in (0, 24):
+        return "midnight"
+    return f"{h % 24:02d}:00"
+
+
+def _days_words(days) -> str:
+    return DAY_WORDS.get(days or "Mon-Sun", f"on {days}")
+
+
+def _cap(s: str) -> str:
+    return s[:1].upper() + s[1:]
+
+
+def describe_changes(base: dict, inputs: dict) -> list[str]:
+    """What a scenario changes compared with the baseline, as short sentences
+    a stakeholder can read. Computed from the inputs themselves, so it is
+    right for every scenario: searched, saved, or edited by hand."""
+    out = []
+    agg = {}
+    for sign, rota in ((-1, base.get("rota", [])), (1, inputs.get("rota", []))):
+        for r in rota:
+            key = (r["role"], r.get("days") or "Mon-Sun", int(r["start"]), int(r["end"]))
+            try:
+                n = int(r.get("count") or 0)
+            except (TypeError, ValueError):
+                n = 0
+            agg[key] = agg.get(key, 0) + sign * n
+    for (role, days, s, e), n in sorted(agg.items(), key=lambda kv: (kv[0][0], kv[0][2])):
+        if n == 0:
+            continue
+        who = ROLE_WORDS.get(role, role.replace("_", " "))
+        hours = "around the clock" if s == 0 and e in (0, 24) else f"{_clock(s)} to {_clock(e, end=True)}"
+        span = f"{hours}, {_days_words(days)}"
+        out.append(f"{'Add' if n > 0 else 'Remove'} {_count_words(abs(n), who)}, {span}.")
+    for k, v in inputs.get("capacity", {}).items():
+        try:
+            d = int(v or 0) - int(base.get("capacity", {}).get(k) or 0)
+        except (TypeError, ValueError):
+            continue
+        if d:
+            out.append(f"{'Add' if d > 0 else 'Remove'} {_count_words(abs(d), SPACE_WORDS.get(k, k.replace('_', ' ')))}.")
+    bss = {r["space"]: r for r in base.get("space_staffing", [])}
+    for r in inputs.get("space_staffing", []):
+        b = bss.get(r["space"])
+        if b and b.get("spaces_per_staff") != r.get("spaces_per_staff"):
+            out.append(f"Each {STAFF_WORDS.get(r['staff'], r['staff'].replace('_', ' '))} opens "
+                       f"{r['spaces_per_staff']:g} {SPACE_WORDS.get(r['space'], r['space'])}s "
+                       f"(was {b['spaces_per_staff']:g}).")
+    for a, h in inputs.get("areas", {}).get("hours", {}).items():
+        bh = base.get("areas", {}).get("hours", {}).get(a)
+        if bh and list(bh) != list(h):
+            out.append(f"Open {AREA_WORDS.get(a, a)} {_clock(h[0])} to {_clock(h[1], end=True)} "
+                       f"(was {_clock(bh[0])} to {_clock(bh[1], end=True)}).")
+    bd, dd = base.get("downstream", {}), inputs.get("downstream", {})
+    if dd.get("inpatient_beds") != bd.get("inpatient_beds") and dd.get("inpatient_beds") is not None:
+        d = int(dd["inpatient_beds"]) - int(bd.get("inpatient_beds") or 0)
+        out.append(f"{'Open' if d > 0 else 'Close'} {abs(d)} {'more ' if d > 0 else ''}inpatient bed{'' if abs(d) == 1 else 's'}.")
+    if dd.get("mh_beds") != bd.get("mh_beds") and dd.get("mh_beds") is not None:
+        d = int(dd["mh_beds"]) - int(bd.get("mh_beds") or 0)
+        out.append(f"{'Open' if d > 0 else 'Close'} {abs(d)} mental health bed{'' if abs(d) == 1 else 's'}.")
+    if dd.get("ward_discharge_capacity_per_hour") != bd.get("ward_discharge_capacity_per_hour") and bd.get("ward_discharge_capacity_per_hour"):
+        pct = round(100 * (dd["ward_discharge_capacity_per_hour"] / bd["ward_discharge_capacity_per_hour"] - 1))
+        out.append(f"Wards discharge patients {abs(pct)}% {'faster' if pct > 0 else 'slower'}.")
+    ds = (inputs.get("cohort") or {}).get("demand_scale", 1.0) or 1.0
+    bs = (base.get("cohort") or {}).get("demand_scale", 1.0) or 1.0
+    if abs(ds - bs) > 1e-9:
+        pct = round(100 * (ds / bs - 1))
+        out.append(f"{abs(pct)}% {'more' if pct > 0 else 'fewer'} patients arriving than in the baseline.")
+    if not out and (inputs.get("cost_table") != base.get("cost_table") or inputs.get("estates") != base.get("estates")):
+        out.append("Cost rates changed. Patient flow is the same as the baseline.")
+    return out or ["No changes from the baseline."]
+
+
+def lever_text(lever_id: str) -> dict:
+    from . import config as mcfg
+    lt = mcfg.fixture().get("lever_text", {})
+    return lt.get(lever_id) or {"name": lever_id, "short": lever_id, "change": "", "why": "", "look_for": ""}
+
+
+def _join(words: list[str]) -> str:
+    words = [w for w in words if w]
+    if len(words) <= 1:
+        return "".join(words)
+    return ", ".join(words[:-1]) + " and " + words[-1]
+
+
+MODE_WORDS = {"workforce": "staffing changes only", "estate": "space and bed changes, with the staff they need",
+              "combined": "staffing, space and bed changes"}
+
+
+def describe_package(ids: list[str], mode: str | None = None, target: dict | None = None,
+                     outcome: str | None = None) -> dict:
+    """A name and short descriptions for a package of tested changes."""
+    from . import config as mcfg
+    cat = {lv["id"]: lv for lv in mcfg.fixture()["search"]["levers"]}
+    levers = [cat.get(i, {}) for i in ids]
+    texts = [lever_text(i) for i in ids]
+    if len(texts) == 1:
+        t = texts[0]
+        return {"name": t["name"], "what": [t["change"]], "why": t["why"], "look_for": t["look_for"]}
+    additive = all(lv.get("kind") in ("shift", "estate") or lv.get("add") for lv in levers)
+    shorts = [t["short"] for t in texts]
+    name = ("Add " + _join(shorts)) if additive else _cap(_join(shorts))
+    aim = (f"{target['pct']:g}% within {int(target['minutes']) // 60} hours"
+           if target and int(target["minutes"]) % 60 == 0 else
+           (f"{target['pct']:g}% within {int(target['minutes'])} minutes" if target else "the target"))
+    why = ("The lowest-cost combination the model found that reaches " + aim
+           if outcome in ("met", "already_met") else
+           "The strongest combination the model found when aiming for " + aim)
+    if mode in MODE_WORDS:
+        why += ", using " + MODE_WORDS[mode]
+    looks = []
+    for t in texts:
+        if t["look_for"] and t["look_for"] not in looks:
+            looks.append(t["look_for"])
+    return {"name": name, "what": [t["change"] for t in texts], "why": why + ".",
+            "look_for": " ".join(looks[:3])}

@@ -1,6 +1,6 @@
 """
 The Midshire metric contract: ONE aggregation layer for every number the cards,
-flow diagram, charts, scenario comparisons, exports and Ask Qbo ED show.
+flow diagram, charts, scenario comparisons, exports and Ask My ED show.
 
 Everything is computed from patient-level STATE INTERVALS (the engine's trace):
 for each patient, the time they entered and left each (node, phase) - "queue"
@@ -175,12 +175,18 @@ def _quantile_censored(values: np.ndarray, q: float):
 # --------------------------------------------------------------------------- #
 # per-replication KPIs
 # --------------------------------------------------------------------------- #
-def replication_kpis(trace: dict, raw: dict, target_minutes: float) -> dict:
+def replication_kpis(trace: dict, raw: dict, target_minutes: float, window=None, frames=None) -> dict:
+    """KPIs for everyone ARRIVING in ``window`` (default: the cohort window,
+    i.e. the observed days). A one-day window gives that day's figures with
+    exactly the same definitions as the whole week's."""
     uec = raw.get("uec") or {}
-    window = uec.get("cohort_window") or [raw["warmup_minutes"], raw["sim_duration_minutes"]]
+    window = window or uec.get("cohort_window") or [raw["warmup_minutes"], raw["sim_duration_minutes"]]
     end = float(trace["end"])
-    st = states_frame(trace)
-    p = patients_frame(trace, uec.get("sdec_boundary", "inside_ed"), st)
+    if frames is None:
+        st = states_frame(trace)
+        p = patients_frame(trace, uec.get("sdec_boundary", "inside_ed"), st)
+    else:
+        st, p = frames
     c = _cohort(p, window).copy()
     n = len(c)
     days = (window[1] - window[0]) / 1440.0
@@ -245,6 +251,27 @@ def replication_kpis(trace: dict, raw: dict, target_minutes: float) -> dict:
     else:
         out["dta_to_departure_median"] = None
         out["dta_per_day"] = 0.0
+    return out
+
+
+def day_summaries(trace: dict, raw: dict, thresholds) -> list[dict]:
+    """One entry per observed day of ONE replication (the replay week): that
+    day's KPIs for the patients arriving on it, plus its share completed within
+    each threshold (so a change of target time needs no re-simulation). Day 0
+    is the first observed day."""
+    uec = raw.get("uec") or {}
+    a, b = uec.get("cohort_window") or [raw["warmup_minutes"], raw["sim_duration_minutes"]]
+    st = states_frame(trace)
+    p = patients_frame(trace, uec.get("sdec_boundary", "inside_ed"), st)
+    out = []
+    for d in range(int(round((b - a) / 1440.0))):
+        win = [a + d * 1440.0, a + (d + 1) * 1440.0]
+        k = replication_kpis(trace, raw, 240, window=win, frames=(st, p))
+        c = _cohort(p, win)
+        dur = np.where(c["ed_end"].notna(), c["ed_end"] - c["arrival"], np.inf)
+        k["within"] = [float(100.0 * (dur <= t).mean()) if len(c) else None for t in thresholds]
+        k["start"] = win[0]
+        out.append(k)
     return out
 
 

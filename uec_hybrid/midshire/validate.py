@@ -71,7 +71,12 @@ def _four(raw, seeds, adults_only=False):
     from .runner import get_pool
     pool = get_pool()
     jobs = [(raw, s, adults_only) for s in seeds]
-    vals = list(pool.map(_four_one, jobs)) if pool else [_four_one(j) for j in jobs]
+    try:
+        vals = list(pool.map(_four_one, jobs)) if pool else [_four_one(j) for j in jobs]
+    except (OSError, RuntimeError):                  # a broken pool: finish in-process
+        from .runner import reset_pool
+        reset_pool(disable=True)
+        vals = [_four_one(j) for j in jobs]
     return st.mean(vals), (st.stdev(vals) / len(vals) ** 0.5 if len(vals) > 1 else 0.0)
 
 

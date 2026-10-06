@@ -8,6 +8,7 @@ replications. One replication - the first seed - is kept as the replay
 from __future__ import annotations
 
 import datetime as _dt
+import logging
 import os
 import subprocess
 import uuid
@@ -69,6 +70,7 @@ def _one(args):
         out["kpis"]["bed_occupancy_mean"] = float(np.mean(occ) * 100)
     if want_replay:
         out["replay"] = M.replay_series(tr, raw)
+        out["replay"]["days"] = M.day_summaries(tr, raw, THRESHOLDS)
         out["bed_occupancy_series"] = [[float(t), float(s["bed_occupancy"])] for t, s in hist]
     return out
 
@@ -82,34 +84,68 @@ def _workers(n):
 
 _POOL = None
 _POOL_LOCK = __import__("threading").Lock()
+_POOL_DISABLED = False            # set once a pool cannot be started or breaks: run in-process
+log = logging.getLogger(__name__)
+
+
+def start_method() -> str | None:
+    """The process start method this platform supports, safest first.
+
+    * 'forkserver' (Linux, macOS): workers come from a clean single-threaded
+      parent, never from a fork of the multi-threaded web server.
+    * 'spawn' (Windows has only this): a fresh interpreter per worker.
+    * 'fork' only when the main module cannot be re-imported (a script read
+      from stdin), where the others cannot start.
+    ``MIDSHIRE_START_METHOD`` overrides when that method exists. None means
+    run in-process."""
+    import multiprocessing as mp
+    import sys
+    avail = mp.get_all_start_methods()
+    want = os.environ.get("MIDSHIRE_START_METHOD")
+    if want:
+        return want if want in avail else None
+    main = sys.modules.get("__main__")
+    path = getattr(main, "__file__", None)
+    importable = bool(path and os.path.exists(path)) or bool(getattr(getattr(main, "__spec__", None), "name", None))
+    for m in (("forkserver", "spawn") if importable else ()) + ("fork",):
+        if m in avail:
+            return m
+    return None
 
 
 def get_pool():
-    """One shared worker pool for the whole process. Workers come from a
-    'forkserver' (a clean single-threaded parent), never from a fork of the
-    multi-threaded web server. Returns None when running single-process."""
-    global _POOL
+    """One shared worker pool for the whole process, or None to run
+    in-process (one worker, no usable start method, or a pool that failed)."""
+    global _POOL, _POOL_DISABLED
     n = _workers(os.cpu_count() or 1)
-    if n <= 1:
+    if n <= 1 or _POOL_DISABLED:
         return None
     with _POOL_LOCK:
         if _POOL is None:
             import multiprocessing as mp
-            import sys
-            main = getattr(sys.modules.get("__main__"), "__file__", None)
-            # forkserver re-imports __main__ by path; a script read from stdin
-            # has none, so fall back to fork there (no web-server threads then)
-            ctx = "forkserver" if (main and os.path.exists(main)) else "fork"
-            _POOL = ProcessPoolExecutor(max_workers=n, mp_context=mp.get_context(ctx))
+            method = start_method()
+            if method is None:
+                return None
+            try:
+                _POOL = ProcessPoolExecutor(max_workers=n, mp_context=mp.get_context(method))
+            except (ValueError, OSError, RuntimeError, NotImplementedError) as e:
+                log.warning("Midshire: cannot start a %s worker pool (%s); running in-process.", method, e)
+                _POOL_DISABLED = True
+                return None
         return _POOL
 
 
-def reset_pool():
-    global _POOL
+def reset_pool(disable: bool = False):
+    global _POOL, _POOL_DISABLED
     with _POOL_LOCK:
         if _POOL is not None:
-            _POOL.shutdown(wait=False, cancel_futures=True)
+            try:
+                _POOL.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
         _POOL = None
+        if disable:
+            _POOL_DISABLED = True
 
 
 def simulate(model: Model, seeds: list[int], progress=None, cancel=None,
@@ -119,13 +155,13 @@ def simulate(model: Model, seeds: list[int], progress=None, cancel=None,
     existing process pool (the package search runs hundreds of these)."""
     jobs = [(model.raw, int(s), replay and i == 0) for i, s in enumerate(seeds)]
     results = [None] * len(jobs)
-    ex = pool if pool is not None else (get_pool() if len(jobs) > 1 else None)
+    ex = None if _POOL_DISABLED else (pool if pool is not None else (get_pool() if len(jobs) > 1 else None))
+    done = 0
     if ex is not None:
         from concurrent.futures import as_completed
         from concurrent.futures.process import BrokenProcessPool
         try:
             futs = {ex.submit(_one, j): i for i, j in enumerate(jobs)}
-            done = 0
             for f in as_completed(futs):
                 if cancel and cancel():
                     for g in futs:
@@ -135,16 +171,20 @@ def simulate(model: Model, seeds: list[int], progress=None, cancel=None,
                 done += 1
                 if progress:
                     progress(done, len(jobs))
-        except BrokenProcessPool:
-            reset_pool()
-            raise
-    else:
-        for i, j in enumerate(jobs):
-            if cancel and cancel():
-                raise Cancelled()
-            results[i] = _one(j)
-            if progress:
-                progress(i + 1, len(jobs))
+        except (BrokenProcessPool, OSError, RuntimeError) as e:
+            # the worker pool itself failed (could not start workers, or a worker
+            # died): finish the remaining replications in this process instead
+            log.warning("Midshire: worker pool failed (%s: %s); finishing in-process.", type(e).__name__, e)
+            reset_pool(disable=True)
+    for i, j in enumerate(jobs):
+        if results[i] is not None:
+            continue
+        if cancel and cancel():
+            raise Cancelled()
+        results[i] = _one(j)
+        done += 1
+        if progress:
+            progress(done, len(jobs))
     return results
 
 

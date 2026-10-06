@@ -44,10 +44,10 @@ class SearchCancelled(Exception):
 
 
 MODES = {
-    "workforce": {"label": "Workforce changes with the current estate", "kinds": {"shift"}},
-    "estate": {"label": "Estate changes with their staffing dependencies",
+    "workforce": {"label": "Staffing only", "kinds": {"shift"}},
+    "estate": {"label": "Space and beds, with the staff they need",
                "kinds": {"estate", "hours", "downstream"}},
-    "combined": {"label": "Combined workforce and estate packages",
+    "combined": {"label": "Staffing, space and beds",
                  "kinds": {"shift", "estate", "hours", "downstream"}},
 }
 
@@ -155,21 +155,19 @@ class Search:
 
     def _run(self, t0) -> dict:
         tgt = self.target
-        self._say("Simulating the baseline", 0.02)
+        self._say("Running the current position", 0.02)
         base = self.evaluate(())
         bmean = self._mean(base)
         result = {"target": tgt, "baseline": self._public(base, base),
                   "bounds": self._bounds_public()}
         if self._met(base):
             result["outcome"] = "already_met"
-            result["headline"] = (f"The baseline already meets the target: {bmean:.1f}% within "
-                                  f"{tgt['minutes']} minutes against {tgt['pct']:g}%.")
             return self._finish(result, base, [], t0)
 
         # 2. screen singles
         singles = []
         for i, lv in enumerate(self.levers):
-            self._say(f"Screening {lv['title']}", 0.05 + 0.25 * i / max(1, len(self.levers)))
+            self._say(f"Testing: {_name(lv['id'])}", 0.05 + 0.25 * i / max(1, len(self.levers)))
             singles.append(self.evaluate((lv["id"],)))
 
         # 3. two greedy paths
@@ -183,7 +181,7 @@ class Search:
                 evs = []
                 for j, c in enumerate(cands):
                     frac = 0.30 + 0.30 * pi + 0.30 * (step + j / len(cands)) / self.max_steps
-                    self._say(f"Path '{path}', step {step + 1}: testing + {self.by_id[c]['title']}", frac)
+                    self._say(f"Building a package. Testing: {_name(c)}", frac)
                     evs.append(self.evaluate(cur + (c,)))
                 gain = [(self._mean(e) - self._mean(cur_ev), e) for e in evs]
                 floor = float(self.bounds.get("min_step_gain_pts", 0.5))
@@ -221,8 +219,7 @@ class Search:
                 changed = False
                 for drop in list(cur):
                     trial = tuple(x for x in cur if x != drop)
-                    self._say(f"Pruning: does the package still meet the target without "
-                              f"{self.by_id[drop]['title']}?", 0.92)
+                    self._say("Checking every change is needed", frac)
                     if self._met(self.evaluate(trial)):
                         cur = list(trial)
                         changed = True
@@ -248,7 +245,7 @@ class Search:
 
         # 6. validation on independent seeds
         shortlist = [p["ids"] for p in feasible[:3]] or ([best_perf["ids"]] if best_perf else [])
-        self._say("Re-running the shortlist on separate validation seeds", 0.95)
+        self._say("Re-testing the best packages on different weeks", 0.95)
         vbase = self.evaluate((), seeds=self.validation_seeds)
         validated = []
         for ids in shortlist:
@@ -261,29 +258,16 @@ class Search:
         if feasible:
             best = feasible[0]
             result["outcome"] = "met"
-            v = next((x for x in validated if x["ids"] == best["ids"]), None)
-            vtxt = (f" On {len(self.validation_seeds)} separate validation weeks it reads "
-                    f"{v['measure']['mean']:.1f}%." if v and v["measure"] else "")
             result["recommended"] = best
-            result["headline"] = (f"Lowest-cost package found within the tested options reaches "
-                                  f"{best['measure']['mean']:.1f}% (baseline {bmean:.1f}%) against the "
-                                  f"{tgt['pct']:g}% target, for about £{best['finance']['recurring_annual_total']:,.0f} "
-                                  f"a year recurring and £{best['finance']['capital']:,.0f} capital.{vtxt}")
         else:
             result["outcome"] = "not_reached"
             result["recommended"] = best_perf
-            gap = tgt["pct"] - (best_perf["measure"]["mean"] if best_perf else bmean)
-            result["headline"] = (f"Target not reached within the tested options. The best tested "
-                                  f"package reaches {best_perf['measure']['mean'] if best_perf else bmean:.1f}% "
-                                  f"(baseline {bmean:.1f}%), {gap:.1f} percentage points short of "
-                                  f"{tgt['pct']:g}%. This does not show the target is impossible in a real "
-                                  f"hospital - only that these changes, at these sizes, do not reach it in this model.")
         return self._finish(result, base, shortlist, t0)
 
     def _finish(self, result, base, shortlist, t0):
         # evidence about what limits the best package found: full run with replay
         rec_ids = tuple((result.get("recommended") or {}).get("ids") or ())
-        self._say("Collecting evidence on the limiting stages", 0.98)
+        self._say("Finding what still holds performance back", 0.98)
         full = self.evaluate(rec_ids, keep_run=True)
         run = full["run"]
         util = run["stages"]["utilisation"]
@@ -294,11 +278,11 @@ class Search:
             "top_waiting_states": run["pressure"][:5],
             "busy_resources": hot,
             "fixed_in_this_model": [
-                "Time awaiting results, review or decision after treatment is a fixed modelled "
-                "duration: no staffing or space lever in the search shortens it.",
-                "Bed waits follow the aggregate hospital bed model (occupancy-driven); beds and "
-                "discharge levers act only through that aggregate feedback.",
-                "Routing, clinical durations and demand are not search levers."]}
+                "None of the tested changes shortens the time patients spend waiting for results, "
+                "review or a decision.",
+                "Bed waits depend on how full the hospital is; extra beds and faster discharges help "
+                "only through that.",
+                "Demand, treatment times and how patients are routed stay as they are."]}
         result["package_run"] = run
         result["package_inputs"] = full["inputs"]
         result["base_inputs"] = self.base
@@ -327,30 +311,59 @@ class Search:
                 "model_hash": ev["model_hash"]}
 
 
+def _name(lever_id: str) -> str:
+    from .packages import lever_text
+    return lever_text(lever_id)["name"]
+
+
+def wait_phrase(label: str) -> str:
+    """'Waiting for an inpatient bed' -> 'the wait for an inpatient bed'."""
+    l = (label or "").strip()
+    low = l[:1].lower() + l[1:]
+    if low.startswith("waiting for "):
+        return "the wait for " + low[len("waiting for "):]
+    if low.startswith("awaiting "):
+        return "waiting for " + low[len("awaiting "):].replace(" or decision", " or a decision")
+    return low
+
+
+def _time_words(minutes) -> str:
+    m = int(minutes)
+    return f"{m // 60} hours" if m % 60 == 0 else f"{m} minutes"
+
+
 def describe(result: dict) -> str:
-    """The one-sentence verdict, built from the structured fields (so a
+    """The verdict in plain words, built from the structured fields (so a
     re-priced result never carries a stale sentence)."""
     tgt, bmean = result["target"], result["baseline"]["measure"]["mean"]
     out = result.get("outcome")
     rec = result.get("recommended")
+    within = _time_words(tgt["minutes"])
     if out == "already_met":
-        return (f"The baseline already meets the target: {bmean:.1f}% within {tgt['minutes']} "
-                f"minutes against {tgt['pct']:g}%.")
+        return (f"The department already meets this target: {bmean:.1f}% of patients leave within "
+                f"{within}, against {tgt['pct']:g}%.")
+    top = ((result.get("limits") or {}).get("top_waiting_states") or [{}])[0].get("label")
     if out == "met" and rec:
         f = rec["finance"]
+        cost = f"£{f['recurring_annual_total']:,.0f} a year"
+        if f.get("capital"):
+            cost += f" plus £{f['capital']:,.0f} one-off"
         v = next((x for x in (result.get("validation") or {}).get("packages", [])
                   if x["ids"] == rec["ids"]), None)
-        vtxt = (f" On {len(result['validation']['seeds'])} separate validation weeks it reads "
-                f"{v['measure']['mean']:.1f}%." if v and v.get("measure") else "")
-        return (f"Lowest-cost package found within the tested options reaches "
-                f"{rec['measure']['mean']:.1f}% (baseline {bmean:.1f}%) against the {tgt['pct']:g}% "
-                f"target, for about £{f['recurring_annual_total']:,.0f} a year recurring and "
-                f"£{f['capital']:,.0f} capital.{vtxt}")
+        held = ""
+        if v and v.get("measure"):
+            held = (f" It held up when re-tested on different weeks ({v['measure']['mean']:.1f}%)."
+                    if v["measure"]["mean"] >= tgt["pct"] else
+                    f" Re-tested on different weeks it reached {v['measure']['mean']:.1f}%, so treat it as borderline.")
+        return (f"This package takes performance from {bmean:.1f}% to {rec['measure']['mean']:.1f}%, "
+                f"meeting the {tgt['pct']:g}% target. It is the lowest-cost option the model found and costs "
+                f"about {cost}.{held}")
     best = rec["measure"]["mean"] if rec and rec.get("measure") else bmean
-    return (f"Target not reached within the tested options. The best tested package reaches "
-            f"{best:.1f}% (baseline {bmean:.1f}%), {tgt['pct'] - best:.1f} percentage points short "
-            f"of {tgt['pct']:g}%. This does not show the target is impossible in a real hospital - "
-            f"only that these changes, at these sizes, do not reach it in this model.")
+    txt = (f"None of the tested packages reaches {tgt['pct']:g}%. The best one takes performance from "
+           f"{bmean:.1f}% to {best:.1f}%, still {tgt['pct'] - best:.1f} points short.")
+    if top:
+        txt += f" The main remaining constraint is {wait_phrase(top)}."
+    return txt
 
 
 def search(base_inputs, target, bounds=None, progress=None, cancel=None, workers=None,

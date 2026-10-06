@@ -4,7 +4,9 @@
   "demo_id": "MIDSHIRE-DEMO",
   "demo_id_note": "An internal demonstration identifier. It is NOT an NHS ODS code and does not identify any real organisation.",
   "product_title": "Midshire University Hospitals Trust Control Tower",
-  "positioning": "Adult ED simulation and planning demonstrator",
+  "positioning": "Adult emergency department",
+  "footer": "Midshire University Hospitals Trust Control",
+  "baseline_name": "Baseline",
   "status_line": "Adult ED planning demonstrator · simulated data, not a live patient feed.",
   "disclaimers": [
     "Midshire University Hospitals Trust is a fictional demonstration identity. It is not a real South East trust.",
@@ -218,8 +220,8 @@
 
   "target": {
     "pct": 90.0, "minutes": 240,
-    "label": "90% of eligible adult ED attendances completed within four hours",
-    "note": "A selected demonstration / planning target, editable here. It is not a statement of the current national requirement."
+    "label": "90% of adult patients leave the emergency department within 4 hours",
+    "note": "The share of adult patients who leave the emergency department (admitted, transferred or discharged) within the chosen time, counted from arrival. 90% within 4 hours is a planning target you can change; it is not a statement of the current national standard."
   },
 
   "engine": {
@@ -259,6 +261,29 @@
       {"id": "discharge_10", "kind": "downstream", "title": "Wards discharge 10% faster (frees existing beds)", "param": "ward_discharge_capacity_per_hour", "scale": 1.10, "estate_item": "ward_discharge_pct", "units": 10}
     ],
     "note": "The search only tests the changes listed here, at these sizes, and combinations of them built step by step (see the method on screen). It cannot change clinical durations, routing probabilities or demand. It does not prove that a target is impossible in the real hospital or that the package found is the cheapest possible."
+  },
+
+  "lever_text": {
+    "note": "Plain-language names and descriptions of the changes the package search can test (display text only; the search uses the levers above).",
+    "nurse_day": {"name": "Extra majors nurse by day", "short": "a majors nurse by day", "change": "Add one Band 5 nurse in majors, 08:00 to 20:00, every day.", "why": "Majors cubicles only open when there is a nurse to staff them.", "look_for": "Shorter waits for a majors cubicle during the day."},
+    "nurse_night": {"name": "Extra majors nurse overnight", "short": "a majors nurse overnight", "change": "Add one Band 5 nurse in majors, 20:00 to 08:00, every night.", "why": "Night staffing often decides how many cubicles stay open.", "look_for": "Fewer long waits overnight."},
+    "sho_late": {"name": "Extra junior doctor into the evening", "short": "an evening junior doctor", "change": "Add one ED junior doctor, 14:00 to 02:00, every day.", "why": "Doctors are busiest from mid-afternoon into the night.", "look_for": "Patients seen sooner in the afternoon and evening."},
+    "reg_night": {"name": "Extra registrar overnight", "short": "a night registrar", "change": "Add one ED registrar, 22:00 to 08:00, every night.", "why": "With fewer senior doctors overnight, decisions take longer.", "look_for": "Shorter waits overnight and fewer 12-hour stays."},
+    "cons_eve": {"name": "Extra consultant into the evening", "short": "an evening consultant", "change": "Add one ED consultant, 14:00 to midnight, every day.", "why": "In the evening peak, patients often wait for a senior review.", "look_for": "Faster decisions in the evening peak."},
+    "rat_day": {"name": "Strengthen RAT during peak hours", "short": "a peak-hours RAT clinician", "change": "Add one senior RAT clinician, 10:00 to 22:00, every day.", "why": "Ambulance patients and some walk-ins see RAT first, so a busy RAT holds up everything behind it.", "look_for": "Shorter waits for RAT and better 4-hour performance."},
+    "stream_day": {"name": "Extra streaming nurse by day", "short": "a streaming nurse", "change": "Add one streaming nurse at the front door, 08:00 to 20:00, every day.", "why": "Walk-in patients wait at the front door until they are streamed.", "look_for": "Shorter waits to be streamed."},
+    "utc_prac": {"name": "Extra UTC practitioner, afternoon to midnight", "short": "an evening UTC practitioner", "change": "Add one UTC practitioner, 12:00 to midnight, every day.", "why": "Minor illness and injury queues build in the afternoon and evening.", "look_for": "Shorter UTC waits."},
+    "sdec_doc": {"name": "Extra SDEC doctor on weekdays", "short": "a weekday SDEC doctor", "change": "Add one SDEC doctor, 10:00 to 20:00, Monday to Friday.", "why": "SDEC can only take patients when there is a doctor to see them.", "look_for": "More patients treated in SDEC instead of waiting in majors."},
+    "porter": {"name": "Extra porter by day", "short": "a porter", "change": "Add one porter, 08:00 to 20:00, every day.", "why": "Admitted patients wait for a porter before they move to the ward.", "look_for": "Shorter waits for transfer to the ward."},
+    "cubicles_4": {"name": "Four more majors cubicles", "short": "four majors cubicles", "change": "Add four majors cubicles, with the nurses needed to open them.", "why": "Majors patients wait when every cubicle is full.", "look_for": "Shorter waits for a majors cubicle."},
+    "resus_1": {"name": "One more resus bay", "short": "a resus bay", "change": "Add one resus bay, with the resus nurses needed to staff it.", "why": "The sickest patients need a resus bay straight away.", "look_for": "Fewer waits for resus."},
+    "utc_rooms_3": {"name": "Three more UTC rooms", "short": "three UTC rooms", "change": "Add three UTC rooms, with the UTC practitioners needed to open them.", "why": "UTC queues build when every room is in use.", "look_for": "Shorter UTC waits."},
+    "f2s_4": {"name": "Four more fit-to-sit spaces", "short": "four fit-to-sit spaces", "change": "Add four fit-to-sit spaces for majors patients who are well enough to sit.", "why": "These patients wait when the fit-to-sit area is full.", "look_for": "Shorter waits for majors patients who can sit."},
+    "sdec_chairs_4": {"name": "Four more SDEC chairs", "short": "four SDEC chairs", "change": "Add four SDEC chairs, with the SDEC nurses needed to staff them.", "why": "SDEC turns patients away when every chair is in use.", "look_for": "More patients treated in SDEC."},
+    "sdec_late": {"name": "Keep SDEC open until midnight", "short": "later SDEC opening", "change": "Open SDEC from 08:00 to midnight instead of 22:00, with a doctor and three nurses for the extra hours.", "why": "Patients who arrive after SDEC closes are treated in the main ED instead.", "look_for": "More patients through SDEC in the late evening."},
+    "ct_1": {"name": "One more CT scanner", "short": "a CT scanner", "change": "Add a fourth CT scanner.", "why": "Patients waiting for a CT scan can't get a decision until the scan is done.", "look_for": "Shorter waits for CT and for results."},
+    "beds_20": {"name": "Twenty more inpatient beds", "short": "20 inpatient beds", "change": "Open 20 more inpatient beds in the hospital.", "why": "Admitted patients wait in ED until a ward bed is free.", "look_for": "Shorter waits for a bed and fewer 12-hour stays."},
+    "discharge_10": {"name": "Faster ward discharges", "short": "faster ward discharges", "change": "Wards discharge patients 10% faster, so beds free up sooner.", "why": "Admitted ED patients are waiting for the beds that ward discharges free up.", "look_for": "Shorter waits for a bed."}
   },
 
   "groups": [

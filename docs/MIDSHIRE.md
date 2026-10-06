@@ -25,7 +25,7 @@ Neither source branch was changed, merged into, reset or force-pushed.
 
 | Requirement | Implemented in |
 |---|---|
-| Midshire name, Cambridge branding removed | `app/templates/midshire.html` (exact title, no logo), `midshire.js`; branding test (2). Provenance kept on Set up / assumptions |
+| Midshire name, Cambridge branding removed | `app/templates/midshire.html` (exact title, no logo, footer "Midshire University Hospitals Trust Control"), `midshire.js`; branding test (2). Provenance is kept in the data and the hidden model-notes panel, not in the navigation |
 | Adult pathway only | `midshire/build.py` `adult_patch` + `make_adult`: demand reduced by the source trust's paediatric-area share (400.5 → 347.0/day), paediatric area, staff, routes, attribute and metrics removed; test 3 |
 | Overall performance first, then the day's pattern | Overview: five primary tiles (present, waiting, within target, arrivals/departures, median time), secondary row, through-the-day chart, "Where waits build up" |
 | Left-to-right pathway, ≤5 groups, detail below | Patient flow: a Cambridge-style animated **flow map** of the five groups (arrivals on the left, the three merged outcomes on the right, diagnostics drawn as the branch patients go to and return from). Selecting a group opens a **map of its areas underneath**; selecting an area opens its day, what serves it and where its patients come from and go to. The **full pathway map** is the expert view. Groups and map boxes (`groups`, `flow_map.units` in `data/midshire/midshire_demo.json`) are by stable node id; moving dots can be paused and are off under reduced motion; every map has a table view |
@@ -35,16 +35,16 @@ Neither source branch was changed, merged into, reset or force-pushed.
 | Decision to admit → waiting for bed → transfer to ward | `build.add_decision_to_admit`: DTA is a zero-length milestone (event count), the bed wait is an occupied state, ward transfer completes the departure; test 5 |
 | Data shows where waits accumulate | "Waiting patient-hours per day" ranking (named measure); no stage pre-selected |
 | Workforce and estates layers with an investment story | Workforce & investment: target → package search → extra rota rows, WTE, pay, estate, capital, recurring, annualised comparison cost → save / apply / compare |
-| Rota and cost inputs end to end | Rota editor, CSV import/export, cost table, estates costs, instant preview, simulate, save; `workforce/rota.py`, `workforce/costing.py` |
+| Rota and cost inputs end to end | Rota editor, CSV import/export, cost table, estates costs, staffing-through-the-day chart (no model run needed), run, save; `workforce/rota.py`, `workforce/costing.py` |
 
 ## 3. What changed
 
-**New (Midshire):** `uec_hybrid/midshire/` — `config.py` (fixture, groups, hashes),
+**New (Midshire):** `uec_hybrid/midshire/` - `config.py` (fixture, groups, hashes),
 `build.py` (the one build pipeline), `metrics.py` (metric contract), `runner.py`
 (matched-seed replications, replay, cache), `store.py` (separate database),
 `packages.py` (levers, staffing dependencies, costing, re-timing),
 `optimise.py` (package search), `jobs.py` (progress / cancel),
-`assistant.py` (Ask Qbo ED), `server.py` (API + page), `precompute.py`,
+`assistant.py` (Ask My ED), `server.py` (API + page), `precompute.py`,
 `validate.py`; `app/templates/midshire.html`, `app/static/midshire.{js,css}`;
 `data/midshire/midshire_demo.json` and `data/midshire/precomputed/`;
 `tests/midshire.py`; `docs/midshire/browser_check.js`.
@@ -52,27 +52,27 @@ Neither source branch was changed, merged into, reset or force-pushed.
 **Shared fixes (also affect the Cambridge build; see `docs/CUH_DATA_LOG.md`,
 "Engine 0.5.0"):**
 
-* `des/engine.py` — rota reductions take effect at once (all off-shift requests
+* `des/engine.py` - rota reductions take effect at once (all off-shift requests
   lodged together); a zero capacity or zero-everywhere roster is a parked unit,
   never a fictitious member of staff; 168-hour (hour-of-week) rosters; an
   RNG-neutral state trace (carry-in and unfinished journeys included); opt-in
   patience for a space (`renege_includes_space`).
-* `workforce/rota.py` — no floor of one; day patterns (`days`), overnight
+* `workforce/rota.py` - no floor of one; day patterns (`days`), overnight
   convention (a shift belongs to the day it starts), unpaid breaks, row
   validation, CSV import/export, legacy rows migrate to "every day".
-* `workforce/costing.py` — **one cost service** (fully loaded or basic +
+* `workforce/costing.py` - **one cost service** (fully loaded or basic +
   on-cost + enhancement + agency blend; blank = not costed, 0 = £0) used by the
   Cambridge pay-bill, the recommender and everything in Midshire.
-* `department/config.py`, `department/builder.py` — explicit rota provenance
+* `department/config.py`, `department/builder.py` - explicit rota provenance
   (`rota_source`, with a tested migration rule); `resolved_rota` is the one place
   the template is scaled, so engine, view and cost use the same rota; a general
   space-staffing table (open = min(physical, staff × ratio)); explicit zeros kept;
   zero-capacity warnings.
-* `optimise/recommend.py` — shift costs from the cost service; candidate shifts
+* `optimise/recommend.py` - shift costs from the cost service; candidate shifts
   are added to the resolved rota (they used to un-scale the whole template).
-* `workforce/view.py` — shows the resolved rota; the demand-shape "light
+* `workforce/view.py` - shows the resolved rota; the demand-shape "light
   against demand" hours are labelled a secondary heuristic.
-* `sd/model.py` — optional `initial_occupied_beds` so new beds start empty.
+* `sd/model.py` - optional `initial_occupied_beds` so new beds start empty.
 
 **Ported from the workforce reference branch (rewritten, not merged):** the rota
 table editor with add/remove rows, hourly coverage bars per staff group, and
@@ -88,12 +88,20 @@ unchanged (hash-checked by test 1); the full Cambridge suite still passes.
 Every number comes from patient-level **state intervals**: for each patient,
 when they entered and left each step, split into "waiting" and "being seen".
 
-* **Snapshot** (single simulated day): integer counts from ONE replication at a
-  15-minute point; census = arrived and not yet left; group counts sum exactly to
-  the census; census at t = census at the day start + arrivals − departures
-  (checked on every run).
-* **Typical day**: averages by hour of day, labelled "average simulated
-  patients"; arrivals/departures divided by the observed days.
+* **Selected day** (on screen: "Selected day"): one day of ONE simulated week
+  (the first seed), Tuesday to Sunday. Each simulated week starts empty at
+  Monday 00:00 and Monday is the warm-up day, so it is never observed and the
+  day picker does not offer it (the screen says so). Counts are whole numbers at
+  15-minute points; census = arrived and not yet left; group counts sum exactly
+  to the census; census at t = census at the day start + arrivals - departures
+  (checked on every run). The day's 4-hour, 12-hour, handover, walk-out and SDEC
+  figures are for the patients who ARRIVED that day, with exactly the same
+  definitions as the week (`metrics.day_summaries`; the days add up to the week,
+  checked by test 6).
+* **Typical day** (on screen: "Typical day"): the average for each hour of the
+  day across every observed day of every simulated week (6 days x 6 weeks);
+  arrivals and departures are divided by the number of observed days. The
+  headline figures in this view are the whole-run results.
 * **Whole run**: each simulated week reduced first, then mean, range, and the
   simulation-noise interval of the mean across weeks.
 * **Total time waiting** is the union of a patient's waiting intervals; **time in
@@ -193,16 +201,21 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 
 **Tests**
 
-* `python3 -m uec_hybrid.tests.run`: the full Cambridge suite plus the 18
-  Midshire acceptance checks (`uec_hybrid/tests/midshire.py`) pass.
+* `python3 -m uec_hybrid.tests.run`: the full Cambridge suite plus the
+  Midshire acceptance checks (`uec_hybrid/tests/midshire.py`, including 18b:
+  runs finish without forkserver, without any start method and with a broken
+  worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 42 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
-  motion and a 200% zoom equivalent; no console or network errors.
+  locally): 74 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  motion and a 200% zoom equivalent; no console or network errors. They cover
+  every page in the baseline and with a scenario open, the Selected day view
+  on every day offered (Tuesday to Sunday) at three times of day, the Typical
+  day view, and a scan of the visible text for technical wording.
 
 | Brief acceptance test | Where it is checked |
 |---|---|
 | 1 Descends from Cambridge, protected data unchanged | `tests/midshire.py` check 1 (ancestry of `8dd0117e`, hashes of protected files and `data/cuh/`) |
-| 2 Exact name, adult-only, provenance, no Cambridge branding | check 2; browser: title, branding, status line |
+| 2 Exact name, adult-only, provenance, no Cambridge branding | check 2 (title, footer, Ask My ED, no Set up tab, no technical wording, no en dashes); browser: title, branding |
 | 3 Paediatrics excluded everywhere | checks 3a (build: no node, route, resource, attribute, rota row) and 3b (cohort, denominator); browser: no paediatric area in the flow |
 | 4 Both SDEC routes, closed fallback, distinct outcomes | check 4a |
 | 5 Decision to admit → bed wait → transfer | check 5 |
@@ -216,14 +229,14 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 | 13 Target workflow honest, no hard-coded 90% | check 13/14; browser: outcome wording, rota/WTE/£ shown, never "optimal" |
 | 14 Full re-runs, guardrails, variation; nurses cannot make space | checks 12/14 and 13/14 |
 | 15 Save / apply / reload / reset; stale results; out-of-order responses | check 15; request sequence guards in `midshire.js` |
-| 16 Qbo and exports reconcile; untrusted input safe | check 16; browser: markup rendered as text |
+| 16 Ask My ED and exports reconcile; untrusted input safe | check 16 (plain wording, no seeds or run ids); browser: markup rendered as text |
 | 17 Keyboard, drill-down, reduced motion, contrast, zoom, responsive | check 17 (static) plus the browser script |
 | 18 Fresh checkout starts from committed files | check 18 |
 
 **Screenshots** (`docs/midshire/screenshots/`): `01_overview_1366x768.png`,
 `01b_overview_full_1366.png`, `02_flow_map_1366.png`, `02b_flow_treatment_open_1366.png`, `02c_flow_expert_1366.png`,
 `03_workforce_search_1366.png`, `04_scenarios_1366.png`,
-`05_ask_qbo_1366.png`, `06_setup_1366.png`, `07_overview_1920x1080.png`,
+`05_ask_my_ed_1366.png`, `07_overview_1920x1080.png`,
 `08_flow_1920x1080.png`, `09_overview_390.png`, `10_flow_390.png`,
 `11_overview_zoom200.png`.
 
@@ -236,60 +249,54 @@ ignored as stale if the inputs or engine change).
 ## 7. Presenter walkthrough (about 8 minutes)
 
 Before the session: `python3 -m uec_hybrid.midshire`, open http://127.0.0.1:5050,
-and if anything was changed in rehearsal use Scenarios → **Reset to demo
-baseline**. Everything below opens on committed, labelled precomputed results.
+and if anything was changed in rehearsal use Scenarios -> **Back to the
+baseline**. Everything below opens on the committed results, so nothing has to
+run live.
 
-1. **Overview (1 min).** Point at the yellow status line: *adult ED planning
-   demonstrator, simulated data, not a live patient feed*. The scenario badge
-   says "Precomputed result · 6 simulated weeks". Read the five tiles left to
-   right: patients in the department and waiting **now** (one simulated day, at
-   the viewing time); the share completed within four hours against the 90%
-   planning target (whole run, with its range and "target not met"); arrivals
-   and departures in the last hour; median time in the department.
-2. **Select a time (30 s).** Drag the viewing-time slider to about 16:00 (or
-   press Play). The census and waiting lines and the tiles move together; the
-   vertical line marks the time. Switch "Typical day (average)" to show the
-   averaged profile is labelled differently, then switch back.
-3. **Find where waits accumulate (1 min).** "Where waits build up" ranks steps
-   by waiting patient-hours per day. Say what it is measured by, and that the
-   model chose it - the bed wait and the results/decision wait lead in the
-   baseline, not because they were assumed.
-4. **Walk the flow map, then expand a stage (2 min).** Patient flow: the
-   department as one picture - arrivals, the five groups left to right, the
-   three outcomes, with diagnostics as the loop patients go out to and come back
-   from. Line width is patients a day; the badge marks where most patients are
-   waiting *now*. Drag the slider from 04:00 to 16:00 and watch the boxes fill
-   and the badge move. Open *Clinical assessment and treatment* - a map of its
-   areas opens underneath (resus, majors, fit-to-sit, UTC, SDEC, frailty unit,
-   results and decision), with the groups and outcomes it connects to. Select
-   *Majors cubicles*: its day, the staff and spaces serving it now, and where its
-   patients come from and go to. Open *Next destination*: decision to admit (an
-   event count), waiting for a bed (patients still on their trolley), transfer
-   to the ward, and the mental-health sub-route. The expert view draws every
-   modelled step.
-5. **Set the 90% target (1 min).** Workforce & investment → 90% within 4 hours,
-   "Combined workforce and estate packages" → Find a package. It returns
-   "Target not reached within the tested options", the best tested package, the
-   gap, the separate validation-week result, and what limits it.
-6. **Inspect the added shifts, space and costs (1.5 min).** Walk the rota rows
-   (role, days, hours, baseline → proposed, extra paid hours, WTE, weekly and
-   annual cost, why), the estate rows (capital, recurring), and the cost table
-   (recurring, capital, annualised comparison cost; nothing priced at £0 that is
-   not costed). Change the target to 70%: "Target met in the tested model" and
-   the **lowest-cost package found within the tested options**, with the other
-   ranked packages.
-7. **Apply and compare (1 min).** "Save as a scenario", pick it in the scenario
-   picker (every screen switches; the baseline is untouched), then Scenarios →
-   tick it → Compare: target, difference in percentage points with its noise
-   interval, 12-hour, walk-outs, unfinished patients, extra shifts, hours, pay,
-   estate, capital. Optionally ask Ask Qbo ED "what workforce and space changes
-   would get 90% through within four hours?".
-8. **Explain the remaining constraints (1 min).** No staffing or space lever in
-   the tested set shortens the results/decision step or the aggregate bed wait,
-   so 90% is not reached *in this model*; that is not a claim about a real
-   hospital. Set up / assumptions lists what is illustrative (rota, costs, SDEC
-   size and streaming, space-staffing ratios) and that the adult build is not
-   validated against a real adult-only department.
+1. **Overview (1 min).** The narrative at the top says, in one or two
+   sentences, how the department is doing for what is on screen. With
+   "Selected day" and Thursday it describes Thursday (arrivals, the share that
+   left within 4 hours, when it was busiest, where most waiting went). Switch to
+   "Typical day" and it describes an average day instead. Read the cards left
+   to right: patients in the department and waiting at the chosen time, the
+   share leaving within 4 hours with its target and status ("Below target"),
+   arrivals and departures in the last hour, and the median time in the
+   department.
+2. **Move through the day (30 s).** Drag the time slider to about 16:00 (or
+   press Play). The cards and the dashed line on the chart move together. Change
+   the day from Thursday to Saturday and the narrative and cards change with it.
+   Monday isn't offered: each modelled week starts empty on Monday.
+3. **Where waits build up (1 min).** The bars show the hours patients spent
+   waiting at each stage that day (or on a typical day). The wait for an
+   inpatient bed and waiting for results or a decision lead; the model found
+   that, it wasn't assumed.
+4. **Walk the flow map, then open a group (2 min).** Patient flow: arrivals, the
+   five groups left to right, the three ways of leaving, with diagnostics as the
+   loop patients go out to and come back from. Drag the slider from 04:00 to
+   16:00 and watch the boxes fill and the "Most waiting now" badge move. Open
+   *Clinical assessment and treatment*: a map of its areas opens underneath.
+   Select *Majors cubicles* to show its day, the staff and spaces it has now, and
+   where its patients come from and go to. Open *Next destination* for decision
+   to admit, waiting for a bed, transfer to the ward and the mental health route.
+5. **Set the target (1 min).** Workforce & investment: the strip across the top
+   reads Now -> Target -> Changes -> Expected -> Extra cost. Set 90% within 4
+   hours, "Staffing, space and beds", Find the lowest-cost package. It reports
+   that no tested package reaches 90%, what the best one achieves, how much
+   short it is, and what still holds performance back.
+6. **The changes and their cost (1.5 min).** Read the package in plain words,
+   the effect on patients, whether it held up on different weeks, and the cost
+   (extra staff, pay a year, one-off cost). "Show the extra shifts and the cost
+   breakdown" has the rota rows. Change the target to 70%: "Reaches the 70% target" and
+   the lowest-cost package that gets there.
+7. **Save and compare (1 min).** Save as a scenario; it appears in the scenario
+   list at the top and on the Scenarios page, with what it changes, why you
+   would test it and what to look for. Tick it and compare it with the
+   baseline. Ask My ED: "How are we doing?" or "What would it take to reach 90%
+   within 4 hours?".
+8. **What still limits it (1 min).** No tested change shortens the wait for
+   results or a decision, or the hospital-wide bed wait, so 90% isn't reached
+   in this model. That is a statement about the model and the changes tested,
+   not about the real hospital.
 
 ## 8. Residual limitations
 
@@ -322,5 +329,11 @@ baseline**. Everything below opens on committed, labelled precomputed results.
   staffing is not modelled.
 * **Uncertainty** is simulation noise only (6 selection weeks, 8 validation
   weeks); the ranges and intervals are not forecasts of real weeks.
+* **Runs on Windows.** The worker pool used to be started with Python's
+  'forkserver' method, which Windows does not have ("cannot find context for
+  'forkserver'"). The runner now picks a method the platform supports
+  (forkserver, then spawn, then fork) and finishes a run in-process if no pool
+  can start or a worker dies; a failed run shows a plain message and the detail
+  goes to the server log (test 18b).
 * **Browser checks** run locally with Playwright (`docs/midshire/browser_check.js`),
   not in CI. Frutiger is not shipped (no licence); Arial is used.

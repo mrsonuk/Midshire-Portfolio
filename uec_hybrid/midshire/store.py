@@ -116,22 +116,39 @@ def ensure_baseline(reset: bool = False) -> dict:
     with _lock, _s() as s:
         row = s.get(ScenarioRow, BASELINE_ID)
         inputs = mcfg.baseline_inputs()
+        name = mcfg.fixture().get("baseline_name", "Baseline")
+        note = json.dumps({"why": "How the department runs today, with the current staffing, space and beds.",
+                           "look_for": "Use it as the starting point every other scenario is compared with."})
         if row is None:
-            row = ScenarioRow(id=BASELINE_ID, name="Demo baseline", kind="baseline",
-                              inputs=json.dumps(inputs), version=1,
-                              note="The committed Midshire demo baseline "
-                                   f"({inputs['fixture_version']}). Read-only: reset restores it.",
+            row = ScenarioRow(id=BASELINE_ID, name=name, kind="baseline",
+                              inputs=json.dumps(inputs), version=1, note=note,
                               created_at=_now(), updated_at=_now())
             s.add(row)
         elif reset or json.loads(row.inputs).get("fixture_version") != inputs["fixture_version"]:
             row.inputs = json.dumps(inputs)
             row.version += 1
             row.updated_at = _now()
+        if row.name != name or row.note != note:      # older databases: plain name and description
+            row.name, row.note = name, note
         s.commit()
         if reset:
-            s.query(SettingRow).filter_by(key="applied").delete()
+            s.query(SettingRow).filter(SettingRow.key.in_(["applied", "shown"])).delete(synchronize_session=False)
             s.commit()
         return _row(row)
+
+
+def shown_ids() -> list[str]:
+    """Scenarios the user has opened, run or saved: the scenario picker lists
+    these after the baseline. Library scenarios stay out of it until used."""
+    return list(get_setting("shown") or [])
+
+
+def mark_shown(sid: str):
+    if not sid or sid == BASELINE_ID:
+        return
+    ids = shown_ids()
+    if sid not in ids:
+        save_setting("shown", ids + [sid])
 
 
 def get_scenario(sid: str) -> dict | None:
@@ -156,7 +173,7 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
     """Create (or update a non-baseline) named scenario. The baseline id is
     refused - it can only be reset from the fixture."""
     if sid == BASELINE_ID or kind == "baseline":
-        raise PermissionError("the demo baseline is read-only; save as a new scenario")
+        raise PermissionError("The baseline can't be changed. Save your changes as a new scenario.")
     with _lock, _s() as s:
         row = s.get(ScenarioRow, sid) if sid else None
         if row is None:
@@ -166,7 +183,7 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
             s.add(row)
         else:
             if row.kind == "baseline":
-                raise PermissionError("the demo baseline is read-only")
+                raise PermissionError("The baseline can't be changed. Save your changes as a new scenario.")
             row.name, row.inputs, row.note = name[:200], json.dumps(inputs), note[:2000]
             row.version += 1
             row.updated_at = _now()
@@ -176,7 +193,7 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
 
 def delete_scenario(sid: str) -> bool:
     if sid == BASELINE_ID:
-        raise PermissionError("the demo baseline cannot be deleted")
+        raise PermissionError("The baseline can't be deleted.")
     with _lock, _s() as s:
         n = s.query(ScenarioRow).filter_by(id=sid).delete()
         s.commit()

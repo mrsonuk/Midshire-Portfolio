@@ -16,7 +16,6 @@ Nothing here writes to the Cambridge database.
 from __future__ import annotations
 
 import argparse
-import re
 import gzip
 import json
 import tempfile
@@ -24,7 +23,7 @@ import time
 
 from . import config as mcfg
 from .optimise import search, search_key
-from .packages import apply_package
+from .packages import apply_package, describe_package
 from .runner import run, source_commit
 from ..platform.store import ENGINE_VERSION
 
@@ -88,11 +87,12 @@ def main(argv=None):
                 fx = {l["id"]: l for l in mcfg.fixture()["search"]["levers"]}
                 pkg, _ = apply_package(base, [fx[i] for i in sorted(rec["ids"])])
                 iname = _write(f"{sid}_inputs.json.gz", pkg)
-                short = ", ".join(re.sub(r"\s*\(.*?\)", "", t) for t in rec["titles"])
+                d = describe_package(rec["ids"], mode, target, r["outcome"])
                 manifest["scenarios"].append({
                     "id": sid, "inputs": iname, "ids": sorted(rec["ids"]),
-                    "name": f"{mode.capitalize()} package: {short} (precomputed)"[:200],
-                    "note": "PRECOMPUTED from the package search. " + "; ".join(rec["titles"])})
+                    "mode": mode, "target": target, "outcome": r["outcome"],
+                    "name": d["name"][:200],
+                    "note": json.dumps({"why": d["why"], "look_for": d["look_for"]})})
                 prun = r["package_run"]
                 manifest["runs"].append({"kind": "run", "file": _write(f"{sid}_run.json.gz", prun),
                                          "inputs": iname, "model_hash": prun["model_hash"],

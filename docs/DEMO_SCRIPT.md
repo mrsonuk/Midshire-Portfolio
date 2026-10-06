@@ -31,7 +31,7 @@ Three practical notes:
 
 ---
 
-## Act 1 — The problem, and what this is (0:00–1:15)
+## Act 1 — The problem, and what this is (0:00-1:15)
 
 > *"Every emergency department in the country is asked the same question: if we had
 > one more cubicle, one more doctor, one more hour of SDEC — what would it actually
@@ -52,7 +52,7 @@ Three practical notes:
 
 ---
 
-## Act 2 — Loading Cambridge's own data (1:15–3:00)
+## Act 2 — Loading Cambridge's own data (1:15-3:00)
 
 **Click:** Design my ED → scroll to **Start from your trust**.
 
@@ -92,7 +92,7 @@ Three practical notes:
 
 ---
 
-## Act 3 — The control tower (3:00–5:00)
+## Act 3 — The control tower (3:00-5:00)
 
 **Click:** Control tower.
 
@@ -115,7 +115,7 @@ Three practical notes:
 
 ---
 
-## Act 4 — The flow map: where it actually hurts (5:00–7:30)
+## Act 4 — The flow map: where it actually hurts (5:00-7:30)
 
 **Scroll to** the live flow map.
 
@@ -162,7 +162,7 @@ areas. Read both - someone will notice if you only read one.
 
 ---
 
-## Act 5 — The tool answers back (7:30–10:30)
+## Act 5 — The tool answers back (7:30-10:30)
 
 **Click:** *What should we change? Search staffing, capacity and hours.*
 
@@ -215,14 +215,14 @@ areas. Read both - someone will notice if you only read one.
 
 **Click:** the *Ask your ED* chat bubble → type `where is the pinch point?`
 
-It answers: **"Pinch point: Paediatric area. Bites hardest 08:00–10:00."**
+It answers: **"Pinch point: Paediatric area. Bites hardest 08:00-10:00."**
 
 > *"And there is a chatbot, grounded in the same numbers. It can only answer from what
 > the simulation actually computed, so it cannot contradict the screen behind it."*
 
 **Two more worth showing** (both answer instantly):
 
-* `where is demand?` → *"~400 attendances a day. Heaviest around 11:00–14:00, ~29/hour at peak."*
+* `where is demand?` → *"~400 attendances a day. Heaviest around 11:00-14:00, ~29/hour at peak."*
 * `what if we add 3 nurses at 1pm?` → it runs the scenario from the chat box.
 
 > ⚠️ **Know this before someone asks.** The chat, the banner's first line and the
@@ -235,7 +235,7 @@ It answers: **"Pinch point: Paediatric area. Bites hardest 08:00–10:00."**
 
 ---
 
-## Act 6 — Does it match reality? (10:30–12:30)
+## Act 6 — Does it match reality? (10:30-12:30)
 
 > *"Everything I have shown you is worthless unless it reproduces your department. So
 > here is the validation, and here is where I am going to be uncomfortable in public."*
@@ -272,7 +272,7 @@ It answers: **"Pinch point: Paediatric area. Bites hardest 08:00–10:00."**
 
 ---
 
-## Act 7 — What it cannot do yet (12:30–14:00)
+## Act 7 — What it cannot do yet (12:30-14:00)
 
 > *"Four limitations. All of them are data or engine gaps, and none of them are
 > hidden in a footnote — they are in the Status tab you saw at the start.*

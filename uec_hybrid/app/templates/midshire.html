@@ -11,12 +11,9 @@
 <header class="ms-header">
   <div class="ms-wrap">
     <h1 class="ms-title">{{ title }}</h1>
-    <p class="ms-subtitle">Adult ED simulation and planning demonstrator</p>
+    <p class="ms-subtitle">Adult emergency department</p>
   </div>
 </header>
-<div class="ms-statusline" role="note">
-  <div class="ms-wrap"><strong>{{ status }}</strong> <span id="statusMore"></span></div>
-</div>
 
 <nav class="ms-tabs" aria-label="Sections">
   <div class="ms-wrap ms-navrow">
@@ -25,9 +22,8 @@
     <button role="tab" id="tab-flow" aria-controls="panel-flow" aria-selected="false" tabindex="-1">Patient flow</button>
     <button role="tab" id="tab-workforce" aria-controls="panel-workforce" aria-selected="false" tabindex="-1">Workforce &amp; investment</button>
     <button role="tab" id="tab-scenarios" aria-controls="panel-scenarios" aria-selected="false" tabindex="-1">Scenarios</button>
-    <button role="tab" id="tab-setup" class="ms-tab-secondary" aria-controls="panel-setup" aria-selected="false" tabindex="-1">Set up / assumptions</button>
   </div>
-  <button id="qboOpen" class="ms-qbo-open" type="button" aria-haspopup="dialog" aria-controls="qboPanel" aria-expanded="false">Ask Qbo ED</button>
+  <button id="myedOpen" class="ms-myed-open" type="button" aria-haspopup="dialog" aria-controls="myedPanel" aria-expanded="false">Ask My ED</button>
   </div>
 </nav>
 
@@ -41,26 +37,28 @@
     <div class="ms-ctx-item">
       <span class="ms-ctx-label" id="modeLabel">View</span>
       <div class="ms-seg" role="radiogroup" aria-labelledby="modeLabel">
-        <button role="radio" aria-checked="true" id="modeReplay" data-mode="replay">Single simulated day</button>
-        <button role="radio" aria-checked="false" id="modeTypical" data-mode="typical" tabindex="-1">Typical day (average)</button>
+        <button role="radio" aria-checked="true" id="modeReplay" data-mode="replay">Selected day</button>
+        <button role="radio" aria-checked="false" id="modeTypical" data-mode="typical" tabindex="-1">Typical day</button>
       </div>
+      <span class="ms-hint" id="modeHelp"></span>
     </div>
     <div class="ms-ctx-item" id="dayWrap">
-      <label for="dayPick">Simulated day</label>
-      <select id="dayPick"></select>
+      <label for="dayPick">Day</label>
+      <select id="dayPick" aria-describedby="dayHelp"></select>
+      <span class="ms-hint" id="dayHelp">Tuesday to Sunday. Monday isn't shown: each modelled week starts empty on Monday.</span>
     </div>
     <div class="ms-ctx-item ms-ctx-time">
-      <label for="timeSlider">Viewing time <output id="timeOut" for="timeSlider">12:00</output></label>
+      <label for="timeSlider">Time <output id="timeOut" for="timeSlider">12:00</output></label>
       <div class="ms-time-row">
         <button id="timePrev" class="ms-btn-small" aria-label="Fifteen minutes earlier">&minus;</button>
         <input type="range" id="timeSlider" min="0" max="95" step="1" value="48" aria-describedby="timeHelp">
         <button id="timeNext" class="ms-btn-small" aria-label="Fifteen minutes later">+</button>
         <button id="timePlay" class="ms-btn-small" aria-pressed="false">Play</button>
       </div>
-      <span id="timeHelp" class="ms-hint">15-minute steps</span>
+      <span id="timeHelp" class="ms-hint">Move through the day in 15-minute steps</span>
     </div>
   </div>
-  <div class="ms-wrap"><p class="ms-period" id="periodText"></p></div>
+  <div class="ms-wrap"><p class="ms-period" id="periodText" aria-live="polite"></p></div>
 </section>
 
 <main id="main" class="ms-wrap" tabindex="-1">
@@ -69,9 +67,7 @@
   <!-- ============================ OVERVIEW ============================ -->
   <section id="panel-overview" role="tabpanel" aria-labelledby="tab-overview" class="ms-panel">
     <h2>Overview</h2>
-    <p class="ms-lead">How the simulated adult emergency department is running: the overall position first, then
-      its pattern through the day. Snapshot figures are integer counts from <strong>one simulated day</strong>; the
-      four-hour figure is a <strong>whole-run</strong> result across several simulated weeks. Each tile says which it is.</p>
+    <p class="ms-lead ms-narrative" id="ovNarrative" aria-live="polite"></p>
     <div id="ovStale" class="ms-warning" hidden></div>
     <div class="ms-tiles" id="kpiPrimary"></div>
     <h3 class="ms-h3">Also worth watching</h3>
@@ -81,64 +77,69 @@
       <h3 class="ms-h3" id="dayChartTitle">Through the day</h3>
       <p class="ms-hint" id="dayChartNote"></p>
       <div class="ms-chart" id="chartCensus" role="img" aria-labelledby="dayChartTitle"></div>
-      <h4 class="ms-h4" id="flowChartTitle">Arrivals and departures per hour</h4>
+      <h4 class="ms-h4" id="flowChartTitle">Arrivals and departures by hour</h4>
+      <p class="ms-hint" id="flowChartNote"></p>
       <div class="ms-chart" id="chartFlow" role="img" aria-labelledby="flowChartTitle"></div>
       <details class="ms-details"><summary>Show these charts as a table</summary><div id="dayTable"></div></details>
     </div>
 
     <div class="ms-card">
       <h3 class="ms-h3">Where waits build up</h3>
-      <p class="ms-hint">Measured as <strong>waiting patient-hours per day</strong> across the whole run (the number of people
-        waiting at each stage, added up over time). A busy area is not, by itself, a bottleneck; this measures waiting.</p>
+      <p class="ms-hint" id="pressureNote"></p>
       <div id="pressureList"></div>
-      <button class="ms-link-btn" data-goto="flow">Open the patient flow</button>
+      <button class="ms-link-btn" data-goto="flow">See this in Patient flow</button>
     </div>
   </section>
 
   <!-- ============================ PATIENT FLOW ============================ -->
   <section id="panel-flow" role="tabpanel" aria-labelledby="tab-flow" class="ms-panel" hidden>
     <h2>Patient flow</h2>
-    <p class="ms-lead">The department as one picture, in five summary groups from left to right. This is a display
-      grouping, not a compulsory sequence: not everyone needs diagnostics, assessment by RAT or admission; patients can
-      go home early, go straight to SDEC, or return from diagnostics to a decision, and the lines show those routes.
-      Select a group to open a map of its areas underneath.</p>
+    <p class="ms-lead">The department as one picture, from arrival on the left to leaving on the right. Patients don't
+      all take the same route: some go straight home, some go to SDEC, and some go for tests and come back. Select a
+      group to see the areas inside it.</p>
     <div class="fm-toolbar">
       <ul class="fm-key" aria-label="Key to the map borders">
         <li><span class="sw st-quiet" aria-hidden="true"></span>quiet</li>
         <li><span class="sw st-busy" aria-hidden="true"></span>filling</li>
         <li><span class="sw st-peak" aria-hidden="true"></span>near its busiest moment of the day</li>
-        <li><span class="sw line" aria-hidden="true"></span>patients a day moving between boxes</li>
+        <li><span class="sw line" aria-hidden="true"></span>patients moving between areas</li>
       </ul>
       <button id="flowPause" class="ms-btn-small fm-pause" type="button" aria-pressed="false">Pause movement</button>
     </div>
     <p class="ms-hint" id="flowLegend"></p>
     <div class="fm-map" id="groupRow" role="group" aria-label="Patient flow map: the five summary groups, with arrivals on the left and outcomes on the right"></div>
-    <details class="ms-details" id="flowTableView"><summary>Table view of this map</summary><div id="flowTable"></div></details>
+    <details class="ms-details" id="flowTableView"><summary>Show this map as a table</summary><div id="flowTable"></div></details>
     <div id="groupDetail" class="ms-detail" hidden tabindex="-1"></div>
     <h3 class="ms-h3">Leaving the department</h3>
-    <div id="outcomeRow" class="ms-tiles ms-tiles-secondary"></div>
-    <details class="ms-details" id="expertView"><summary>Expert view: the full modelled pathway</summary>
+    <p class="ms-hint" id="outcomeNote"></p>
+    <div id="outcomeRow" class="ms-tiles ms-tiles-outcomes"></div>
+    <details class="ms-details" id="expertView"><summary>Every step in detail</summary>
       <p class="ms-hint" id="expertNote"></p>
-      <div class="fm-map" id="expertMap" role="group" aria-label="Full pathway map: every modelled step"></div>
+      <div class="fm-map" id="expertMap" role="group" aria-label="Every step of the patient pathway"></div>
       <div id="expertTable"></div></details>
   </section>
 
   <!-- ============================ WORKFORCE & INVESTMENT ============================ -->
   <section id="panel-workforce" role="tabpanel" aria-labelledby="tab-workforce" class="ms-panel" hidden>
     <h2>Workforce &amp; investment</h2>
-    <p class="ms-lead">Set a planning target, let the model test feasible staffing and space packages, then inspect the extra
-      rota, hours and cost against the modelled benefit. You can also edit the rota, costs and spaces yourself.</p>
+    <p class="ms-lead">Set a target for 4-hour performance, see what it would take to get there, and what it would cost.
+      You can also change the rota, space and beds yourself and see the effect.</p>
+    <ol class="ms-journey" id="journey" aria-label="From the current position to the cost of the changes"></ol>
 
     <div class="ms-card" id="targetCard">
-      <h3 class="ms-h3">1. Planning target</h3>
-      <form id="targetForm" class="ms-form-row" novalidate>
-        <div class="ms-field"><label for="tgtPct">Share of eligible adult attendances</label>
-          <div class="ms-input-suffix"><input id="tgtPct" type="number" min="1" max="100" step="0.5" inputmode="decimal" required><span>%</span></div></div>
-        <div class="ms-field"><label for="tgtMin">completed within</label>
-          <select id="tgtMin"></select></div>
-        <div class="ms-field"><label for="tgtMode">Changes to test</label>
-          <select id="tgtMode"></select></div>
-        <div class="ms-field ms-field-btn"><button type="submit" class="ms-btn" id="tgtGo">Find a package</button></div>
+      <h3 class="ms-h3">1. Set the target</h3>
+      <p class="ms-hint" id="targetNow"></p>
+      <form id="targetForm" class="ms-aim" novalidate>
+        <p class="ms-aim-sentence">
+          <label for="tgtPct">Target:</label>
+          <span class="ms-input-suffix"><input id="tgtPct" type="number" min="1" max="100" step="0.5" inputmode="decimal" required><span>%</span></span>
+          <span>of patients leave the department within</span>
+          <label for="tgtMin" class="ms-visually-hidden">Time limit</label><select id="tgtMin"></select>
+        </p>
+        <div class="ms-form-row">
+          <div class="ms-field"><label for="tgtMode">What can change</label><select id="tgtMode"></select></div>
+          <div class="ms-field ms-field-btn"><button type="submit" class="ms-btn" id="tgtGo">Find the lowest-cost package</button></div>
+        </div>
       </form>
       <p class="ms-hint" id="targetNote"></p>
       <div id="tgtError" class="ms-error" role="alert" hidden></div>
@@ -151,7 +152,7 @@
     </div>
 
     <div class="ms-card" id="editorCard">
-      <h3 class="ms-h3">2. Rota, costs and spaces</h3>
+      <h3 class="ms-h3">2. Try your own changes</h3>
       <div id="draftBanner" class="ms-warning" role="status" aria-live="polite" hidden></div>
       <p class="ms-hint" id="editorSource"></p>
       <h4 class="ms-h4">Rota</h4>
@@ -159,34 +160,34 @@
       <div id="rotaErrors" class="ms-error" role="alert" hidden></div>
       <div class="ms-table-wrap"><table class="ms-table ms-rota" id="rotaTable"></table></div>
       <div class="ms-actions">
-        <button class="ms-btn-secondary" id="rotaAdd">Add a shift row</button>
-        <label class="ms-btn-secondary ms-file">Import rota CSV<input type="file" id="rotaFile" accept=".csv,text/csv"></label>
-        <a class="ms-btn-secondary" id="rotaExport" href="#">Export rota CSV</a>
+        <button class="ms-btn-secondary" id="rotaAdd">Add a shift</button>
+        <label class="ms-btn-secondary ms-file">Import rota (CSV)<input type="file" id="rotaFile" accept=".csv,text/csv"></label>
+        <a class="ms-btn-secondary" id="rotaExport" href="#">Download rota (CSV)</a>
       </div>
 
-      <h4 class="ms-h4">Staffing coverage (instant preview, no simulation)</h4>
+      <h4 class="ms-h4">Staff on shift through the day</h4>
       <div class="ms-form-row">
         <div class="ms-field"><label for="covGroup">Staff group</label><select id="covGroup"></select></div>
         <div class="ms-field"><label for="covDay">Day</label><select id="covDay"></select></div>
       </div>
-      <div class="ms-chart" id="chartCoverage" role="img" aria-label="Staff on shift by hour, baseline and this draft"></div>
+      <div class="ms-chart" id="chartCoverage" role="img" aria-label="Staff on shift by hour of the selected day, baseline and your changes"></div>
       <div id="spaceSummary"></div>
       <div id="costSummary"></div>
 
-      <details class="ms-details"><summary>Staff costs (editable)</summary>
+      <details class="ms-details"><summary>Staff costs</summary>
         <p class="ms-hint" id="costInclusions"></p>
         <div class="ms-table-wrap"><table class="ms-table" id="costTable"></table></div></details>
-      <details class="ms-details"><summary>Physical spaces, staffing ratios and the hospital (editable)</summary>
+      <details class="ms-details"><summary>Spaces, staffing ratios and hospital beds</summary>
         <div class="ms-table-wrap"><table class="ms-table" id="capTable"></table></div>
         <div class="ms-table-wrap"><table class="ms-table" id="ratioTable"></table></div>
         <div class="ms-form-row" id="otherInputs"></div></details>
-      <details class="ms-details"><summary>Estates unit costs (editable)</summary>
+      <details class="ms-details"><summary>Building and equipment costs</summary>
         <p class="ms-hint" id="estateNote"></p>
         <div class="ms-table-wrap"><table class="ms-table" id="estateTable"></table></div></details>
 
       <div class="ms-actions ms-actions-main">
-        <button class="ms-btn" id="draftRun">Simulate these changes</button>
-        <button class="ms-btn-secondary" id="draftSave">Save as a named scenario…</button>
+        <button class="ms-btn" id="draftRun">Run these changes</button>
+        <button class="ms-btn-secondary" id="draftSave">Save as a scenario</button>
         <button class="ms-btn-secondary" id="draftDiscard">Discard changes</button>
       </div>
       <div id="draftProgress" class="ms-progress" hidden>
@@ -201,37 +202,37 @@
   <!-- ============================ SCENARIOS ============================ -->
   <section id="panel-scenarios" role="tabpanel" aria-labelledby="tab-scenarios" class="ms-panel" hidden>
     <h2>Scenarios</h2>
-    <p class="ms-lead">Every scenario is compared with the same saved demo baseline on the same simulated weeks. Applying a
-      scenario changes what every screen shows; it never changes the baseline.</p>
-    <div class="ms-table-wrap"><table class="ms-table" id="scenarioTable"></table></div>
+    <p class="ms-lead">Each scenario tests one change, or a set of changes, against the baseline. Open a scenario to see
+      it on every page, or tick two or more and compare them. The baseline itself never changes.</p>
+    <div class="ms-scenarios" id="scenarioTable" role="list"></div>
     <div class="ms-actions">
-      <button class="ms-btn" id="compareGo">Compare selected with the baseline</button>
-      <button class="ms-btn-secondary" id="resetBaseline">Reset to demo baseline</button>
+      <button class="ms-btn" id="compareGo">Compare ticked scenarios with the baseline</button>
+      <button class="ms-btn-secondary" id="resetBaseline">Back to the baseline</button>
     </div>
     <div id="scenarioMsg" class="ms-hint" role="status" aria-live="polite"></div>
     <div id="compareOut"></div>
-    <h3 class="ms-h3">Export</h3>
+    <h3 class="ms-h3">Downloads</h3>
     <ul class="ms-list" id="exportLinks"></ul>
   </section>
 
-  <!-- ============================ SET UP / ASSUMPTIONS ============================ -->
-  <section id="panel-setup" role="tabpanel" aria-labelledby="tab-setup" class="ms-panel" hidden>
-    <h2>Set up and assumptions</h2>
+  <!-- data sources and model notes: kept for reference, not shown in the navigation -->
+  <section id="panel-setup" class="ms-panel" hidden aria-hidden="true">
     <div id="setupBody"></div>
   </section>
 </main>
 
-<footer class="ms-footer"><div class="ms-wrap" id="footerText"></div></footer>
+<footer class="ms-footer"><div class="ms-wrap" id="footerText">Midshire University Hospitals Trust Control</div></footer>
 
-<section id="qboPanel" class="ms-qbo" role="dialog" aria-modal="false" aria-labelledby="qboTitle" hidden>
-  <div class="ms-qbo-head"><h2 id="qboTitle">Ask Qbo ED</h2>
-    <button id="qboClose" class="ms-btn-small" aria-label="Close Ask Qbo ED">Close</button></div>
-  <p class="ms-hint ms-qbo-note">Answers come from the simulation results for the scenario you are viewing. It can be wrong
-    if the model is wrong: check the screens it points to.</p>
-  <div id="qboLog" class="ms-qbo-log" role="log" aria-live="polite"></div>
-  <form id="qboForm" class="ms-qbo-form">
-    <label for="qboIn" class="ms-visually-hidden">Your question</label>
-    <input id="qboIn" type="text" maxlength="500" autocomplete="off" placeholder="e.g. what would it take to get 90% through within four hours?">
+<section id="myedPanel" class="ms-myed" role="dialog" aria-modal="false" aria-labelledby="myedTitle" hidden>
+  <div class="ms-myed-head"><h2 id="myedTitle">Ask My ED</h2>
+    <button id="myedClose" class="ms-btn-small" aria-label="Close Ask My ED">Close</button></div>
+  <p class="ms-hint ms-myed-note">Answers use the figures for the scenario and day you are viewing.</p>
+  <div id="myedLog" class="ms-myed-log" role="log" aria-live="polite"></div>
+  <details id="myedSuggestWrap" class="ms-myed-suggest-wrap" open><summary>Suggested questions</summary>
+    <div id="myedSuggest" class="ms-myed-suggest"></div></details>
+  <form id="myedForm" class="ms-myed-form">
+    <label for="myedIn" class="ms-visually-hidden">Your question</label>
+    <input id="myedIn" type="text" maxlength="500" autocomplete="off" placeholder="Ask about the department">
     <button type="submit" class="ms-btn">Ask</button>
   </form>
 </section>

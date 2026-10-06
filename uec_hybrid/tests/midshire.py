@@ -202,6 +202,19 @@ def check_runs(base):
     for hh in range(24):
         tot = sum(v[hh] for v in prof["states_avg"].values())
         assert abs(tot - prof["census_avg"][hh]) < 1e-6, f"typical-day boxes do not sum to the census at {hh}:00"
+    # the Selected day figures: each day's patients, the same definitions as the week, adding up to it
+    from ..midshire.runner import THRESHOLDS
+    ds = M.day_summaries(tr, m.raw, THRESHOLDS)
+    assert len(ds) == inp["engine"]["observed_days"] and sum(x["n_cohort"] for x in ds) == k["n_cohort"]
+    wk = sum(x["four_hour"] * x["n_cohort"] for x in ds) / k["n_cohort"]
+    assert abs(wk - k["four_hour"]) < 1e-9, "the days add up to the week"
+    assert all(abs(x["within"][THRESHOLDS.index(240)] - x["four_hour"]) < 1e-9 for x in ds)
+    # what a scenario changes, in words, from its inputs
+    from ..midshire.packages import apply_package, describe_changes
+    fxl = {l["id"]: l for l in mcfg.fixture()["search"]["levers"]}
+    rat, _ = apply_package(inp, [fxl["rat_day"]])
+    assert describe_changes(inp, rat) == ["Add one senior RAT clinician, 10:00 to 22:00, every day."]
+    assert describe_changes(inp, inp) == ["No changes from the baseline."]
     print(f"Midshire 6 OK (flow maps): {len(units)} map boxes partition the states; every box's patients in - "
           f"out equals its change in occupancy; arrivals and departures match at all three levels; summary "
           f"lines are the detail lines added up ({len(fl['group'])} routes, including returns from diagnostics).")
@@ -381,8 +394,9 @@ def check_search(base):
     easy = search(inp, {"pct": 10, "minutes": 240}, bounds=bounds)
     assert easy["outcome"] == "already_met"
     hard = search(inp, {"pct": 99.5, "minutes": 240}, bounds=bounds)
-    assert hard["outcome"] == "not_reached" and "not reached" in hard["headline"].lower()
+    assert hard["outcome"] == "not_reached" and "none of the tested packages reaches" in hard["headline"].lower()
     assert "99.5%" in hard["headline"] and "90%" not in hard["headline"], "nothing about 90% is hard-coded"
+    assert "points short" in hard["headline"] and not re.search(r"seed|simulat|replication", hard["headline"], re.I)
     best = hard["best_tested"]
     assert best and best["measure"]["n"] == 2 and "ci_low" in best["delta_vs_baseline_pts"]
     assert hard["evaluations"]["replications"] >= 2 * hard["evaluations"]["packages"], \
@@ -419,7 +433,11 @@ def check_app_and_assistant(base):
     html = page.get_data(as_text=True)
     assert page.status_code == 200
     assert "<title>Midshire University Hospitals Trust Control Tower</title>" in html
-    assert "simulated data, not a live patient feed" in html
+    assert ">Midshire University Hospitals Trust Control</div></footer>" in html, "the footer is the trust name only"
+    assert "Ask My ED" in html and "Qbo" not in html and 'id="tab-setup"' not in html, "Ask My ED; no Set up tab"
+    for bad in ("simulated data", "Demo baseline", "Precomputed", "warm-up", "seed"):
+        assert bad.lower() not in html.lower(), f"technical wording on the page: {bad!r}"
+    assert "\u2013" not in html and "\u2013" not in (ROOT / "uec_hybrid" / "app" / "static" / "midshire.js").read_text(), "no en dashes"
     static = ROOT / "uec_hybrid" / "app" / "static"
     js = (static / "midshire.js").read_text(); css = (static / "midshire.css").read_text()
     for name, txt in (("page", html), ("script", js), ("styles", css)):
@@ -430,8 +448,8 @@ def check_app_and_assistant(base):
     assert meta["demo_id"] == "MIDSHIRE-DEMO" and not re.fullmatch(r"R[A-Z0-9]{2}", meta["demo_id"])
     assert "innerHTML" not in js and "insertAdjacentHTML" not in js and "eval(" not in js, \
         "untrusted text must never be inserted as HTML"
-    print("Midshire 2 OK: exact product title and simulated-data status line; no Cambridge name, logo or "
-          "greeting on the page, script or styles; the provenance still records the Cambridge foundation.")
+    print("Midshire 2 OK: exact product title and footer; Ask My ED, no Set up tab, no technical wording or en "
+          "dashes on the page; no Cambridge name, logo or greeting; the provenance still records the source.")
 
     # 15: save, apply, reload, reset; the baseline never changes
     short = _short(base)
@@ -463,14 +481,17 @@ def check_app_and_assistant(base):
     print("Midshire 15 OK: save, apply, reload and reset work; the baseline is read-only; invalid inputs are "
           "refused; a result is only ever served for the inputs that produced it.")
 
-    # 16: Ask Qbo ED and exports reconcile with the structured result
+    # 16: Ask My ED and exports reconcile with the structured result
     c.post("/api/m/apply", json={"scenario_id": sid})
     a1 = c.post("/api/m/ask", json={"message": "how are we doing?", "scenario_id": sid}).get_json()
     tv = res["result"]["target_status"]["value"]["mean"]
     assert f"{tv:.1f}%" in a1["reply"], (tv, a1["reply"])
     a2 = c.post("/api/m/ask", json={"message": "where do patients wait longest?", "scenario_id": sid}).get_json()
     top = res["result"]["pressure"][0]
-    assert top["label"] in a2["reply"] and f"{top['patient_hours_per_day']:.0f}" in a2["reply"]
+    from ..midshire.optimise import wait_phrase
+    assert wait_phrase(top["label"]) in a2["reply"] and f"{top['patient_hours_per_day']:.0f}" in a2["reply"]
+    for a in (a1, a2):
+        assert not re.search(r"seed|run id|simulat|replication|Qbo", a["reply"], re.I), a["reply"]
     a3 = c.post("/api/m/ask", json={"message": "<img src=x onerror=alert(1)> tell me a joke", "scenario_id": sid}).get_json()
     assert a3["intent"] == "unsupported" and "can't" in a3["reply"]
     a4 = c.post("/api/m/ask", json={"message": "what if we add 99 nurses", "scenario_id": sid}).get_json()
@@ -484,7 +505,7 @@ def check_app_and_assistant(base):
     from ..workforce.rota import rota_from_csv
     back, errs = rota_from_csv(rota_csv)
     assert not errs and len(back) == len(short["rota"])
-    print("Midshire 16 OK: Ask Qbo ED quotes the structured result exactly, refuses unsupported or "
+    print("Midshire 16 OK: Ask My ED quotes the structured result exactly in plain words, refuses unsupported or "
           "out-of-range questions explicitly, returns plain text; exports match the result and re-import.")
 
 
@@ -548,7 +569,65 @@ def check_fresh_checkout():
         msg = f"{len(pre.get('loaded', []))} precomputed result files load and match the current model"
     else:
         msg = "no precomputed fixtures committed (the demo would simulate on first open)"
-    print(f"Midshire 18 OK: a fresh database starts the demo from committed files; {msg}.")
+    # the scenario picker starts with the baseline only; library scenarios join it once opened
+    cards = c.get("/api/m/scenarios").get_json()["scenarios"]
+    assert [x["id"] for x in cards if x["shown"]] == ["baseline"], "only the baseline is listed at first"
+    base_card = next(x for x in cards if x["id"] == "baseline")
+    assert base_card["name"] == "Baseline" and base_card["info"].get("why")
+    lib = [x for x in cards if x["kind"] == "precomputed"]
+    for x in lib:
+        assert "(precomputed)" not in x["name"] and x["changes"] and x["info"].get("why") and x["info"].get("look_for"), x
+    if lib:
+        c.post("/api/m/apply", json={"scenario_id": lib[0]["id"]})
+        shown = [x["id"] for x in c.get("/api/m/scenarios").get_json()["scenarios"] if x["shown"]]
+        assert lib[0]["id"] in shown
+        c.post("/api/m/reset", json={})
+        assert [x["id"] for x in c.get("/api/m/scenarios").get_json()["scenarios"] if x["shown"]] == ["baseline"]
+    print(f"Midshire 18 OK: a fresh database starts the demo from committed files; {msg}; the scenario list "
+          f"starts with the baseline only and every library scenario says what changes, why and what to look for.")
+
+
+def check_runtime_fallback(base):
+    """No forkserver (Windows) or a broken worker pool: runs still finish, in
+    the same results; a failed job shows a plain message, never Python."""
+    import multiprocessing as mp
+    from ..midshire import runner, jobs
+    inp = _short(base, days=1, seeds=(101, 102))
+    ref = runner.run(inp)["summary"]["four_hour"]["mean"]
+    saved = (mp.get_all_start_methods, runner._POOL, runner._POOL_DISABLED)
+    try:
+        runner.reset_pool()
+        runner._POOL_DISABLED = False
+        mp.get_all_start_methods = lambda: ["spawn"]            # what Windows offers
+        assert runner.start_method() == "spawn"
+        mp.get_all_start_methods = lambda: []                   # nothing usable at all
+        runner.reset_pool(); runner._POOL_DISABLED = False
+        assert runner.start_method() is None and runner.get_pool() is None
+        assert runner.run(inp)["summary"]["four_hour"]["mean"] == ref
+        mp.get_all_start_methods = saved[0]
+        from concurrent.futures.process import BrokenProcessPool
+
+        class Broken:
+            def submit(self, *a, **k):
+                raise BrokenProcessPool("worker died")
+
+            def shutdown(self, **k):
+                pass
+        runner._POOL, runner._POOL_DISABLED = Broken(), False
+        assert runner.run(inp)["summary"]["four_hour"]["mean"] == ref, "a broken pool finishes in-process"
+    finally:
+        mp.get_all_start_methods = saved[0]
+        runner.reset_pool()
+        runner._POOL_DISABLED = False
+
+    def boom(progress, cancelled):
+        raise ValueError("cannot find context for 'forkserver'")
+    j = jobs.start("run", "test-failure", boom)
+    j = jobs.wait(j["id"], 10)
+    assert j["status"] == "failed" and j["message"] == jobs.FAILED_MESSAGE and not j.get("error")
+    assert "ValueError" not in json.dumps(j) and "forkserver" not in json.dumps(j), "no Python errors on screen"
+    print("Midshire 18b OK: runs finish identically with no forkserver (Windows), no usable start method, or a "
+          "broken worker pool; a failed run shows a plain message and never a Python error.")
 
 
 def main():
@@ -564,6 +643,7 @@ def main():
     check_app_and_assistant(base)
     check_accessibility_static()
     check_fresh_checkout()
+    check_runtime_fallback(base)
     print("\nAll Midshire checks passed.")
 
 

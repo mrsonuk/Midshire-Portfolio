@@ -14,9 +14,11 @@ python3 -m uec_hybrid.midshire            # http://127.0.0.1:5050
 ```
 
 No external AI service, API key or network access is needed. The demo opens on
-committed, clearly labelled **precomputed** results (baseline and three package
-searches) so a presentation never waits on a cold run; everything can be re-run
-from the page. Useful commands:
+committed results computed in advance (the baseline and three package searches)
+so a presentation never waits on a cold run; everything can be re-run from the
+page. It runs on Linux, macOS and Windows: the model picks a process start
+method the platform supports and falls back to running in one process if it
+cannot start workers. Useful commands:
 
 | Command | What it does |
 |---|---|
@@ -25,16 +27,17 @@ from the page. Useful commands:
 | `python3 -m uec_hybrid.midshire.validate` | conformance + per-area comparison + four-hour decomposition |
 | `python3 -m uec_hybrid.tests.midshire` | the Midshire checks (also run by `uec_hybrid.tests.run`) |
 
-**Reset the demo:** Scenarios → "Reset to demo baseline" (keeps saved scenarios),
+**Reset the demo:** Scenarios → "Back to the baseline" (keeps saved scenarios),
 or stop the server and delete `uec_midshire.sqlite3` for a completely fresh
 start. Midshire stores everything in that file (or `MIDSHIRE_DATABASE_URL`); it
 never reads or writes the Cambridge database `uec_platform.sqlite3`.
 
 ## What it shows
 
-Overview → Patient flow → Workforce & investment → Scenarios, with Set up /
-assumptions as a secondary tab, and **Ask Qbo ED** as another way into the same
-workflow. Patient flow is an animated flow map like the Cambridge control
+Overview → Patient flow → Workforce & investment → Scenarios, and **Ask My ED**
+as another way into the same workflow. Every page can show a **Selected day**
+(one modelled day, Tuesday to Sunday; each modelled week starts empty on Monday)
+or a **Typical day** (the average of every modelled day). Patient flow is an animated flow map like the Cambridge control
 tower's, simplified to five groups left to right; selecting a group opens a map
 of its areas underneath, and the full step-by-step map is the expert view.
 Details, the requirement mapping and a presenter walkthrough are in
@@ -46,7 +49,9 @@ Details, the requirement mapping and a presenter walkthrough are in
   England publications under `data/`, `uec_hybrid/data/rgt_published.json`), or
   are labelled **illustrative** in `uec_hybrid/data/midshire/midshire_demo.json`
   (rota, staff costs, estates unit costs, SDEC size, hours and streaming shares,
-  space-staffing ratios). The Set up tab lists the kind and source of every input.
+  space-staffing ratios). Every input's kind and source is listed in the
+  fixture and in `docs/MIDSHIRE.md`; the on-screen data sources page is kept
+  in the code but is not in the navigation.
 * Adult only: children are removed from demand (400.5 × (1 − 0.1335) = 347.0
   adult attendances a day, using the source trust's own paediatric-area share),
   with the paediatric area, staff and routes; they are not re-routed.
@@ -64,7 +69,7 @@ as not met (and as unfinished work in progress). Snapshot counts come from **one
 simulated day; whole-run figures are per simulated week, then summarised across
 weeks (mean, range, and a simulation-noise interval of the mean). Every metric's
 population, units, window, start, end and treatment of unfinished patients is
-in `uec_hybrid/midshire/metrics.py` (`DEFINITIONS`) and on the Set up tab.
+in `uec_hybrid/midshire/metrics.py` (`DEFINITIONS`).
 
 ---
 

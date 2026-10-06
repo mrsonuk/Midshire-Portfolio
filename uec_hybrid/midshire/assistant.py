@@ -1,5 +1,5 @@
 """
-Ask Qbo ED - another way into the SAME scenario workflow, not a separate source
+Ask My ED - another way into the SAME scenario workflow, not a separate source
 of numbers.
 
 Contract:
@@ -11,8 +11,9 @@ Contract:
   pipeline, and simulated on the same seeds as the scenario. It is speculative:
   it never changes the saved baseline or the applied scenario.
 * A target question starts (or reuses) the structured package search.
-* Unsupported questions get an explicit "I can't do that" with what it can do.
-* Replies are plain text; the page renders them as text, never as HTML.
+* Unsupported questions get an explicit "I can't answer that" with what it can do.
+* Replies are plain text in plain operational language; the page renders them
+  as text, never as HTML. No seeds, run ids or simulation terms in replies.
 Fully offline and deterministic. No language model is used.
 """
 from __future__ import annotations
@@ -22,27 +23,29 @@ import re
 
 from . import config as mcfg
 from . import metrics as M
-from .packages import apply_lever
+from .packages import apply_lever, _clock, _count_words, _days_words
+from .packages import ROLE_WORDS as ROLE_NAMES, SPACE_WORDS as SPACE_NAMES
 
-NAME = "Ask Qbo ED"
+NAME = "Ask My ED"
 
-HELP = ("I can: explain the position on screen (\"how are we doing?\"); show where waits "
-        "build up (\"where do patients wait longest?\"); test a change (\"what if we add 2 "
-        "nurses 08:00-20:00?\", \"add 4 cubicles\", \"add a resus bay\", \"keep SDEC open until "
-        "midnight\"); and find a package for a target (\"what workforce and space changes "
-        "would get 90% through within four hours?\"). Every number I give comes from the "
-        "simulation results for the scenario you are viewing.")
+SUGGESTIONS = ["How are we doing?", "Where do patients wait longest?",
+               "What if we add 2 nurses 08:00-20:00?",
+               "What would it take to reach 90% within 4 hours?"]
+
+HELP = ("You can ask how the department is doing, where patients wait longest, what a change "
+        "would do (for example \"add 2 nurses 08:00-20:00\" or \"keep SDEC open until "
+        "midnight\"), or what it would take to reach a target (for example \"what would it take "
+        "to reach 90% within 4 hours?\").")
 
 GLOSSARY = {
-    "sdec": "Same Day Emergency Care: assessment and treatment the same day for patients who would otherwise be admitted. Here it takes patients from streaming and from RAT.",
-    "rat": "Rapid Assessment and Treatment: a senior clinician assesses patients early - here ambulance arrivals, and walk-ins streamed to it.",
-    "dta": "Decision to admit: the moment a clinician decides the patient needs an inpatient bed. It is an event (counted), not a place patients wait; waiting for the bed comes after it.",
-    "decision to admit": "The moment a clinician decides the patient needs an inpatient bed. It is an event (counted), not a place patients wait; waiting for the bed comes after it.",
-    "lwbs": "Left without being seen: patients who leave before being seen. Kept separate from discharges and used as a guardrail.",
-    "wte": "Whole-time equivalent: extra paid hours divided by the role's contracted weekly hours.",
-    "utc": "Urgent Treatment Centre: the minors stream (open 08:00-24:00 here).",
-    "four hour": "The share of eligible adult attendances completed within the target time, from arrival to leaving the ED (SDEC time counts inside the ED).",
-    "wip": "Work in progress: patients still in the department when a simulated week ends.",
+    "sdec": "SDEC is Same Day Emergency Care: patients who would otherwise be admitted are assessed and treated the same day. Here it takes patients from streaming and from RAT.",
+    "rat": "RAT is Rapid Assessment and Treatment: a senior clinician sees patients early. Here that is ambulance arrivals and some walk-ins.",
+    "dta": "A decision to admit is the point a clinician decides the patient needs an inpatient bed. The wait for the bed starts after it.",
+    "decision to admit": "The point a clinician decides the patient needs an inpatient bed. The wait for the bed starts after it.",
+    "lwbs": "Left without being seen: patients who leave before they are seen. They are counted separately from discharges.",
+    "wte": "Whole-time equivalent: the extra paid hours divided by a full-time contract for that role.",
+    "utc": "The Urgent Treatment Centre sees minor illness and injury. Here it is open 08:00 to midnight.",
+    "four hour": "The share of patients who leave the emergency department within 4 hours of arriving, whether admitted, transferred or discharged. Time in SDEC counts.",
 }
 
 ROLE_WORDS = [
@@ -88,7 +91,7 @@ def _window(q):
         return 20, 8, None
     if "evening" in q:
         return 14, 24, None
-    return 8, 20, "assumed 08:00-20:00 (say e.g. '14:00-24:00' to set the hours)"
+    return 8, 20, "I assumed 08:00 to 20:00 (say, for example, '14:00-24:00' to choose the hours)"
 
 
 def parse_change(question: str, inputs: dict):
@@ -103,12 +106,14 @@ def parse_change(question: str, inputs: dict):
         if m:
             n = _n(m.group(1))
             if not 1 <= n <= 10:
-                return None, ["counts must be between 1 and 10"]
+                return None, ["I can test between 1 and 10 at a time"]
             if space not in inputs["capacity"]:
-                notes.append(f"this scenario has no {space.replace('_', ' ')}")
+                notes.append(f"this department has no {space.replace('_', ' ')}")
                 continue
+            if days != "Mon-Sun" and "spaces are added for the whole week" not in notes:
+                notes.append("spaces are added for the whole week")
             levers.append({"id": f"ask_{space}", "kind": "estate", "space": space, "add": n,
-                           "title": f"+{n} {space.replace('_', ' ')}{'s' if n > 1 else ''} (with any staff needed to open them)"})
+                           "title": f"adding {_count_words(n, SPACE_NAMES.get(space, space))}"})
     if not levers:
         for pat, role in ROLE_WORDS:
             m = re.search(rf"(?:add|extra|another|hire|put on)\s+{_N}\s+(?:more\s+|extra\s+)?(?:{pat})", q) \
@@ -116,24 +121,26 @@ def parse_change(question: str, inputs: dict):
             if m:
                 n = _n(m.group(1))
                 if not 1 <= n <= 10:
-                    return None, ["counts must be between 1 and 10"]
+                    return None, ["I can test between 1 and 10 at a time"]
                 s, e, note = _window(q)
                 if note:
                     notes.append(note)
                 levers.append({"id": f"ask_{role}", "kind": "shift",
-                               "title": f"+{n} {role.replace('_', ' ')} {s:02d}:00-{e:02d}:00 {days}",
+                               "title": f"adding {_count_words(n, ROLE_NAMES.get(role, role))}, "
+                                        f"{_clock(s)} to {_clock(e, end=True)}, {_days_words(days)}",
                                "shift": {"role": role, "days": days, "start": s, "end": e, "count": n}})
                 break
     m = re.search(rf"{_N}\s+(?:more|extra|new)\s+(?:inpatient\s+|ward\s+)?beds", q)
     if m:
         n = _n(m.group(1))
         if not 1 <= n <= 200:
-            return None, ["bed changes must be between 1 and 200"]
+            return None, ["I can test between 1 and 200 extra beds"]
         levers.append({"id": "ask_beds", "kind": "downstream", "param": "inpatient_beds", "add": n,
-                       "estate_item": "inpatient_beds", "title": f"+{n} new inpatient beds"})
+                       "estate_item": "inpatient_beds", "title": f"opening {n} more inpatient beds"})
     if re.search(r"sdec.*(open|until).*(midnight|24|late)", q) and "sdec" in inputs["areas"]["enabled"]:
-        lv = next(l for l in mcfg.fixture()["search"]["levers"] if l["id"] == "sdec_late")
-        levers.append(copy.deepcopy(lv))
+        lv = copy.deepcopy(next(l for l in mcfg.fixture()["search"]["levers"] if l["id"] == "sdec_late"))
+        lv["title"] = "keeping SDEC open until midnight"
+        levers.append(lv)
     return (levers or None), notes
 
 
@@ -160,73 +167,118 @@ def _target(question: str):
     return {"pct": pct, "minutes": mins, "mode": mode}
 
 
-def _fmt(v, unit="%", dp=1):
-    if v is None:
-        return "not available"
-    return f"{v:.{dp}f}{unit}"
+DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
-def explain_position(result: dict, target: dict, scenario: dict, view: dict | None) -> str:
+def _time_words(minutes) -> str:
+    m = int(minutes)
+    return f"{m // 60} hours" if m % 60 == 0 else f"{m} minutes"
+
+
+def _vs_aim(value: float, pct: float) -> str:
+    if value >= pct:
+        return f"meeting the {pct:g}% target"
+    return f"below the {pct:g}% target"
+
+
+def _within(result: dict, minutes: int, day: int | None = None):
+    from .runner import THRESHOLDS
+    i = THRESHOLDS.index(int(minutes))
+    if day is None:
+        vals = [row[i] for row in result["within"]["by_rep"]]
+        s = M.summarise(vals)
+        return s["mean"] if s else None
+    d = result["replay"]["days"][day]
+    return d["within"][i]
+
+
+def explain_position(result: dict, target: dict, scenario: dict, view: dict | None,
+                     baseline: dict | None = None) -> str:
+    """How the department is doing, for what is on screen: the selected day or
+    a typical day."""
+    from .optimise import wait_phrase
+    within = _time_words(target["minutes"])
+    rp = result.get("replay") or {}
+    who = "" if scenario.get("id") in (None, "baseline") else f"With \"{scenario['name']}\", "
+    if view and view.get("mode") == "replay" and rp.get("days") and view.get("day") is not None:
+        d = max(0, min(int(view["day"]), len(rp["days"]) - 1))
+        k = rp["days"][d]
+        dayname = DAYS[int((rp["t0"] + d * 1440) // 1440) % 7]
+        w = _within(result, target["minutes"], d)
+        txt = (f"{who}on {dayname} {k['n_cohort']} patients arrived and {w:.1f}% left within {within}, "
+               f"{_vs_aim(w, target['pct'])}. ")
+        txt = txt[0].upper() + txt[1:]
+        txt += f"{k['twelve_hour']:.1f}% were in the department for more than 12 hours."
+        i = view.get("index")
+        if i is not None and 0 <= int(i) < len(rp.get("times", [])):
+            i = int(i)
+            tt = rp["times"][i] % 1440
+            txt += (f" At {int(tt // 60):02d}:{int(tt % 60):02d} there were {rp['census'][i]} patients "
+                    f"in the department and {rp['waiting'][i]} of them were waiting.")
+        return txt
     s = result["summary"]
-    within = None
-    try:
-        from .runner import target_status
-        ts = target_status(result, target)
-        within = ts["value"]
-    except Exception:
-        ts = None
-    parts = [f"Scenario \"{scenario['name']}\", {result['replications']} simulated weeks "
-             f"(seeds {result['seeds'][0]}-{result['seeds'][-1]})."]
-    if within:
-        parts.append(f"{within['mean']:.1f}% of adult attendances completed within "
-                     f"{target['minutes']} minutes (range {within['min']:.1f}-{within['max']:.1f}% "
-                     f"across weeks) against the {target['pct']:g}% planning target: "
-                     f"{ts['status']}.")
-    parts.append(f"Median time in the department {_fmt(s['duration_median']['mean'], ' min', 0)}; "
-                 f"over 12 hours from arrival {_fmt(s['twelve_hour']['mean'])}; "
-                 f"left without being seen {_fmt(s['lwbs']['mean'])}; "
-                 f"about {s['wip_end']['mean']:.0f} patients still in the department when a week ends.")
-    rp = result.get("replay")
-    if view and rp:
-        i = int(view.get("index", 0))
-        if 0 <= i < len(rp["times"]):
-            t = rp["times"][i]
-            day = int((t - rp["t0"]) // 1440) + 1
-            hh = int((t % 1440) // 60); mm = int(t % 60)
-            parts.append(f"In the replay (simulated day {day}, {hh:02d}:{mm:02d}, one simulated week "
-                         f"- not an average): {rp['census'][i]} patients in the department, "
-                         f"{rp['waiting'][i]} of them waiting.")
-    return " ".join(parts)
+    w = _within(result, target["minutes"])
+    txt = f"{who}on a typical day {w:.1f}% of patients leave within {within}, {_vs_aim(w, target['pct'])}."
+    txt = txt[0].upper() + txt[1:]
+    if baseline is not None and scenario.get("id") not in (None, "baseline"):
+        bw = _within(baseline, target["minutes"])
+        txt += f" The baseline is {bw:.1f}%, so that is {w - bw:+.1f} points."
+    if s.get("duration_median") and s["duration_median"].get("mean") is not None:
+        txt += f" The typical patient spends {s['duration_median']['mean']:.0f} minutes in the department"
+        txt += f", {s['twelve_hour']['mean']:.1f}% stay more than 12 hours"
+        txt += f" and {s['lwbs']['mean']:.1f}% leave without being seen."
+    top = (result.get("pressure") or [{}])[0].get("label")
+    if top:
+        txt += f" Most waiting time goes on {wait_phrase(top)}."
+    return txt
 
 
 def where_waits(result: dict) -> str:
+    from .optimise import wait_phrase
     top = result["pressure"][:3]
     if not top:
-        return "No waiting was recorded in this run."
-    bits = [f"{p['label']} ({p['patient_hours_per_day']:.0f} waiting patient-hours a day)" for p in top]
-    return ("Measured as waiting patient-hours per day (the number of people waiting, added up "
-            "over time), waits build up most at: " + "; ".join(bits) + ". This is the run's own "
-            "measure, not a judgement made in advance - see the Patient flow screen for each stage.")
+        return "There was no waiting to report in this scenario."
+    first = top[0]
+    txt = (f"Most waiting time goes on {wait_phrase(first['label'])}: about "
+           f"{first['patient_hours_per_day']:.0f} hours a day across all patients, which is "
+           f"roughly {first['patient_hours_per_day'] / 24:.0f} patients waiting at any one time.")
+    if len(top) > 1:
+        rest = [f"{wait_phrase(x['label'])} ({x['patient_hours_per_day']:.0f} hours)" for x in top[1:]]
+        txt += " Next come " + " and ".join(rest) + "."
+    txt += " The Patient flow page shows each stage in detail."
+    return txt
 
 
 def format_whatif(base: dict, scen: dict, target: dict, notes: list, titles: list) -> str:
+    from .optimise import wait_phrase
     from .runner import within_at
     b = within_at(base, target["minutes"]); s = within_at(scen, target["minutes"])
     d = M.paired_delta(b, s)
     sb, ss = M.summarise(b), M.summarise(s)
-    txt = (f"Tested (not saved): {'; '.join(titles)}. On the same {d['n']} simulated weeks, "
-           f"completed within {target['minutes']} minutes goes from {sb['mean']:.1f}% to "
-           f"{ss['mean']:.1f}%: a change of {d['mean']:+.1f} percentage points")
-    if "ci_low" in d:
-        txt += f" (simulation-noise interval {d['ci_low']:+.1f} to {d['ci_high']:+.1f})"
-    txt += "."
-    if "ci_low" in d and d["ci_low"] <= 0 <= d["ci_high"]:
-        txt += " That is within the simulation noise: it may have no real effect - a change that is not the binding constraint often doesn't."
+    change = "; ".join(titles)
+    change = change[0].upper() + change[1:]
+    m = int(target["minutes"])
+    perf = f"{m // 60}-hour performance" if m % 60 == 0 else f"{m}-minute performance"
+    noise = "ci_low" in d and d["ci_low"] <= 0 <= d["ci_high"]
+    if abs(d["mean"]) < 0.05:
+        txt = f"{change} makes no measurable difference to {perf} ({ss['mean']:.1f}% either way)."
+    else:
+        txt = (f"{change} {'improves' if d['mean'] > 0 else 'worsens'} {perf} from "
+               f"{sb['mean']:.1f}% to {ss['mean']:.1f}% ({d['mean']:+.1f} points)")
+        txt += (f", {_vs_aim(ss['mean'], target['pct'])}." if ss["mean"] >= target["pct"]
+                else f", still below the {target['pct']:g}% target.")
+        if noise:
+            txt += " That is within the normal week-to-week variation, so it may not make a real difference."
     lw = M.paired_delta([r["lwbs"] for r in base["reps"]], [r["lwbs"] for r in scen["reps"]])
-    if lw:
-        txt += f" Walk-outs change by {lw['mean']:+.1f} points."
+    if lw and abs(lw["mean"]) >= 0.1:
+        txt += (f" Fewer patients leave without being seen ({abs(lw['mean']):.1f} points)." if lw["mean"] < 0
+                else f" More patients leave without being seen (+{lw['mean']:.1f} points).")
+    top = (scen.get("pressure") or [{}])[0].get("label")
+    if top and ss["mean"] < target["pct"]:
+        txt += f" The main remaining constraint is {wait_phrase(top)}."
     if notes:
         txt += " Note: " + "; ".join(notes) + "."
+    txt += " This was a test only; nothing has been saved."
     return txt
 
 
@@ -238,26 +290,27 @@ def answer(message: str, ctx: dict) -> dict:
     if not q:
         return {"reply": HELP, "intent": "help"}
     if len(q) > 500:
-        return {"reply": "That question is too long - please ask in a sentence or two.", "intent": "error"}
+        return {"reply": "That question is too long. Please ask in a sentence or two.", "intent": "error"}
     ql = q.lower()
+    if re.fullmatch(r"\s*(help|hi|hello|what can (?:you|i) (?:do|ask)( you)?|how does this work)\s*[.!?]*\s*", ql):
+        return {"reply": HELP, "intent": "help"}
     t = _target(q)
     if t:
         hit = ctx["search"](t)
         if hit:
-            return {"reply": hit["headline"] + " Open \"Workforce & investment\" to see the proposed "
-                    "rota rows, extra hours, WTE and costs, and the search limits.",
+            return {"reply": hit["headline"] + " Workforce & investment shows the extra shifts, "
+                    "space and costs.",
                     "intent": "target", "search_key": hit.get("search_key"), "target": t}
         job = ctx["start_search"](t)
-        return {"reply": f"I've started the package search for {t['pct']:g}% within {t['minutes']} "
-                f"minutes ({t['mode']} changes). It re-runs the full model for every package it tries, "
-                f"so it takes a few minutes - progress is shown below. Ask again when it finishes, "
-                f"or open Workforce & investment.",
+        return {"reply": f"I'm looking for the lowest-cost set of changes that gets "
+                f"{t['pct']:g}% of patients out within {_time_words(t['minutes'])}. This takes a few "
+                f"minutes; you can follow it below.",
                 "intent": "target", "job": job, "target": t}
     if re.search(r"what if|\badd\b|\bextra\b|\bopen\b.*(sdec|until)|more (beds|cubicles|nurses|doctors)", ql):
         levers, notes = parse_change(q, ctx["inputs"])
         if not levers:
             return {"reply": "I couldn't turn that into a change I can test. " + (
-                ("Understood: " + "; ".join(notes) + ". ") if notes else "") + HELP,
+                ("Note: " + "; ".join(notes) + ". ") if notes else "") + HELP,
                 "intent": "unsupported"}
         new = ctx["inputs"]
         titles = []
@@ -265,19 +318,20 @@ def answer(message: str, ctx: dict) -> dict:
             new, rec = apply_lever(new, lv)
             titles.append(lv["title"])
         job = ctx["start_whatif"](new, titles, notes)
-        return {"reply": f"Testing: {'; '.join(titles)}. This is a speculative run on a copy of "
-                         f"the scenario - nothing is saved.", "intent": "what_if", "job": job}
+        return {"reply": f"Testing: {'; '.join(titles)}. This is a test only; nothing will be saved.",
+                "intent": "what_if", "job": job}
     if re.search(r"where.*wait|bottleneck|pinch|most waiting|queue|stuck|longest", ql):
         if not ctx["result"]:
-            return {"reply": "This scenario has not been simulated yet - run it first.", "intent": "where"}
+            return {"reply": "This scenario hasn't been run yet. Run it first and ask me again.", "intent": "where"}
         return {"reply": where_waits(ctx["result"]), "intent": "where"}
     if re.search(r"how are we|position|explain|overview|summary|performance|doing", ql):
         if not ctx["result"]:
-            return {"reply": "This scenario has not been simulated yet - run it first.", "intent": "explain"}
-        return {"reply": explain_position(ctx["result"], ctx["target"], ctx["scenario"], ctx.get("view")),
+            return {"reply": "This scenario hasn't been run yet. Run it first and ask me again.", "intent": "explain"}
+        return {"reply": explain_position(ctx["result"], ctx["target"], ctx["scenario"], ctx.get("view"),
+                                          ctx.get("baseline_result")),
                 "intent": "explain"}
     for term in sorted(GLOSSARY, key=len, reverse=True):
         if re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", ql):
-            return {"reply": f"{term.upper() if len(term) <= 4 else term.capitalize()}: {GLOSSARY[term]}",
+            return {"reply": GLOSSARY[term],
                     "intent": "glossary"}
     return {"reply": "I can't answer that from this model. " + HELP, "intent": "unsupported"}
