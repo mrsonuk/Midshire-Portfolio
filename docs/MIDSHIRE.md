@@ -206,7 +206,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
   runs finish without forkserver, without any start method and with a broken
   worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 75 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 77 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors. They cover
   every page in the baseline and with a scenario open, the Selected day view
   on every day offered (Tuesday to Sunday) at three times of day, the Typical
@@ -316,6 +316,16 @@ run live.
 * **Fixed durations.** Time awaiting results/review/decision and the bed-wait
   multiplier are modelled durations; no lever in the search shortens them, which
   is what caps the tested packages.
+* **Imaging waits are a best case.** The 3 CT scanners and 3 X-ray rooms are
+  treated as ED-only, but the source trust says they are shared with inpatients
+  (seed workbook `Status` tab, "CT/X-ray exclusivity", ASSUMPTION). Scan times
+  (CT mean 45 min, X-ray 26 min, scanner held for the whole time) are template
+  service times, also labelled ASSUMPTION. The Diagnostics detail on the
+  Patient flow page says this on screen.
+* **No day-of-week demand.** Arrivals vary by hour of day only, so every
+  modelled day has the same expected demand. Differences between days under
+  Selected day are chance plus the weekday / weekend rota, not a real weekday
+  pattern. Closing this needs attendances by weekday from the trust.
 * **Aggregate bed model.** One bed stock; discharges scale with occupancy, so new
   beds tend to fill to the same occupancy fraction (they start empty here). The
   inherited bed stock also drifts from 89% to about 80-85% occupancy over a

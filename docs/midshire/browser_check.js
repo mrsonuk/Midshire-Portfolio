@@ -150,6 +150,14 @@ async function techCheck(page, where) {
     await page.screenshot({ path: path.join(OUT, "02b_flow_treatment_open_1366.png"), fullPage: true });
     await page.click("#grp-diagnostics");
     ok("diagnostics expands into CT and X-ray", /CT/.test(await page.textContent("#groupDetail")) && /X-ray/.test(await page.textContent("#groupDetail")));
+    ok("diagnostics says imaging waits are a best case (scanners shared with inpatients)", /best case/.test(await page.textContent("#groupDetail")) && /shared with inpatients/.test(await page.textContent("#groupDetail")));
+    await page.click("#modeTypical");
+    await page.click("#detailTables > summary");
+    const dt = await page.textContent("#detailTablesBody");
+    ok("typical-day step table: plain columns, and staff shown for Tuesday to Sunday rather than one weekday",
+      /Usual time here/.test(dt) && /1 in 10 take longer than/.test(dt) && /Tuesday to Sunday/.test(dt) && !/ on (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(dt), dt.slice(0, 300));
+    await page.click("#detailTables > summary");
+    await page.click("#modeReplay");
     await page.click("#grp-next_destination");
     const nd = await page.textContent("#groupDetail");
     ok("admission detail shows decision -> bed wait -> transfer, MH route", /Decision to admit/.test(nd) && /inpatient bed/.test(nd) && /Transfer to ward/.test(nd) && /mental-health/i.test(nd));

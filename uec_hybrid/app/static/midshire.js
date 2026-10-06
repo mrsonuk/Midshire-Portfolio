@@ -731,6 +731,16 @@
   // them rounded, and an average below one half as "<1" rather than as 0.
   const whole = (v) => (typeof v === "number" && v > 0 && v < 0.5) ? "<1" : fmt(v, 0);
   const nval = (v) => typical() ? whole(v) : fmtInt(v);
+  // Staff or spaces open at the time on screen. A typical day covers every
+  // modelled day (Tuesday to Sunday), so it shows the range at that hour.
+  function openAt(oc) {
+    if (!oc) return "-";
+    if (!typical()) return String(oc.week[Math.floor((viewTime() % 10080) / 60)]);
+    const v = [1, 2, 3, 4, 5, 6].map(d => oc.week[d * 24 + hourOf()]);
+    return Math.min(...v) === Math.max(...v) ? String(v[0]) : Math.min(...v) + " to " + Math.max(...v);
+  }
+  const openWhen = () => typical() ? HHMM(hourOf() * 60) + ", Tuesday to Sunday"
+    : HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)];
   const whenText = () => typical() ? "average at " + HHMM(hourOf() * 60) : "at " + HHMM(viewTime());
   const hourText = () => typical() ? "in the hour from " + HHMM(hourOf() * 60) + ", on average" : "in the hour to " + HHMM(viewTime());
   const linkList = (obj) => Object.entries(obj || {}).map(([k, v]) => { const [s, d] = k.split(">"); return { s, d, v }; });
@@ -1158,6 +1168,7 @@
       mapHost,
       h("p", { class: "ms-hint", text: "Select an area to see its day, the staff and space it has, and where its patients come from and go to. The boxes at the sides are the other groups and outcomes; their figures are patients a day on average." }),
       h("div", { id: "unitDrill", class: "fm-drill", tabindex: "-1", hidden: true }),
+      g.caveat ? h("p", { class: "ms-info", text: g.caveat }) : null,
       g.id === "treatment" ? h("p", { class: "ms-info", text: S.meta.sdec.reporting_note + " " + S.meta.sdec.selection_caveat }) : null,
       g.id === "next_destination" ? h("p", { class: "ms-info", text: "The admission sequence is: decision to admit (an event) → waiting for an inpatient bed (patients still occupy their ED trolley) → transfer to the ward → departure. " + S.meta.downstream.aggregate_assumption }) : null,
       h("details", { class: "ms-details", id: "detailTables" }, h("summary", { text: "Table view: every step in " + g.label }), h("div", { id: "detailTablesBody" }))].filter(Boolean));
@@ -1200,12 +1211,12 @@
     const flows = linkList(r.flows.unit);
     const inn = flows.filter(l => l.d === u.id).sort((a, b) => b.v - a.v), out = flows.filter(l => l.s === u.id).sort((a, b) => b.v - a.v);
     const nodes = u.milestone ? [] : [...new Set(unitKeys(u).map(k => k.split("|")[0]))];
-    const how = Math.floor((viewTime() % 10080) / 60), resRows = [], seen = new Set();
+    const resRows = [], seen = new Set();
     for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
       if (seen.has(res)) continue; seen.add(res);
       const oc = r.model.open_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
       const isStaff = !!Object.values(S.meta.roles).some(ro => ro.staffs === res);
-      resRows.push([labelFor(res), isStaff ? "staff on shift" : "spaces open", oc ? String(oc.week[how]) : "-", fmt(ut, 0, "%")]);
+      resRows.push([labelFor(res), isStaff ? "staff on shift" : "spaces open", openAt(oc), fmt(ut, 0, "%")]);
     }
     box.replaceChildren(...[
       h("div", { class: "ms-detail-head" }, h("h4", { text: u.label }), close),
@@ -1213,10 +1224,10 @@
         ...(c.tip || []).map(t => h("div", { class: "fm-stat" }, h("span", { class: "k", text: t.name }), h("span", { class: "v", text: t.value })))),
       u.milestone ? null : h("h5", { text: typical() ? "Through a typical day (average patients here each hour)" : "Through " + dayName(S.day) + " (patients here on the hour)" }),
       u.milestone ? null : chart,
-      resRows.length ? table("Staff and space for this area at " + HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)], ["Staff or space", "Type", "Available now", "How busy, on average"], resRows, [2, 3]) : null,
+      resRows.length ? table("Staff and space for this area at " + openWhen(), ["Staff or space", "Type", "Available", "How busy, on average"], resRows, [2, 3]) : null,
       h("div", { class: "fm-drill-flows" },
-        h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none in this run" })])),
-        h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none in this run" })])))].filter(Boolean));
+        h("div", {}, h("h5", { text: "Patients come from" }), h("ul", { class: "ms-list" }, inn.length ? inn.map(l => h("li", { text: unitName(l.s) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none" })])),
+        h("div", {}, h("h5", { text: "And go on to" }), h("ul", { class: "ms-list" }, out.length ? out.map(l => h("li", { text: unitName(l.d) + ": " + whole(l.v) + " a day" })) : [h("li", { text: "none" })])))].filter(Boolean));
     box.hidden = false;
     if (!u.milestone) {
       const keys = unitKeys(u), day = stDay(keys);
@@ -1238,21 +1249,25 @@
       !(st.phase === "queue" && !(r.model.node_resources[st.node] || []).length));
     const rows = states.map(st => {
       const key = st.node + "|" + st.phase, sm = r.stages.states[key] || {};
-      return [st.label, h("span", { class: "ms-kind " + st.kind, text: st.kind === "waiting" ? "Waiting" : "Being seen" }),
-        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), st.kind === "waiting" ? fmt(sm.patient_hours_per_day, 0) : "-",
-        sm.n_completed ? fmt(sm.completed_median, 0) + " (" + fmt(sm.completed_p90, 0) + ")" : "none", fmt(sm.entries_per_day, 0)];
+      const wait = st.kind === "waiting";
+      // a median under a minute on a waiting step means most patients don't wait at all
+      const usual = !sm.n_completed ? "none" : (wait && sm.completed_median < 1) ? "no wait" : fmt(sm.completed_median, 0);
+      return [st.label, h("span", { class: "ms-kind " + st.kind, text: wait ? "Waiting" : "Being seen or tested" }),
+        typ ? fmt(stNow(key), 1) : String(stNow(key)), fmt(sm.mean_occupancy, 1), wait ? fmt(sm.patient_hours_per_day, 0) : "-",
+        usual, sm.n_completed ? fmt(sm.completed_p90, 0) : "none", fmt(sm.entries_per_day, 0)];
     });
-    const parts = [table(null, ["Step", "Kind", typ ? "Average at " + HHMM(hourOf() * 60) : "At " + HHMM(viewTime()), "Average patients", "Hours spent waiting a day", "Usual minutes here (1 in 10 longer than)", "Patients a day"], rows, [2, 3, 4, 5, 6])];
+    const parts = [table(null, ["Step", "Kind", typ ? "Patients here, average at " + HHMM(hourOf() * 60) : "Patients here at " + HHMM(viewTime()),
+      "Patients here, average over the day", "Hours spent waiting a day, all patients", "Usual time here (minutes)", "1 in 10 take longer than (minutes)", "Patients a day"], rows, [2, 3, 4, 5, 6, 7]),
+      h("p", { class: "ms-hint", text: "Averages can be below one: 0.3 means the step is empty most of the time. Usual time is the middle patient's time at the step." })];
     const nodes = [...new Set(states.map(s => s.node))], resRows = [], seen = new Set();
-    const how = Math.floor((viewTime() % 10080) / 60);
     for (const n of nodes) for (const res of (r.model.node_resources[n] || [])) {
       if (seen.has(res)) continue; seen.add(res);
       const oc = r.model.open_capacity[res], ph = r.model.physical_capacity[res], ut = (r.stages.utilisation[res] || {}).utilisation;
       const isStaff = !!(S.meta.roles && Object.values(S.meta.roles).some(ro => ro.staffs === res));
-      resRows.push([labelFor(res), isStaff ? "Staff on shift" : "Space or equipment open", oc ? String(oc.week[how]) : "-", ph && !isStaff ? String(ph.max) : "-", fmt(ut, 0, "%")]);
+      resRows.push([labelFor(res), isStaff ? "Staff on shift" : "Space or equipment open", openAt(oc), ph && !isStaff ? String(ph.max) : "-", fmt(ut, 0, "%")]);
     }
     if (resRows.length) parts.push(h("h4", { text: "Staff and space" }),
-      table(null, ["Staff or space", "Type", "Available at " + HHMM(viewTime()) + " on " + DAYNAMES[Math.floor((viewTime() % 10080) / 1440)], "Spaces in total", "How busy, on average"], resRows, [2, 3, 4]),
+      table(null, ["Staff or space", "Type", "Available at " + openWhen(), "Spaces in total", "How busy, on average"], resRows, [2, 3, 4]),
       h("p", { class: "ms-hint", text: "A space can only be used when there are staff on shift to cover it. Being busy doesn't make something a bottleneck on its own; the waiting figures above show where patients actually wait." }));
     const ms = S.meta.milestones.filter(m => m.group === g.id && (r.replay.milestones || {})[m.node]);
     if (ms.length) parts.push(h("h4", { text: "Decisions (counted, not patients waiting)" }),

@@ -323,6 +323,7 @@
      ]},
     {"id": "diagnostics", "order": 4, "label": "Diagnostics",
      "description": "Imaging the model represents: CT and plain X-ray. Patients return to the results-and-decision step afterwards.",
+     "caveat": "Read the imaging waits as a best case. The model gives the ED all 3 CT scanners and all 3 X-ray rooms, but in practice they are shared with inpatients, so real waits are likely to be longer. How long each scan takes (about 45 minutes for CT and 26 for X-ray, including getting the patient on and off) is a planning assumption, not a measured figure.",
      "states": [
        {"node": "ct", "phase": "queue", "label": "Waiting for CT", "kind": "waiting", "area": "CT"},
        {"node": "ct", "phase": "service", "label": "Having a CT scan", "kind": "in_service", "area": "CT"},
