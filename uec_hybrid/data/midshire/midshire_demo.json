@@ -211,8 +211,10 @@
                            "staffing_not_modelled": "Radiographer staffing is not modelled."},
       "inpatient_beds":   {"label": "New inpatient beds", "unit": "bed", "capital": null, "recurring_non_pay": 150000,
                            "note": "NEW physical beds. Recurring cost per bed per year is an illustrative all-in ward cost (including ward staffing, which is not in the ED rota). Capital not costed. Different from freeing existing beds."},
-      "ward_discharge_pct": {"label": "Faster ward discharge (frees EXISTING beds)", "unit": "% uplift", "capital": null, "recurring_non_pay": null,
-                           "note": "An improvement in the rate wards discharge patients. Not a new bed. Not costed: it depends on what would deliver it."},
+      "ward_discharge_pct": {"label": "Faster ward discharge (frees existing beds)", "unit": "% uplift", "capital": null, "recurring_non_pay": null,
+                           "note": "An improvement in the rate wards discharge patients. Not a new bed. Not costed: it depends on what would deliver it. The size of the improvement is an assumption, not a measured figure."},
+      "decision_time_pct": {"label": "Quicker results and decisions", "unit": "% less time", "capital": null, "recurring_non_pay": null,
+                           "note": "A change in how the department works, not a new resource. Not costed: it depends on what would deliver it. The size of the improvement is an assumption, not a measured figure."},
       "community_capacity": {"label": "Community / virtual-ward places", "unit": "place", "capital": null, "recurring_non_pay": 30000,
                            "note": "Illustrative recurring cost per place per year."}
     }
@@ -258,9 +260,15 @@
                  {"role": "sdec_nurse", "area": "SDEC", "days": "Mon-Sun", "start": 22, "end": 24, "count": 3}]},
       {"id": "ct_1",        "kind": "estate", "title": "+1 CT scanner", "space": "ct_scanner", "add": 1},
       {"id": "beds_20",     "kind": "downstream", "title": "+20 new inpatient beds", "param": "inpatient_beds", "add": 20, "estate_item": "inpatient_beds"},
-      {"id": "discharge_10", "kind": "downstream", "title": "Wards discharge 10% faster (frees existing beds)", "param": "ward_discharge_capacity_per_hour", "scale": 1.10, "estate_item": "ward_discharge_pct", "units": 10}
+      {"id": "discharge_10", "kind": "downstream", "title": "Wards discharge 10% faster (frees existing beds)", "param": "ward_discharge_capacity_per_hour", "scale": 1.10, "estate_item": "ward_discharge_pct", "units": 10},
+      {"id": "move_cons_late", "kind": "move", "title": "Move 1 ED consultant 08:00-20:00 to 12:00-24:00", "move": {"role": "ed_consultant", "days": "Mon-Sun", "from": [8, 20], "to": [12, 24], "count": 1}},
+      {"id": "move_reg_late",  "kind": "move", "title": "Move 2 ED registrars 08:00-22:00 to 12:00-02:00", "move": {"role": "em_registrar", "days": "Mon-Sun", "from": [8, 22], "to": [12, 2], "count": 2}},
+      {"id": "move_sho_late",  "kind": "move", "title": "Move 2 ED junior doctors 10:00-23:00 to 13:00-02:00", "move": {"role": "em_sho", "days": "Mon-Sun", "from": [10, 23], "to": [13, 2], "count": 2}},
+      {"id": "move_rat_late",  "kind": "move", "title": "Move 1 RAT senior 08:00-22:00 to 10:00-24:00", "move": {"role": "rat_consultant", "days": "Mon-Sun", "from": [8, 22], "to": [10, 24], "count": 1}},
+      {"id": "move_utc_late",  "kind": "move", "title": "Move 1 UTC practitioner 08:00-16:00 to 12:00-20:00", "move": {"role": "utc_practitioner", "days": "Mon-Sun", "from": [8, 16], "to": [12, 20], "count": 1}},
+      {"id": "decide_10", "kind": "process", "title": "Results and decisions 10% quicker", "param": "decision_time_scale", "scale": 0.90, "estate_item": "decision_time_pct", "units": 10}
     ],
-    "note": "The search only tests the changes listed here, at these sizes, and combinations of them built step by step (see the method on screen). It cannot change clinical durations, routing probabilities or demand. It does not prove that a target is impossible in the real hospital or that the package found is the cheapest possible."
+    "note": "The search only tests the changes listed here, at these sizes, and combinations of them built step by step (see the method on screen). Apart from the two process changes in the no-extra-resources option (faster ward discharges and quicker results and decisions, each an assumed 10%), it cannot change clinical durations, routing probabilities or demand. Moving a shift keeps its role, length, break and days, so paid hours do not change. It does not prove that a target is impossible in the real hospital or that the package found is the cheapest possible."
   },
 
   "lever_text": {
@@ -283,7 +291,13 @@
     "sdec_late": {"name": "Keep SDEC open until midnight", "short": "later SDEC opening", "change": "Open SDEC from 08:00 to midnight instead of 22:00, with a doctor and three nurses for the extra hours.", "why": "Patients who arrive after SDEC closes are treated in the main ED instead.", "look_for": "More patients through SDEC in the late evening."},
     "ct_1": {"name": "One more CT scanner", "short": "a CT scanner", "change": "Add a fourth CT scanner.", "why": "Patients waiting for a CT scan can't get a decision until the scan is done.", "look_for": "Shorter waits for CT and for results."},
     "beds_20": {"name": "Twenty more inpatient beds", "short": "20 inpatient beds", "change": "Open 20 more inpatient beds in the hospital.", "why": "Admitted patients wait in ED until a ward bed is free.", "look_for": "Shorter waits for a bed and fewer 12-hour stays."},
-    "discharge_10": {"name": "Faster ward discharges", "short": "faster ward discharges", "change": "Wards discharge patients 10% faster, so beds free up sooner.", "why": "Admitted ED patients are waiting for the beds that ward discharges free up.", "look_for": "Shorter waits for a bed."}
+    "discharge_10": {"name": "Faster ward discharges", "short": "faster ward discharges", "change": "Wards discharge patients 10% faster, so beds free up sooner. The 10% is an assumption about what could be achieved.", "why": "Admitted ED patients are waiting for the beds that ward discharges free up.", "look_for": "Shorter waits for a bed and fewer 12-hour stays."},
+    "move_cons_late": {"name": "Move a consultant to the evening", "short": "a consultant moved to the evening", "change": "Move one ED consultant from the 08:00 to 20:00 shift to a 12:00 to midnight shift, every day. No extra hours.", "why": "The department is fullest from late afternoon to midnight, but consultant cover drops from four to one at 20:00.", "look_for": "Shorter evening waits and fewer patients leaving without being seen."},
+    "move_reg_late": {"name": "Move two registrars later", "short": "two registrars moved later", "change": "Move two ED registrars from the 08:00 to 22:00 shift to a 12:00 to 02:00 shift, every day. No extra hours.", "why": "Waits for a majors cubicle or clinician build from 18:00 and are longest around midnight.", "look_for": "Shorter waits for a clinician in the late evening."},
+    "move_sho_late": {"name": "Move two junior doctors later", "short": "two junior doctors moved later", "change": "Move two ED junior doctors from the 10:00 to 23:00 shift to a 13:00 to 02:00 shift, every day. No extra hours.", "why": "Waits for a majors cubicle or clinician build from 18:00 and are longest around midnight.", "look_for": "Shorter waits for a clinician in the late evening."},
+    "move_rat_late": {"name": "Move RAT cover later", "short": "RAT cover moved later", "change": "Move one senior RAT clinician from the 08:00 to 22:00 shift to a 10:00 to midnight shift, every day. No extra hours.", "why": "RAT cover drops from three to one at 22:00, and that is when a queue for RAT starts to form.", "look_for": "Shorter waits for RAT late in the evening."},
+    "move_utc_late": {"name": "Move UTC cover to the afternoon", "short": "UTC cover moved to the afternoon", "change": "Move one UTC practitioner from the 08:00 to 16:00 shift to a 12:00 to 20:00 shift, every day. No extra hours.", "why": "The UTC has no queue before 10:00 but is busy from late morning to 22:00.", "look_for": "Shorter waits for a UTC room."},
+    "decide_10": {"name": "Quicker results and decisions", "short": "quicker results and decisions", "change": "Results, reviews and decisions take 10% less time, for example through earlier senior review. The 10% is an assumption about what could be achieved.", "why": "After treatment starts, most of a patient's time in the department is spent waiting for results, a review or a decision.", "look_for": "Shorter time in the department and better 4-hour performance."}
   },
 
   "groups": [

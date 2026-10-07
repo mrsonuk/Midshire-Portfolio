@@ -247,7 +247,7 @@ async function consistency(page, label) {
     // Workforce & investment: the decision journey
     await page.click("#tab-workforce");
     ok("the target reads as a sentence", /of patients leave the department within/.test(await page.textContent("#targetForm")) && /Now: .*% of patients/.test(await page.textContent("#targetNow")));
-    ok("change options are plain", (await page.$$eval("#tgtMode option", os => os.map(o => o.textContent))).join("|") === "Staffing only|Space and beds, with the staff they need|Staffing, space and beds");
+    ok("change options are plain", (await page.$$eval("#tgtMode option", os => os.map(o => o.textContent))).join("|") === "No extra resources: move existing staff and change how we work|Staffing only|Space and beds, with the staff they need|Staffing, space and beds");
     await page.click("#tgtGo");
     await page.waitForSelector("#searchResult h4", { timeout: 900000 });
     const wr = await page.textContent("#searchResult");
@@ -259,6 +259,19 @@ async function consistency(page, label) {
     ok("staffing coverage is daily only", (await page.textContent("#editorCard")).includes("Staff on shift through the day") && !/weekly view|instant preview|no simulation/i.test(await page.textContent("#editorCard")));
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(OUT, "03_workforce_search_1366.png"), fullPage: true });
+    // no extra resources: nothing added, and the process assumptions said out loud
+    await page.selectOption("#tgtMode", "no_extra");
+    await page.click("#tgtGo");
+    await page.waitForFunction(() => /Nothing here adds staff, space or beds/.test(document.querySelector("#searchResult").textContent), null, { timeout: 900000 });
+    const nx = await page.textContent("#searchResult");
+    const nxSteps = await page.$$eval("#journey .ms-step", s => s.map(x => x.querySelector(".k").textContent + "=" + x.querySelector(".v").textContent));
+    ok("'No extra resources' adds nothing and labels its assumptions",
+      nxSteps.includes("Extra cost=None") && /not a measured figure/.test(nx) && /No extra hours|assumption/.test(nx) &&
+      !/Move existing shifts instead/.test(nx) && !/Extra shifts \(a planning rota/.test(nx), nxSteps.join(" | "));
+    await techCheck(page, "the no-extra-resources result");
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({ path: path.join(OUT, "03b_workforce_no_extra_1366.png"), fullPage: true });
+    await page.selectOption("#tgtMode", "combined");
     await page.fill("#rota-row-13 input[type=number]", "11");
     await page.dispatchEvent("#rota-row-13 input[type=number]", "change");
     await page.waitForSelector("#draftBanner:not([hidden])");

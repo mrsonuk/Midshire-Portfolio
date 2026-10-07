@@ -37,7 +37,7 @@ import time
 from . import config as mcfg
 from . import metrics as M
 from . import runner
-from .packages import apply_package, package_finance
+from .packages import apply_package, move_source, package_finance
 
 
 class SearchCancelled(Exception):
@@ -45,6 +45,10 @@ class SearchCancelled(Exception):
 
 
 MODES = {
+    # nothing added: move existing shifts (paid hours unchanged) and two process
+    # changes whose size is an assumption (faster ward discharge, quicker decisions)
+    "no_extra": {"label": "No extra resources: move existing staff and change how we work",
+                 "kinds": {"move", "process"}, "also": {"discharge_10"}},
     "workforce": {"label": "Staffing only", "kinds": {"shift"}},
     "estate": {"label": "Space and beds, with the staff they need",
                "kinds": {"estate", "hours", "downstream"}},
@@ -58,11 +62,13 @@ def levers_for(inputs: dict, bounds: dict | None = None, mode: str = "combined")
     that can apply to this scenario (e.g. no SDEC lever if SDEC is off)."""
     cat = copy.deepcopy((bounds or mcfg.fixture()["search"])["levers"])
     enabled = set(inputs["areas"]["enabled"])
-    kinds = MODES[mode]["kinds"]
+    kinds, also = MODES[mode]["kinds"], MODES[mode].get("also", set())
     out = []
     for lv in cat:
-        if lv["kind"] not in kinds:
+        if lv["kind"] not in kinds and lv["id"] not in also:
             continue
+        if lv["kind"] == "move" and move_source(inputs["rota"], lv["move"]) is None:
+            continue                                   # this rota has no such shift to move
         if lv["kind"] == "estate" and lv["space"] not in inputs["capacity"]:
             continue
         if lv["kind"] == "hours" and lv["area"] not in enabled:
@@ -279,8 +285,11 @@ class Search:
             "top_waiting_states": run["pressure"][:5],
             "busy_resources": hot,
             "fixed_in_this_model": [
-                "None of the tested changes shortens the time patients spend waiting for results, "
-                "review or a decision.",
+                ("Quicker results and decisions were tested only as an assumed 10% improvement, not a "
+                 "measured one." if any(lv["kind"] == "process" and lv.get("param") == "decision_time_scale"
+                                        for lv in self.levers) else
+                 "None of the tested changes shortens the time patients spend waiting for results, "
+                 "review or a decision."),
                 "Bed waits depend on how full the hospital is; extra beds and faster discharges help "
                 "only through that.",
                 "Demand, treatment times and how patients are routed stay as they are."]}
@@ -366,6 +375,10 @@ def describe(result: dict) -> str:
         cost = f"£{num(f['recurring_annual_total'], comma=True)} a year"
         if f.get("capital"):
             cost += f" plus £{num(f['capital'], comma=True)} one-off"
+        costs = f"It is the lowest-cost option the model found and costs about {cost}."
+        if not f.get("capital") and abs(f.get("recurring_annual_total") or 0) < 0.5:
+            costs = "It needs no extra staff, space or beds" + (
+                "; the process changes in it are not costed." if f.get("not_costed") else ".")
         v = next((x for x in (result.get("validation") or {}).get("packages", [])
                   if x["ids"] == rec["ids"]), None)
         held = ""
@@ -374,8 +387,8 @@ def describe(result: dict) -> str:
                     if v["measure"]["mean"] >= tgt["pct"] else
                     f" Re-tested on different weeks it reached {num(v['measure']['mean'], 1)}%, so treat it as borderline.")
         return (f"This package takes {perf_words(tgt['minutes'])} from {num(bmean, 1)}% to "
-                f"{num(rec['measure']['mean'], 1)}% on a typical day, meeting the {tgt['pct']:g}% target. It is the lowest-cost option the model found and costs "
-                f"about {cost}.{held}")
+                f"{num(rec['measure']['mean'], 1)}% on a typical day, meeting the {tgt['pct']:g}% target. "
+                f"{costs}{held}")
     best = rec["measure"]["mean"] if rec and rec.get("measure") else bmean
     txt = (f"None of the tested packages reaches {tgt['pct']:g}%. The best one takes {perf_words(tgt['minutes'])} "
            f"from {num(bmean, 1)}% to {num(best, 1)}% on a typical day, still {num(tgt['pct'] - best, 1)} points short.")
@@ -393,11 +406,15 @@ def search_key(inputs: dict, target: dict, mode: str, bounds: dict | None = None
     """Cache key for a search: the model inputs, the target, the mode and the
     bounds. Cost tables are NOT in it - prices are re-applied on read (rerank),
     so a cost edit re-ranks instantly and never re-simulates."""
+    # only the changes this mode may use are part of the key, so adding a change
+    # for one mode leaves every other mode's stored results valid
+    b = copy.deepcopy(bounds or mcfg.fixture()["search"])
+    b.pop("note", None)
+    b["levers"] = levers_for(inputs, b, mode)
     return "search:" + mcfg.stable_hash({"model": mcfg.model_hash(inputs),
                                          "target": {"pct": float(target["pct"]),
                                                     "minutes": int(target["minutes"])},
-                                         "mode": mode,
-                                         "bounds": bounds or mcfg.fixture()["search"]})
+                                         "mode": mode, "bounds": b})
 
 
 def rerank(result: dict, cost_table: dict, estates: dict) -> dict:

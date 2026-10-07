@@ -78,7 +78,7 @@ def apply_lever(inputs: dict, lever: dict) -> tuple[dict, dict]:
     """Return (new inputs, change record). Pure."""
     new = copy.deepcopy(inputs)
     rec = {"lever": lever["id"], "title": lever["title"], "kind": lever["kind"],
-           "rota_rows": [], "estate": [], "hours": None, "downstream": None}
+           "rota_rows": [], "estate": [], "hours": None, "downstream": None, "moves": [], "process": None}
     kind = lever["kind"]
     if kind == "shift":
         row = dict(lever["shift"], note=lever["title"])
@@ -117,9 +117,48 @@ def apply_lever(inputs: dict, lever: dict) -> tuple[dict, dict]:
         if lever.get("estate_item"):
             rec["estate"].append({"item": lever["estate_item"], "quantity": qty,
                                   "before": before, "after": new["downstream"][param]})
+    elif kind == "move":
+        # move existing staff to other hours: same role, shift length, break and
+        # days, so paid hours do not change and nothing is added
+        mv = lever["move"]
+        src = move_source(new["rota"], mv)
+        if src is None:
+            raise ValueError(f"{lever['title']}: there is no existing shift to move")
+        src["count"] = int(src["count"]) - int(mv["count"])
+        row = {k: v for k, v in src.items() if k != "note"}
+        row.update({"start": int(mv["to"][0]), "end": int(mv["to"][1]), "count": int(mv["count"]),
+                    "note": lever["title"]})
+        new["rota"].append(row)
+        rec["moves"].append({"role": mv["role"], "count": int(mv["count"]), "days": mv.get("days") or "Mon-Sun",
+                             "from": list(mv["from"]), "to": list(mv["to"])})
+    elif kind == "process":
+        # a change in how the department works; its size is an assumption
+        param = lever["param"]
+        proc = new.setdefault("process", {})
+        before = float(proc.get(param, 1.0))
+        proc[param] = round(before * float(lever["scale"]), 4)
+        rec["process"] = {"param": param, "before": before, "after": proc[param]}
+        if lever.get("estate_item"):
+            rec["estate"].append({"item": lever["estate_item"], "quantity": lever.get("units", 0),
+                                  "before": before, "after": proc[param]})
     else:
         raise ValueError(f"unknown lever kind {kind!r}")
     return new, rec
+
+
+def move_source(rota: list, mv: dict):
+    """The existing shift a move takes staff from: same role, days, start and
+    end, with enough staff on it. The new hours must be the same length."""
+    def length(s, e):
+        return (int(e) - int(s)) % 24 or 24
+    if length(*mv["from"]) != length(*mv["to"]):
+        raise ValueError("a moved shift must keep its length")
+    for r in rota:
+        if (r.get("role") == mv["role"] and parse_days(r.get("days")) == parse_days(mv.get("days"))
+                and (int(r["start"]), int(r["end"])) == (int(mv["from"][0]), int(mv["from"][1]))
+                and int(r.get("count") or 0) >= int(mv["count"])):
+            return r
+    return None
 
 
 def apply_package(inputs: dict, levers: list[dict]) -> tuple[dict, list[dict]]:
@@ -221,13 +260,20 @@ def package_finance(base_inputs: dict, pkg_inputs: dict, records: list[dict],
     est = estate_rows(records, cost_inputs)
     rows = rota_delta_rows(base_inputs, records, cost_inputs)
     years = float(((cost_inputs.get("estates") or {}).get("annualisation") or {}).get("capital_years", 15))
-    wk_delta = round(pkg_cost["weekly_total"] - base_cost["weekly_total"], 2)
+    # the pay difference straight from the change in paid hours by role: the same
+    # rates, but without the per-row penny rounding, so moving staff between shifts
+    # (same hours) is exactly £0 rather than a penny either way
+    table = rate_table(rates)
+    hb, hp = base_cost["paid_hours_by_role"], pkg_cost["paid_hours_by_role"]
+    wk_delta = round(sum((hp.get(r, 0.0) - hb.get(r, 0.0)) * table[r]["rate"] for r in set(hb) | set(hp)
+                         if table.get(r, {}).get("rate") is not None), 2) + 0.0
     workforce_complete = base_cost["complete"] and pkg_cost["complete"]
     capital = sum(e["capital"] for e in est if e["capital"] is not None)
     recurring_np = sum(e["recurring_non_pay_annual"] for e in est if e["recurring_non_pay_annual"] is not None)
     uncosted = sorted(set(
-        [f"{e['label']} capital" for e in est if not e["capital_costed"]]
-        + [f"{e['label']} running cost" for e in est if not e["recurring_costed"]]
+        [e["label"] for e in est if not e["capital_costed"] and not e["recurring_costed"]]
+        + [f"{e['label']} capital" for e in est if not e["capital_costed"] and e["recurring_costed"]]
+        + [f"{e['label']} running cost" for e in est if not e["recurring_costed"] and e["capital_costed"]]
         + [f"{ROLES[r]['label']} pay" for r in pkg_cost["uncosted_roles"]]))
     fully_costed = workforce_complete and not uncosted
     recurring_annual = wk_delta * WEEKS_PER_YEAR + recurring_np
@@ -350,12 +396,27 @@ def describe_changes(base: dict, inputs: dict) -> list[str]:
             except (TypeError, ValueError):
                 n = 0
             agg[key] = agg.get(key, 0) + sign * n
+    def hours_words(s, e):
+        return "around the clock" if s == 0 and e in (0, 24) else f"{_clock(s)} to {_clock(e, end=True)}"
+    agg = {k: n for k, n in agg.items() if n}
+    # the same role and days losing staff on one shift and gaining them on another
+    # shift of the same length is a move, not a cut plus an addition
+    for k_from in sorted([k for k, n in agg.items() if n < 0], key=lambda k: (k[0], k[2])):
+        for k_to in sorted([k for k, n in agg.items() if n > 0], key=lambda k: (k[0], k[2])):
+            same = k_from[0] == k_to[0] and k_from[1] == k_to[1] and \
+                ((k_from[3] - k_from[2]) % 24 or 24) == ((k_to[3] - k_to[2]) % 24 or 24)
+            m = min(-agg[k_from], agg[k_to]) if same else 0
+            if m > 0:
+                who = ROLE_WORDS.get(k_from[0], k_from[0].replace("_", " "))
+                out.append(f"Move {_count_words(m, who)} from the {hours_words(k_from[2], k_from[3])} shift to "
+                           f"a {hours_words(k_to[2], k_to[3])} shift, {_days_words(k_from[1])}. No extra hours.")
+                agg[k_from] += m
+                agg[k_to] -= m
     for (role, days, s, e), n in sorted(agg.items(), key=lambda kv: (kv[0][0], kv[0][2])):
         if n == 0:
             continue
         who = ROLE_WORDS.get(role, role.replace("_", " "))
-        hours = "around the clock" if s == 0 and e in (0, 24) else f"{_clock(s)} to {_clock(e, end=True)}"
-        span = f"{hours}, {_days_words(days)}"
+        span = f"{hours_words(s, e)}, {_days_words(days)}"
         out.append(f"{'Add' if n > 0 else 'Remove'} {_count_words(abs(n), who)}, {span}.")
     for k, v in inputs.get("capacity", {}).items():
         try:
@@ -385,7 +446,14 @@ def describe_changes(base: dict, inputs: dict) -> list[str]:
         out.append(f"{'Open' if d > 0 else 'Close'} {abs(d)} mental health bed{'' if abs(d) == 1 else 's'}.")
     if dd.get("ward_discharge_capacity_per_hour") != bd.get("ward_discharge_capacity_per_hour") and bd.get("ward_discharge_capacity_per_hour"):
         pct = round(100 * (dd["ward_discharge_capacity_per_hour"] / bd["ward_discharge_capacity_per_hour"] - 1))
-        out.append(f"Wards discharge patients {abs(pct)}% {'faster' if pct > 0 else 'slower'}.")
+        out.append(f"Wards discharge patients {abs(pct)}% {'faster' if pct > 0 else 'slower'} "
+                   f"(an assumed improvement, not costed).")
+    dts = float((inputs.get("process") or {}).get("decision_time_scale", 1.0))
+    bdts = float((base.get("process") or {}).get("decision_time_scale", 1.0))
+    if abs(dts - bdts) > 1e-9:
+        pct = round(100 * (1 - dts / bdts))
+        out.append(f"Results, reviews and decisions take {abs(pct)}% {'less' if pct > 0 else 'more'} time "
+                   f"(an assumed improvement, not costed).")
     ds = (inputs.get("cohort") or {}).get("demand_scale", 1.0) or 1.0
     bs = (base.get("cohort") or {}).get("demand_scale", 1.0) or 1.0
     if abs(ds - bs) > 1e-9:
@@ -410,7 +478,8 @@ def _join(words: list[str]) -> str:
 
 
 MODE_WORDS = {"workforce": "staffing changes only", "estate": "space and bed changes, with the staff they need",
-              "combined": "staffing, space and bed changes"}
+              "combined": "staffing, space and bed changes",
+              "no_extra": "no extra staff, space or beds"}
 
 
 def describe_package(ids: list[str], mode: str | None = None, target: dict | None = None,

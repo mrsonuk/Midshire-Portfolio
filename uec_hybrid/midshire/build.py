@@ -329,6 +329,13 @@ def validate_inputs(inputs: dict) -> list[dict]:
             raise ValueError
     except (TypeError, ValueError):
         errs.append({"field": "target", "error": "target must be 0-100% within 1-2880 minutes"})
+    dts = (inputs.get("process") or {}).get("decision_time_scale", 1.0)
+    try:
+        if not 0.5 <= float(dts) <= 1.5:
+            raise ValueError
+    except (TypeError, ValueError):
+        errs.append({"field": "process.decision_time_scale",
+                     "error": "the change in decision time must be between half and one and a half times"})
     scale = (inputs.get("cohort") or {}).get("demand_scale", 1.0)
     try:
         if not 0.2 <= float(scale) <= 2.0:
@@ -336,6 +343,25 @@ def validate_inputs(inputs: dict) -> list[dict]:
     except (TypeError, ValueError):
         errs.append({"field": "cohort.demand_scale", "error": "demand scale must be 0.2-2.0"})
     return errs
+
+
+def scale_decision_time(raw: dict, scale: float) -> None:
+    """A process change: the "awaiting results, review or decision" step takes
+    ``scale`` times as long. The engine uses the per-acuity ``service_by_class``
+    times in preference to ``service``, so both are scaled (mean and spread,
+    keeping the shape). 1.0 leaves the pathway untouched."""
+    if abs(scale - 1.0) < 1e-12:
+        return
+    for n in raw["nodes"]:
+        if n["id"] != "disposition":
+            continue
+        specs = [n.get("service")] + list((n.get("service_by_class") or {}).values())
+        for spec in specs:
+            if not spec:
+                continue
+            for k in ("mean", "stdev"):
+                if isinstance(spec.get(k), (int, float)):
+                    spec[k] = round(float(spec[k]) * scale, 4)
 
 
 def build_model(inputs: dict) -> Model:
@@ -378,6 +404,7 @@ def build_model(inputs: dict) -> Model:
     for n in raw["nodes"]:
         if n["id"] in labels:
             n["label"] = labels[n["id"]]
+    scale_decision_time(raw, float((inputs.get("process") or {}).get("decision_time_scale", 1.0)))
     pruned = prune_unreachable(raw)
 
     # the hospital is the source hospital; only the ED cohort changes

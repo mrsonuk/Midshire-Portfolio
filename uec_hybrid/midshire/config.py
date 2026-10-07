@@ -142,7 +142,12 @@ def baseline_inputs() -> dict:
 
 
 def model_part(inputs: dict) -> dict:
-    return {k: inputs.get(k) for k in MODEL_KEYS}
+    out = {k: inputs.get(k) for k in MODEL_KEYS}
+    # process changes (e.g. quicker decisions) only enter the hash when set, so
+    # scenarios without them keep the model hash they always had
+    if inputs.get("process"):
+        out["process"] = inputs["process"]
+    return out
 
 
 def _canonical(obj):

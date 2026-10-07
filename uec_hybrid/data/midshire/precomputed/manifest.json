@@ -1,5 +1,5 @@
 {
-  "generated_from_commit": "5ead161beafa00c5b8fe85f4390bb86cb9a416cf",
+  "generated_from_commit": "c806f9880f4bf3f26daf743a7cbc1c6ffd6c716d",
   "engine_version": "0.5.0",
   "fixture_version": "midshire-demo-2026-10-v1",
   "label": "PRECOMPUTED demo results. Regenerate with python3 -m uec_hybrid.midshire.precompute",
@@ -53,6 +53,23 @@
       "outcome": "not_reached",
       "name": "Add 20 inpatient beds, a CT scanner, four fit-to-sit spaces, a resus bay and three UTC rooms",
       "note": "{\"why\": \"The strongest combination the model found when aiming for 90% within 4 hours, using space and bed changes, with the staff they need.\", \"look_for\": \"Shorter waits for a bed and fewer 12-hour stays. Shorter waits for CT and for results. Shorter waits for majors patients who can sit.\"}"
+    },
+    {
+      "id": "pkg_noextra_90",
+      "inputs": "pkg_noextra_90_inputs.json.gz",
+      "ids": [
+        "decide_10",
+        "move_rat_late",
+        "move_reg_late"
+      ],
+      "mode": "no_extra",
+      "target": {
+        "pct": 90.0,
+        "minutes": 240
+      },
+      "outcome": "not_reached",
+      "name": "Quicker results and decisions, RAT cover moved later and two registrars moved later",
+      "note": "{\"why\": \"The strongest combination the model found when aiming for 90% within 4 hours, using no extra staff, space or beds.\", \"look_for\": \"Shorter time in the department and better 4-hour performance. Shorter waits for RAT late in the evening. Shorter waits for a clinician in the late evening.\"}"
     }
   ],
   "runs": [
@@ -115,6 +132,21 @@
         106
       ],
       "scenario": "pkg_estate_90"
+    },
+    {
+      "kind": "run",
+      "file": "pkg_noextra_90_run.json.gz",
+      "inputs": "pkg_noextra_90_inputs.json.gz",
+      "model_hash": "9be4850b2a4236f24e6c",
+      "seeds": [
+        101,
+        102,
+        103,
+        104,
+        105,
+        106
+      ],
+      "scenario": "pkg_noextra_90"
     }
   ],
   "searches": [
@@ -128,7 +160,7 @@
       },
       "mode": "combined",
       "outcome": "not_reached",
-      "headline": "None of the tested packages reaches 90%. The best one takes performance from 66.5% to 70.4%, still 19.6 points short. The main remaining constraint is the wait for an inpatient bed."
+      "headline": "None of the tested packages reaches 90%. The best one takes 4-hour performance from 66.5% to 70.4% on a typical day, still 19.6 points short. The main remaining constraint is the wait for an inpatient bed."
     },
     {
       "kind": "search",
@@ -140,7 +172,7 @@
       },
       "mode": "workforce",
       "outcome": "not_reached",
-      "headline": "None of the tested packages reaches 90%. The best one takes performance from 66.5% to 68.5%, still 21.5 points short. The main remaining constraint is the wait for an inpatient bed."
+      "headline": "None of the tested packages reaches 90%. The best one takes 4-hour performance from 66.5% to 68.5% on a typical day, still 21.5 points short. The main remaining constraint is the wait for an inpatient bed."
     },
     {
       "kind": "search",
@@ -152,7 +184,7 @@
       },
       "mode": "estate",
       "outcome": "not_reached",
-      "headline": "None of the tested packages reaches 90%. The best one takes performance from 66.5% to 71.0%, still 19.0 points short. The main remaining constraint is the wait for an inpatient bed."
+      "headline": "None of the tested packages reaches 90%. The best one takes 4-hour performance from 66.5% to 71.0% on a typical day, still 19.0 points short. The main remaining constraint is the wait for an inpatient bed."
     },
     {
       "kind": "search",
@@ -164,8 +196,20 @@
       },
       "mode": "combined",
       "outcome": "met",
-      "headline": "This package takes performance from 66.5% to 70.4%, meeting the 70% aim. It is the lowest-cost option the model found and costs about \u00a3152,000 a year plus \u00a31,224,000 one-off. It held up when re-tested on different weeks (70.3%)."
+      "headline": "This package takes 4-hour performance from 66.5% to 70.4% on a typical day, meeting the 70% target. It is the lowest-cost option the model found and costs about \u00a3152,000 a year plus \u00a31,224,000 one-off. It held up when re-tested on different weeks (70.3%)."
+    },
+    {
+      "kind": "search",
+      "file": "pkg_noextra_90_search.json.gz",
+      "inputs": "baseline_inputs.json.gz",
+      "target": {
+        "pct": 90.0,
+        "minutes": 240
+      },
+      "mode": "no_extra",
+      "outcome": "not_reached",
+      "headline": "None of the tested packages reaches 90%. The best one takes 4-hour performance from 66.5% to 69.4% on a typical day, still 20.6 points short. The main remaining constraint is the wait for an inpatient bed."
     }
   ],
-  "seconds": 798.9
+  "seconds": 945.9
 }

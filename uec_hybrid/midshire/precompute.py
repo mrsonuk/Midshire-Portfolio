@@ -35,6 +35,7 @@ SEARCHES = [
     ("pkg_workforce_90", {"pct": 90.0, "minutes": 240}, "workforce"),
     ("pkg_estate_90", {"pct": 90.0, "minutes": 240}, "estate"),
     ("pkg_combined_70", {"pct": 70.0, "minutes": 240}, "combined"),
+    ("pkg_noextra_90", {"pct": 90.0, "minutes": 240}, "no_extra"),
 ]
 
 

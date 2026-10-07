@@ -31,12 +31,13 @@ NAME = "Ask My ED"
 
 SUGGESTIONS = ["How are we doing?", "Where do patients wait longest?",
                "What if we add 2 nurses 08:00-20:00?",
-               "What would it take to reach 90% within 4 hours?"]
+               "What would it take to reach 90% within 4 hours?",
+               "What could we do with no extra resources?"]
 
 HELP = ("You can ask how the department is doing, where patients wait longest, what a change "
         "would do (for example \"add 2 nurses 08:00-20:00\" or \"keep SDEC open until "
         "midnight\"), or what it would take to reach a target (for example \"what would it take "
-        "to reach 90% within 4 hours?\").")
+        "to reach 90% within 4 hours?\", or \"... with no extra resources?\").")
 
 GLOSSARY = {
     "sdec": "SDEC is Same Day Emergency Care: patients who would otherwise be admitted are assessed and treated the same day. Here it takes patients from streaming and from RAT.",
@@ -163,10 +164,16 @@ def _target(question: str):
         mins = int(mm.group(1))
     if not (0 < pct <= 100) or mins % 15 or not 15 <= mins <= 1440:
         return None
-    mode = "workforce" if re.search(r"workforce only|staff(?:ing)? only|current estate", q) else (
-        "estate" if re.search(r"estate only|space only|building", q) else "combined")
+    mode = "no_extra" if NO_EXTRA.search(q) else (
+        "workforce" if re.search(r"workforce only|staff(?:ing)? only|current estate", q) else (
+            "estate" if re.search(r"estate only|space only|building", q) else "combined"))
     return {"pct": pct, "minutes": mins, "mode": mode}
 
+
+# "no budget" in the ways people say it
+NO_EXTRA = re.compile(r"no (?:extra |more |new |additional )?(?:budget|money|funding|resources?|cost|staff|beds)|"
+                      r"without (?:any )?(?:extra |more |new |additional )?(?:budget|money|funding|resources?|staff|beds|cost)|"
+                      r"existing (?:staff|resources|rota)|cost.?neutral|for free")
 
 DAYS = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
@@ -338,6 +345,24 @@ def format_whatif(base: dict, scen: dict, target: dict, notes: list, titles: lis
     return txt
 
 
+def _retest(hit: dict) -> str:
+    """The page's re-test sentence for a search's best package (not-reached
+    outcomes; a met verdict already says whether it held up)."""
+    if hit.get("outcome") != "not_reached":
+        return ""
+    rec = hit.get("recommended") or {}
+    v = next((x for x in (hit.get("validation") or {}).get("packages", []) if x.get("ids") == rec.get("ids")), None)
+    d = (v or {}).get("delta_vs_baseline_pts")
+    if not d:
+        return ""
+    if d.get("ci_low") is not None and d["ci_low"] > 0:
+        return f" We re-tested this package on different weeks and the improvement held up ({num(d['mean'], 1, sign=True)} points)."
+    if d["mean"] > 0:
+        return (f" On different test weeks the improvement was smaller ({num(d['mean'], 1, sign=True)} points) "
+                f"and could be down to chance.")
+    return " On different test weeks this package made no clear difference, so treat the result with caution."
+
+
 def answer(message: str, ctx: dict) -> dict:
     """``ctx`` (from the server): scenario, inputs, result (or None), target,
     view, search(target) -> cached search or None, start_search(target, mode),
@@ -351,13 +376,29 @@ def answer(message: str, ctx: dict) -> dict:
     if re.fullmatch(r"\s*(help|hi|hello|what can (?:you|i) (?:do|ask)( you)?|how does this work)\s*[.!?]*\s*", ql):
         return {"reply": HELP, "intent": "help"}
     t = _target(q)
+    if not t and NO_EXTRA.search(ql) and re.search(r"what (?:can|could|would|should)|how (?:can|could|do|would) we|improve|better|optimi", ql):
+        # "what could we do with no extra resources?": the current target, nothing added
+        tg = ctx["target"]
+        t = {"pct": float(tg["pct"]), "minutes": int(tg["minutes"]), "mode": "no_extra"}
     if t:
         hit = ctx["search"](t)
         if hit:
-            return {"reply": hit["headline"] + " Workforce & investment shows the extra shifts, "
+            if t["mode"] == "no_extra":
+                ids = set((hit.get("recommended") or {}).get("ids") or [])
+                reply = "With no extra staff, space or beds: " + hit["headline"] + _retest(hit)
+                if ids & {"decide_10", "discharge_10"}:
+                    reply += (" That includes process changes (faster discharges or quicker decisions) that assume a "
+                              "10% improvement the trust would need to deliver.")
+                return {"reply": reply + " Workforce & investment shows the changes.",
+                        "intent": "target", "search_key": hit.get("search_key"), "target": t}
+            return {"reply": hit["headline"] + _retest(hit) + " Workforce & investment shows the extra shifts, "
                     "space and costs.",
                     "intent": "target", "search_key": hit.get("search_key"), "target": t}
         job = ctx["start_search"](t)
+        if t["mode"] == "no_extra":
+            return {"reply": f"I'm looking for the best the model can do for {t['pct']:g}% within {_time_words(t['minutes'])} "
+                    f"without adding staff, space or beds. This takes a few minutes; you can follow it below.",
+                    "intent": "target", "job": job, "target": t}
         return {"reply": f"I'm looking for the lowest-cost set of changes that gets "
                 f"{t['pct']:g}% of patients out within {_time_words(t['minutes'])}. This takes a few "
                 f"minutes; you can follow it below.",

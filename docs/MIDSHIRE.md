@@ -157,6 +157,28 @@ bounds and the limiting evidence). It is the "lowest-cost package found within
 the tested options", never a proven optimum, and "not reached" never means
 impossible in a real hospital.
 
+**What the search may change** ("What can change" on screen; `optimise.MODES`):
+
+| Option | Changes it may use |
+|---|---|
+| No extra resources: move existing staff and change how we work | Move existing shifts to other hours (same role, length, break and days, so paid hours do not change): a consultant to 12:00-24:00, two registrars to 12:00-02:00, two junior doctors to 13:00-02:00, a RAT clinician to 10:00-24:00, a UTC practitioner to 12:00-20:00. Two process changes, each an **assumed** 10%: wards discharge faster, and results, reviews and decisions take less time (`process.decision_time_scale`, applied to the "awaiting results, review or decision" step's per-acuity times, which are what the engine uses) |
+| Staffing only | Extra shifts |
+| Space and beds, with the staff they need | Extra space, beds, SDEC hours and faster ward discharges, with the staff the space-staffing ratios need |
+| Staffing, space and beds | All of the funded changes |
+
+The moves are chosen from the baseline: the department is fullest from late
+afternoon to midnight while consultant cover drops from four to one at 20:00;
+majors waits build from 18:00; RAT drops from three to one at 22:00; the UTC
+has no queue before 10:00. Moving staff later can thin the mornings, which is
+why the search tests the moves together rather than assuming they add up (in
+a first test, all five moves together gave +0.1 points while the best single
+move gave +1.8). The process changes are not costed and their 10% is an
+assumption about what could be achieved, said on screen wherever they appear.
+Moving a shift keeps paid hours the same; the model averages unsocial-hours
+pay, so late-evening hours could cost more in practice. A search's cache key
+includes only the changes its option may use, so adding a change to one option
+leaves the others' stored results valid.
+
 ## 6. Results (filled from the committed runs)
 
 All figures below are simulation outputs of the fictional Midshire build, not
@@ -180,8 +202,9 @@ observations. "Weeks" are simulated weeks (1-day warm-up, 6 observed days,
 
 Where waits build up (waiting patient-hours per day): waiting for an inpatient
 bed ≈ 406, awaiting results/review/decision ≈ 286, then the UTC and majors
-queues. These two are modelled durations that no lever in the search shortens,
-which is why every search below stops short of 90%.
+queues. No funded change in the search shortens these two; the no-extra-resources
+option tests an assumed 10% improvement in each. That is why every search below
+stops short of 90%.
 
 **Package searches** (precomputed; every candidate re-simulated on the same 6
 selection weeks, the shortlist re-run on 8 separate validation weeks 9001-9008,
@@ -193,11 +216,17 @@ validation baseline 68.6%)
 | Workforce only, 90% | Not reached | +1 RAT senior decision-maker 10:00-22:00, every day (84 paid h/week, 2.1 WTE) | 68.5% (+2.0, CI −0.3 to +4.3) | 67.9% (−0.6, CI −2.7 to +1.5) | £300.5k/yr pay |
 | Estate with staffing, 90% | Not reached | +20 inpatient beds, +1 CT, +4 fit-to-sit, +1 resus bay (+ resus nurses), +3 UTC rooms (+ UTC practitioners) | 71.0% (+4.5, CI +1.5 to +7.4) | 69.7% (+1.1, CI −0.1 to +2.3) | **Partially costed**: bed capital not supplied; £1.524m costed capital, £3.67m/yr recurring incl. 7.5 WTE |
 | Combined, 70% | Met in the tested model | the same CT + fit-to-sit package | 70.4% | 70.3% | as above |
+| No extra resources, 90% | Not reached | Two registrars moved to 12:00-02:00, one RAT clinician moved to 10:00-24:00, results and decisions 10% quicker (assumed) | 69.4% (+2.9, CI +0.1 to +5.8) | 66.8% (−1.8, CI −5.1 to +1.6) | No extra staff, space or beds; the process change is not costed |
 
 Read honestly: the workforce-only package's gain does not survive the
 validation weeks (its interval crosses zero), and the estate package's
 validation interval also crosses zero. Only the CT + fit-to-sit package
-shows a validated gain, and that gain is small (+1.7 points). None of these is a
+shows a validated gain, and that gain is small (+1.7 points). The
+no-extra-resources package looks better on the selection weeks but does not
+hold up on the validation weeks: in this model, moving existing staff and an
+assumed 10% process improvement do not reliably move 4-hour performance. Of
+the single no-budget changes, faster ward discharges did the most for 12-hour
+stays. None of these is a
 proven optimum or a forecast.
 
 **Validation and conformance** (`python3 -m uec_hybrid.midshire.validate`)
@@ -228,7 +257,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
   runs finish without forkserver, without any start method and with a broken
   worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 81 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 83 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors. They cover
   every page in the baseline and with a scenario open, the Selected day view
   on every day offered (Tuesday to Sunday) at three times of day, the Typical
@@ -248,7 +277,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 | 10 One resolved staffing for editor, engine and cost | check 10 |
 | 11 Cost-only edits move money, not performance; uncosted ≠ £0 | check 11 |
 | 12 Non-binding capacity, closure, no lost patients | check 12/14 |
-| 13 Target workflow honest, no hard-coded 90% | check 13/14; browser: outcome wording, rota/WTE/£ shown, never "optimal" |
+| 13 Target workflow honest, no hard-coded 90% | check 13/14 and 13c (no extra resources: nothing added, assumptions labelled); browser: outcome wording, rota/WTE/£ shown, never "optimal", the no-budget result |
 | 14 Full re-runs, guardrails, variation; nurses cannot make space | checks 12/14 and 13/14 |
 | 15 Save / apply / reload / reset; stale results; out-of-order responses | check 15; request sequence guards in `midshire.js` |
 | 16 Ask My ED and exports reconcile; untrusted input safe | check 16 (plain wording, no seeds or run ids); browser: markup rendered as text |
@@ -257,7 +286,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 
 **Screenshots** (`docs/midshire/screenshots/`): `01_overview_1366x768.png`,
 `01b_overview_full_1366.png`, `02_flow_map_1366.png`, `02b_flow_treatment_open_1366.png`, `02c_flow_expert_1366.png`,
-`03_workforce_search_1366.png`, `04_scenarios_1366.png`,
+`03_workforce_search_1366.png`, `03b_workforce_no_extra_1366.png`, `04_scenarios_1366.png`,
 `05_ask_my_ed_1366.png`, `07_overview_1920x1080.png`,
 `08_flow_1920x1080.png`, `09_overview_390.png`, `10_flow_390.png`,
 `11_overview_zoom200.png`.
@@ -265,7 +294,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
 **Fixtures:** `uec_hybrid/data/midshire/midshire_demo.json` (the demo identity,
 adult cohort, capacity, illustrative rota, costs, estates, levers; every value
 sourced or labelled) and `uec_hybrid/data/midshire/precomputed/` (baseline and
-four searches, stamped with model hash, engine 0.5.0, seeds and source commit;
+five searches (including "No extra resources"), stamped with model hash, engine 0.5.0, seeds and source commit;
 ignored as stale if the inputs or engine change).
 
 ## 7. Presenter walkthrough (about 8 minutes)
@@ -310,13 +339,20 @@ run live.
    (extra staff, pay a year, one-off cost). "Show the extra shifts and the cost
    breakdown" has the rota rows. Change the target to 70%: "Reaches the 70% target" and
    the lowest-cost package that gets there.
+6b. **"We have no budget" (1 min).** Choose "No extra resources: move existing
+   staff and change how we work" and find the package again. It moves existing
+   shifts to the hours the department is busiest (no extra hours) and tests two
+   process changes. Point out the extra cost reads "None", and read the note:
+   the process changes assume a 10% improvement that the trust would need to
+   deliver. Ask My ED: "What could we do with no extra resources?"
 7. **Save and compare (1 min).** Save as a scenario; it appears in the scenario
    list at the top and on the Scenarios page, with what it changes, why you
    would test it and what to look for. Tick it and compare it with the
    baseline. Ask My ED: "How are we doing?" or "What would it take to reach 90%
    within 4 hours?".
-8. **What still limits it (1 min).** No tested change shortens the wait for
-   results or a decision, or the hospital-wide bed wait, so 90% isn't reached
+8. **What still limits it (1 min).** No funded change shortens the wait for
+   results or a decision, or the hospital-wide bed wait, and the no-budget
+   option only tests an assumed 10% improvement in each, so 90% isn't reached
    in this model. That is a statement about the model and the changes tested,
    not about the real hospital.
 
@@ -348,6 +384,10 @@ run live.
   modelled day has the same expected demand. Differences between days under
   Selected day are chance plus the weekday / weekend rota, not a real weekday
   pattern. Closing this needs attendances by weekday from the trust.
+* **No-budget option.** Moved shifts keep paid hours the same, but the model
+  averages unsocial-hours pay, so late-evening hours could cost more in practice.
+  Faster ward discharges and quicker decisions are tested at an assumed 10%;
+  what would deliver them, and what that would cost, is not modelled.
 * **Aggregate bed model.** One bed stock; discharges scale with occupancy, so new
   beds tend to fill to the same occupancy fraction (they start empty here). The
   inherited bed stock also drifts from 89% to about 80-85% occupancy over a

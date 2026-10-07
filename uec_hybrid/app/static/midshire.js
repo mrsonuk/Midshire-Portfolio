@@ -1381,7 +1381,10 @@
       const reached = j.expected >= tgt.pct;
       items.push(step("Expected", fmt(j.expected, 1) + "%", (j.delta !== null && j.delta !== undefined ? signed(j.delta, 1) + " points, " : "") + (reached ? "on target" : "below target"), reached ? "ok" : "short"));
       const f = j.finance || {};
-      items.push(step("Extra cost", money(f.recurring_annual_total) + " a year", f.capital ? "plus " + money(f.capital) + " one-off" : "no one-off cost"));
+      const nothingAdded = !f.capital && Math.abs(f.recurring_annual_total || 0) < 0.5;
+      items.push(nothingAdded
+        ? step("Extra cost", "None", "no extra staff, space or beds" + ((f.not_costed || []).length ? "; process changes not costed" : ""))
+        : step("Extra cost", money(f.recurring_annual_total) + " a year", f.capital ? "plus " + money(f.capital) + " one-off" : "no one-off cost"));
     } else {
       items.push(step("Changes", "-", "find a package or try your own"), step("Expected", "-", ""), step("Extra cost", "-", ""));
     }
@@ -1396,7 +1399,7 @@
     for (let m = 60; m <= 720; m += 15) opts.push(h("option", { value: m, text: timeWords(m) }));
     mins.replaceChildren(...opts);
     mins.value = t.minutes;
-    const modes = S.meta.search.modes, order = ["workforce", "estate", "combined"].filter(k => modes[k]);
+    const modes = S.meta.search.modes, order = ["no_extra", "workforce", "estate", "combined"].filter(k => modes[k]);
     $("#tgtMode").replaceChildren(...order.map(k => h("option", { value: k, text: modes[k] })));
     $("#tgtMode").value = "combined";
     $("#targetNote").textContent = "Counted from arrival until the patient leaves the department, whether they are admitted, transferred or go home. " +
@@ -1460,6 +1463,10 @@
     const title = { already_met: "Already on target", met: "Reaches the " + tgt.pct + "% target",
       not_reached: "The tested changes don't reach " + tgt.pct + "%" }[res.outcome];
     parts.push(h("div", { class: res.outcome === "not_reached" ? "ms-warning" : "ms-success" }, h("h4", { text: title }), h("p", { text: res.headline })));
+    if (res.bounds && res.bounds.mode === "no_extra")
+      parts.push(h("p", { class: "ms-info", text: "Nothing here adds staff, space or beds. A moved shift keeps its role, length and days, so paid hours stay the same " +
+        "(late-evening hours can attract unsocial-hours pay, which the model averages out). Faster ward discharges and quicker results and decisions are " +
+        "changes in how the hospital works: the 10% is an assumption about what could be achieved, not a measured figure, and they are not costed." }));
     const v = (res.validation && res.validation.packages || []).find(x => rec && JSON.stringify(x.ids) === JSON.stringify(rec.ids));
     if (rec && rec.ids && rec.ids.length) {
       const f = rec.finance;
@@ -1517,7 +1524,8 @@
           $("#editorCard").scrollIntoView();
         } catch (e) { showError("#tgtError", e); }
       });
-      parts.push(h("div", { class: "ms-actions" }, saveBtn, openBtn, retimeBtn));
+      // moving shifts only makes sense when the package adds some
+      parts.push(h("div", { class: "ms-actions" }, saveBtn, openBtn, f.rota_rows.length ? retimeBtn : null));
     } else {
       renderJourney({ now: res.baseline.measure.mean, target: tgt });
     }

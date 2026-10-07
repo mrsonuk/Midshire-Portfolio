@@ -382,6 +382,61 @@ def check_costs_and_capacity(base):
           "zero - patients wait and are redirected, none lost, no deadlock.")
 
 
+def check_no_extra(base):
+    """13c: the "No extra resources" option adds nothing and says what it assumes."""
+    from ..midshire import config as mcfg, build
+    from ..midshire.optimise import levers_for, search, search_key
+    from ..midshire.packages import apply_package, package_finance, describe_changes
+    from ..workforce.costing import rota_cost
+    lv = levers_for(base, mode="no_extra")
+    kinds = {l["kind"] for l in lv}
+    assert kinds <= {"move", "process", "downstream"} and {l["id"] for l in lv if l["kind"] == "downstream"} == {"discharge_10"}, kinds
+    assert {"move", "process"} <= kinds
+    pkg, recs = apply_package(base, lv)
+    fin = package_finance(base, pkg, recs)
+    assert pkg["capacity"] == base["capacity"] and pkg["downstream"]["inpatient_beds"] == base["downstream"]["inpatient_beds"]
+    ct = base["cost_table"]
+    assert abs(rota_cost(pkg["rota"], ct)["weekly_total"] - rota_cost(base["rota"], ct)["weekly_total"]) < 0.01
+    assert fin["extra_paid_hours_week"] == 0 and fin["extra_wte"] == 0 and not fin["rota_rows"]
+    assert not fin["fully_costed"] and "Quicker results and decisions" in fin["not_costed"], fin["not_costed"]
+    # each moved shift keeps its role's staff-hours: the same people at other times
+    def staff_hours(rota, role):
+        return sum(int(r["count"]) * (((int(r["end"]) - int(r["start"])) % 24) or 24) for r in rota if r["role"] == role)
+    for l in lv:
+        if l["kind"] == "move":
+            assert staff_hours(pkg["rota"], l["move"]["role"]) == staff_hours(base["rota"], l["move"]["role"]), l["id"]
+    # quicker decisions reach the engine through the per-acuity times it actually uses
+    n0 = build.build_model(base).pathway.nodes["disposition"]
+    n1 = build.build_model(pkg).pathway.nodes["disposition"]
+    for k, spec in n0["service_by_class"].items():
+        assert abs(n1["service_by_class"][k]["mean"] - 0.9 * spec["mean"]) < 1e-6, k
+    assert mcfg.model_hash(pkg) != mcfg.model_hash(base)
+    words = " ".join(describe_changes(base, pkg))
+    assert "Move two ED registrars from the 08:00 to 22:00 shift to a 12:00 to 02:00 shift" in words, words
+    assert words.count("an assumed improvement, not costed") == 2 and "Remove" not in words and "Add " not in words, words
+    # adding a change for one option leaves the other options' stored results valid
+    fx = copy.deepcopy(mcfg.fixture()["search"])
+    k1 = search_key(base, {"pct": 90, "minutes": 240}, "combined", fx)
+    fx["levers"].append({"id": "move_test", "kind": "move", "title": "t",
+                         "move": {"role": "em_sho", "days": "Mon-Sun", "from": [10, 23], "to": [11, 0], "count": 1}})
+    assert search_key(base, {"pct": 90, "minutes": 240}, "combined", fx) == k1
+    assert search_key(base, {"pct": 90, "minutes": 240}, "no_extra", fx) != search_key(base, {"pct": 90, "minutes": 240}, "no_extra")
+    # a small search in this option: honest outcome, nothing added, the assumption said out loud
+    inp = _short(base, days=2, seeds=(101, 102))
+    bounds = copy.deepcopy(mcfg.fixture()["search"])
+    bounds["levers"] = [l for l in bounds["levers"] if l["id"] in ("move_reg_late", "decide_10", "sho_late")]
+    bounds["max_steps"], bounds["reps"] = 2, 2
+    r = search(inp, {"pct": 99.5, "minutes": 240}, bounds=bounds, mode="no_extra")
+    assert {l["id"] for l in r["bounds"]["levers"]} == {"move_reg_late", "decide_10"}, "no added shift in this option"
+    assert r["outcome"] == "not_reached" and "99.5%" in r["headline"]
+    rec = r["recommended"]
+    assert not rec["finance"]["capital"] and abs(rec["finance"]["annual_pay_delta"]) < 1
+    assert any("assumed 10% improvement" in x for x in r["limits"]["fixed_in_this_model"]) or "decide_10" not in [l["id"] for l in r["bounds"]["levers"]]
+    print("Midshire 13c OK: 'No extra resources' adds no staff hours, space or beds; moved shifts keep each role's "
+          "hours; quicker decisions reach the engine's per-acuity times; process changes are labelled as assumptions "
+          "and not costed; other options' stored results are unaffected.")
+
+
 def check_search(base):
     from ..midshire import config as mcfg
     from ..midshire.optimise import search, rerank
@@ -661,6 +716,7 @@ def main():
     check_resolved_staffing(m)
     check_costs_and_capacity(base)
     check_search(base)
+    check_no_extra(base)
     check_app_and_assistant(base)
     check_accessibility_static()
     check_fresh_checkout()

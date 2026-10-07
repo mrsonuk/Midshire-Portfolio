@@ -14,7 +14,8 @@ python3 -m uec_hybrid.midshire            # http://127.0.0.1:5050
 ```
 
 No external AI service, API key or network access is needed. The demo opens on
-committed results computed in advance (the baseline and three package searches)
+committed results computed in advance (the baseline and five package searches,
+including one that adds no staff, space or beds)
 so a presentation never waits on a cold run; everything can be re-run from the
 page. It runs on Linux, macOS and Windows: the model picks a process start
 method the platform supports and falls back to running in one process if it
