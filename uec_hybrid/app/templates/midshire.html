@@ -165,12 +165,24 @@
         <a class="ms-btn-secondary" id="rotaExport" href="#">Download rota (CSV)</a>
       </div>
 
-      <h4 class="ms-h4">Staff on shift through the day</h4>
+      <h4 class="ms-h4">Are we staffed for when patients arrive?</h4>
+      <p class="ms-hint">Staff on shift through the day, one panel per staff group. The bars are staff on shift each hour and the
+        shaded curve behind them is when adult patients arrive. Red bars are hours where staffing looks light against arrivals.
+        This compares the shape of the rota with the shape of arrivals; it does not say whether the numbers are enough.
+        Running the changes does that. Hover over, or select a panel and use the arrow keys, to see who is on.</p>
       <div class="ms-form-row">
-        <div class="ms-field"><label for="covGroup">Staff group</label><select id="covGroup"></select></div>
         <div class="ms-field"><label for="covDay">Day</label><select id="covDay"></select></div>
       </div>
-      <div class="ms-chart" id="chartCoverage" role="img" aria-label="Staff on shift by hour of the selected day, baseline and your changes"></div>
+      <div class="ms-tiles ms-tiles-secondary" id="covTiles"></div>
+      <p class="ms-cov-headline" id="covHeadline" aria-live="polite"></p>
+      <ul class="ms-cov-legend" aria-label="Key">
+        <li><span class="sw bar" aria-hidden="true"></span>staff on shift</li>
+        <li><span class="sw light" aria-hidden="true"></span>looks light against arrivals</li>
+        <li><span class="sw curve" aria-hidden="true"></span>when patients arrive (shape)</li>
+        <li id="covBaseKey" hidden><span class="sw base" aria-hidden="true"></span>baseline, where your changes differ</li>
+      </ul>
+      <div class="ms-cov-grid" id="covGrid"></div>
+      <details class="ms-details"><summary>Show staff on shift as a table</summary><div id="covTable"></div></details>
       <div id="spaceSummary"></div>
       <div id="costSummary"></div>
 

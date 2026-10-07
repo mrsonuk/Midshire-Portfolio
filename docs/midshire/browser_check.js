@@ -256,7 +256,16 @@ async function consistency(page, label) {
     ok("lowest-cost wording, never 'optimal'", !/optimal|optimum|guarantee/i.test(wr));
     const steps = await page.$$eval("#journey .ms-step", s => s.map(x => x.querySelector(".k").textContent + "=" + x.querySelector(".v").textContent));
     ok("journey shows Now -> Target -> Changes -> Expected -> Extra cost", steps.length === 5 && steps[0].startsWith("Now=") && steps[4].startsWith("Extra cost=") && !steps.some(s => s.endsWith("=-")), steps.join(" | "));
-    ok("staffing coverage is daily only", (await page.textContent("#editorCard")).includes("Staff on shift through the day") && !/weekly view|instant preview|no simulation/i.test(await page.textContent("#editorCard")));
+    ok("staffing coverage is daily only", (await page.textContent("#editorCard")).includes("Are we staffed for when patients arrive?") && !/weekly view|instant preview|no simulation/i.test(await page.textContent("#editorCard")));
+    // staffed for when patients arrive: one panel per staff group, light hours, who is on
+    await page.waitForSelector("#covGrid .ms-cov-panel");
+    const panels = await page.$$eval("#covGrid .ms-cov-panel", ps => ps.map(x => ({ t: x.querySelector("h5").textContent, s: x.querySelector(".ms-hint").textContent,
+      red: [...x.querySelectorAll("path")].filter(p => p.getAttribute("fill") === getComputedStyle(document.documentElement).getPropertyValue("--nhs-red").trim()).length })));
+    ok("a staffing panel for every adult staff group, none for children", panels.length >= 10 && !panels.some(p => /child|paed/i.test(p.t)), panels.map(p => p.t).join(", "));
+    ok("light hours shown in red and in words, as separate stretches", panels.some(p => p.red > 0) && panels.every(p => /Peak \d+, overnight \d+\./.test(p.s)) &&
+      panels.some(p => / and \d\d:00 to /.test(p.s) || /Light against arrivals \d\d:00 to \d\d:00\./.test(p.s)));
+    ok("the staffing headline names a day and a staff group", /^On (Monday|Tuesday|Wednesday|Thursday|Friday|Saturday|Sunday)/.test(await page.textContent("#covHeadline")));
+    ok("the shape caveat is on screen", /does not say whether the numbers are enough/.test(await page.textContent("#editorCard")));
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(OUT, "03_workforce_search_1366.png"), fullPage: true });
     // no extra resources: nothing added, and the process assumptions said out loud
@@ -380,6 +389,10 @@ async function consistency(page, label) {
     await page.click("#tab-flow");
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.screenshot({ path: path.join(OUT, "10_flow_390.png"), fullPage: true });
+    await page.click("#tab-workforce");
+    await page.waitForSelector("#covGrid .ms-cov-panel");
+    ok("no horizontal page scroll on Workforce & investment at 390px", await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth + 1),
+      String(await page.evaluate(() => document.documentElement.scrollWidth)));
     ok("no console or network errors (390)", errors.length === 0, errors.join(" | "));
     await ctx.close();
   }

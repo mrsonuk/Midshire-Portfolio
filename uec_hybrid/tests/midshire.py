@@ -536,6 +536,23 @@ def check_app_and_assistant(base):
     print("Midshire 15 OK: save, apply, reload and reset work; the baseline is read-only; invalid inputs are "
           "refused; a result is only ever served for the inputs that produced it.")
 
+    # 10b: "are we staffed for when patients arrive?" - the preview's per-group panels
+    pv = c.post("/api/m/preview", json={"scenario_id": "baseline"}).get_json()
+    adult = mcfg.baseline_inputs()["cohort"]["adult_attendances_per_day"]
+    assert abs(sum(pv["demand"]) - adult) < 1.0, (sum(pv["demand"]), adult)
+    from ..workforce.rota import understaffed_hours
+    for key, g in pv["staffing"].items():
+        for d in range(7):
+            day = g["week"][d * 24:(d + 1) * 24]
+            assert all(day[hh] > 0 or hh not in g["light_days"][d] for hh in range(24)) or key not in (
+                "utc_clinician", "sdec_nurse", "specialty_doctor", "frailty_team"), (key, d, "closed hours are never light")
+            assert all(sum(wk[d * 24 + hh] for wk in g["roles"].values()) == day[hh] for hh in range(24)), (key, d)
+    ed = pv["staffing"]["ed_nurse"]
+    assert ed["light_days"][3] == understaffed_hours(ed["week"][72:96], pv["demand"]), "the shared heuristic, unchanged"
+    assert not any(k.startswith("paeds") for k in pv["staffing"])
+    print("Midshire 10b OK: staffing panels use the adult arrival curve and the shared shape heuristic; closed hours "
+          "are never flagged; who is on adds up to the bars.")
+
     # 16: Ask My ED and exports reconcile with the structured result
     c.post("/api/m/apply", json={"scenario_id": sid})
     a1 = c.post("/api/m/ask", json={"message": "how are we doing?", "scenario_id": sid}).get_json()

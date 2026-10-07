@@ -78,7 +78,7 @@
     baselineResult: null, draft: null, draftHash: null, preview: null,
     mode: "replay", day: 2, slot: 48, openGroup: null, playing: null,
     seq: { result: 0, preview: 0, search: 0, draftcmp: 0 }, searchJob: null, draftJob: null,
-    covGroup: null, covDay: null, compareSel: new Set(),
+    covDay: null, compareSel: new Set(),
   };
 
   // ------------------------------------------------------------------ tabs
@@ -1696,30 +1696,130 @@
       h("p", { class: "ms-hint", text: nc + " Both use the same pay rates." }));
   }
 
+  // "Are we staffed for when patients arrive?": one small chart per staff group,
+  // staff on shift by hour against the shape of adult arrivals, for the day chosen
+  function staffChart(box, c) {
+    box.replaceChildren();
+    const W = Math.max(280, box.clientWidth || 420), H = 150, m = { l: 30, r: 8, t: 8, b: 22 };
+    const n = 24, band = (W - m.l - m.r) / n, bw = Math.max(3, band - 3);
+    const top = Math.max(1, ...c.staff, ...(c.base || []));
+    const ymax = niceMax(top), y = (v) => m.t + (H - m.t - m.b) * (1 - v / ymax);
+    const svg = svgEl("svg", { viewBox: `0 0 ${W} ${H}`, width: W, height: H, "aria-hidden": "true", focusable: "false" });
+    const g = svgEl("g", { class: "axis" });
+    for (const v of [0, ymax / 2, ymax]) {
+      g.append(svgEl("line", { x1: m.l, x2: W - m.r, y1: y(v), y2: y(v), stroke: token(v ? "--chart-grid" : "--chart-axis"), "stroke-width": 1 }));
+      if (!v || !Number.isInteger(v)) continue;                       // no "0" against the time labels
+      const t = svgEl("text", { x: m.l - 5, y: y(v) + 4, "text-anchor": "end" }); t.textContent = String(v); g.append(t);
+    }
+    for (const hh of [0, 6, 12, 18]) {
+      const t = svgEl("text", { x: m.l + band * (hh + 0.5), y: H - 6, "text-anchor": "middle" }); t.textContent = HHMM(hh * 60); g.append(t);
+    }
+    svg.append(g);
+    // the shape of arrivals, scaled so its peak meets the busiest hour of staff
+    const dmax = Math.max(...c.demand) || 1, peak = Math.max(1, ...c.staff);
+    const pts = c.demand.map((v, i) => [m.l + band * (i + 0.5), y(v / dmax * peak)]);
+    const line = pts.map((q, i) => (i ? "L" : "M") + q[0].toFixed(1) + " " + q[1].toFixed(1)).join(" ");
+    svg.append(svgEl("path", { d: line + ` L${pts[23][0].toFixed(1)} ${y(0)} L${pts[0][0].toFixed(1)} ${y(0)} Z`, fill: token("--nhs-pale-blue"), stroke: "none" }));
+    for (let i = 0; i < n; i++) {
+      const v = c.staff[i], x0 = m.l + band * i + (band - bw) / 2, y0 = y(v), y1 = y(0), r = Math.min(3, bw / 2, Math.max(0, y1 - y0));
+      if (v > 0) svg.append(svgEl("path", { d: `M${x0} ${y1} L${x0} ${y0 + r} Q${x0} ${y0} ${x0 + r} ${y0} L${x0 + bw - r} ${y0} Q${x0 + bw} ${y0} ${x0 + bw} ${y0 + r} L${x0 + bw} ${y1} Z`,
+        fill: token(c.light.has(i) ? "--nhs-red" : "--chart-1") }));
+    }
+    svg.append(svgEl("path", { d: line, fill: "none", stroke: token("--chart-dep"), "stroke-width": 1.5, "stroke-dasharray": "3 3", "pointer-events": "none" }));
+    if (c.base) for (let i = 0; i < n; i++) {
+      if (c.base[i] === c.staff[i]) continue;
+      const x0 = m.l + band * i + (band - bw) / 2;
+      svg.append(svgEl("line", { x1: x0 - 1, x2: x0 + bw + 1, y1: y(c.base[i]), y2: y(c.base[i]), stroke: token("--chart-dep"), "stroke-width": 3, "pointer-events": "none" }));
+    }
+    const tip = (i) => [HHMM(i * 60) + " to " + HHMM((i + 1) * 60) + ", " + c.day, c.tip(i)];
+    for (let i = 0; i < n; i++) {
+      const hit = svgEl("rect", { x: m.l + band * i, y: m.t, width: band, height: H - m.t - m.b, fill: "transparent" });
+      hit.addEventListener("pointermove", (e) => showTip(e.clientX, e.clientY, ...tip(i)));
+      hit.addEventListener("pointerleave", hideTip);
+      svg.append(hit);
+    }
+    let fi = 12;
+    box.tabIndex = 0;
+    box.onkeydown = (e) => {
+      if (e.key !== "ArrowLeft" && e.key !== "ArrowRight") return;
+      e.preventDefault(); fi = Math.max(0, Math.min(n - 1, fi + (e.key === "ArrowRight" ? 1 : -1)));
+      const rr = svg.getBoundingClientRect();
+      showTip(rr.left + (m.l + band * (fi + 0.5)) * rr.width / W, rr.top + 30, ...tip(fi));
+    };
+    box.onblur = hideTip;
+    box.append(svg);
+  }
+
+  // light hours as the stretches they really are: "10:00 to 14:00 and 20:00 to 22:00"
+  function hoursSpan(hrs) {
+    const hs = [...hrs].sort((x, y) => x - y), runs = [];
+    for (const hh of hs) {
+      const last = runs[runs.length - 1];
+      if (last && hh === last[1] + 1) last[1] = hh; else runs.push([hh, hh]);
+    }
+    const words = runs.map(([s0, e0]) => HHMM(s0 * 60) + " to " + HHMM(((e0 + 1) % 24) * 60));
+    return words.length > 1 ? words.slice(0, -1).join(", ") + " and " + words[words.length - 1] : words[0];
+  }
+
   function renderCoverageImpl() {
     const p = S.preview;
     if (!p || !p.staffing || $("#panel-workforce").hidden) return;
-    const gsel = $("#covGroup"), dsel = $("#covDay");
-    const keys = Object.keys(p.staffing);
-    if (gsel.options.length !== keys.length) {
-      gsel.replaceChildren(...keys.map(k => h("option", { value: k, text: p.staffing[k].label })));
+    const dsel = $("#covDay");
+    if (dsel.options.length !== 7) {
       dsel.replaceChildren(...DAYNAMES.map((dn, i) => h("option", { value: i, text: dn })));
-      gsel.onchange = () => { S.covGroup = gsel.value; renderCoverageImpl(); };
       dsel.onchange = () => { S.covDay = +dsel.value; renderCoverageImpl(); };
     }
-    if (!S.covGroup || !keys.includes(S.covGroup)) S.covGroup = keys.includes("ed_nurse") ? "ed_nurse" : keys[0];
-    // the staffing chart follows the day chosen at the top until a day is picked here
+    // the panels follow the day chosen at the top until a day is picked here
     const rp = S.result && S.result.replay;
     const cd = S.covDay !== null ? S.covDay : (rp ? Math.floor((rp.t0 + S.day * 1440) / 1440) % 7 : 0);
-    gsel.value = S.covGroup; dsel.value = cd;
-    const st = p.staffing[S.covGroup], a = cd * 24;
-    columnChart($("#chartCoverage"), {
-      labels: [...Array(24).keys()].map(hh => HHMM(hh * 60)), height: 200, yTitle: "staff on shift",
-      series: [{ name: "Baseline", values: st.baseline_week.slice(a, a + 24), color: token("--chart-1") },
-               { name: "Your changes", values: st.week.slice(a, a + 24), color: token("--chart-2") }],
-      xTick: (i) => i % 3 === 0 ? HHMM(i * 60) : null,
-      tipTitle: (i) => st.label + ", " + DAYNAMES[cd] + " " + HHMM(i * 60),
-    });
+    dsel.value = cd;
+    const a = cd * 24, dn = DAYNAMES[cd];
+    const groups = Object.entries(p.staffing).filter(([, g]) => g.week.some(v => v) || g.baseline_week.some(v => v))
+      .sort((x, y) => (x[1].support - y[1].support));
+    const dayOf = (wk) => wk.slice(a, a + 24);
+    const changed = groups.some(([, g]) => dayOf(g.week).join() !== dayOf(g.baseline_week).join());
+    // summary tiles
+    const total = [...Array(24).keys()].map(hh => groups.reduce((t, [, g]) => t + (g.week[a + hh] || 0), 0));
+    const pk = total.indexOf(Math.max(...total));
+    const lightHrs = groups.reduce((t, [, g]) => t + (g.light_days[cd] || []).length, 0);
+    const lightGroups = groups.filter(([, g]) => (g.light_days[cd] || []).length).length;
+    const bpay = p.baseline_cost.weekly_total, pay = p.cost.weekly_total;
+    $("#covTiles").replaceChildren(
+      kpi({ label: "Pay a week", context: "Every rostered role", value: money(pay), compare: Math.abs(pay - bpay) >= 0.5 ? "Baseline " + money(bpay) : null }),
+      kpi({ label: "Pay a year", context: p.cost.weeks_per_year + " weeks at this rota", value: money(p.cost.annual_total) }),
+      kpi({ label: "Hours that look light", context: dn + ", all staff groups", value: String(lightHrs), compare: "added up across " + lightGroups + " of " + groups.length + " groups" }),
+      kpi({ label: "Most staff on", context: dn, value: String(total[pk]), compare: "at " + HHMM(pk * 60) }));
+    const worst = groups.map(([, g]) => g).filter(g => (g.light_days[cd] || []).length)
+      .sort((x, y) => y.light_days[cd].length - x.light_days[cd].length)[0];
+    $("#covHeadline").textContent = worst
+      ? "On " + dn + ", staffing looks lightest against arrivals for " + worst.label + ", from " + hoursSpan(worst.light_days[cd]) + "."
+      : "On " + dn + " every staff group follows the shape of arrivals.";
+    $("#covBaseKey").hidden = !changed;
+    // one panel per staff group
+    const grid = $("#covGrid");
+    grid.replaceChildren();
+    for (const [key, g] of groups) {
+      const st = dayOf(g.week), base = dayOf(g.baseline_week), light = new Set(g.light_days[cd] || []);
+      const lit = [...light];
+      const sub = "Peak " + Math.max(...st) + ", overnight " + st[3] + ". " +
+        (lit.length ? "Light against arrivals " + hoursSpan(lit) + "." : "In step with arrivals.") +
+        (g.support ? " Costed, but not a limit in the model." : "");
+      const box = h("div", { class: "ms-cov-chart", role: "img",
+        "aria-label": g.label + " on " + dn + ": " + sub + " Use the arrow keys for each hour." });
+      grid.append(h("div", { class: "ms-cov-panel" }, h("h5", { text: g.label }), h("p", { class: "ms-hint", text: sub }), box));
+      staffChart(box, { staff: st, base: changed ? base : null, light, demand: p.demand, day: dn,
+        tip: (i) => {
+          const rows = [["on shift", String(st[i])]];
+          for (const [role, wk] of Object.entries(g.roles || {})) if (wk[a + i]) rows.push([role, String(wk[a + i])]);
+          if (base[i] !== st[i]) rows.push(["in the baseline", String(base[i])]);
+          rows.push(["patients arriving, about", whole(p.demand[i]) + " an hour"]);
+          if (light.has(i)) rows.push(["looks light against arrivals", "yes"]);
+          return tipRows(rows);
+        } });
+    }
+    $("#covTable").replaceChildren(table("Staff on shift by hour, " + dn, ["Time", "Patients arriving, about", ...groups.map(([, g]) => g.label)],
+      [...Array(24).keys()].map(hh => [HHMM(hh * 60), whole(p.demand[hh]), ...groups.map(([, g]) => String(g.week[a + hh] || 0) + ((g.light_days[cd] || []).includes(hh) ? " (light)" : ""))]),
+      [...Array(groups.length + 1).keys()].map(x => x + 1)));
     // the selected day only: lowest to highest number open during that day
     const day = (w) => w && w.length ? w.slice(a, a + 24) : null;
     const rng = (w) => w && w.length ? (Math.min(...w) === Math.max(...w) ? String(Math.max(...w)) : Math.min(...w) + " to " + Math.max(...w)) : "-";

@@ -347,3 +347,21 @@ button.fm-box:hover { border-color: var(--nhs-blue); box-shadow: 0 4px 12px rgba
   .ms-tabs, .ms-context, .ms-myed, .ms-actions { display: none !important; }
   .ms-panel[hidden] { display: block !important; }
 }
+
+/* Are we staffed for when patients arrive? one small chart per staff group */
+.ms-cov-headline { font-size: 19px; font-weight: 600; margin: var(--space-3) 0 var(--space-2); }
+.ms-cov-legend { list-style: none; display: flex; flex-wrap: wrap; gap: var(--space-2) var(--space-4); padding: 0; margin: 0 0 var(--space-3); font-size: 16px; }
+.ms-cov-legend li { display: flex; align-items: center; gap: var(--space-2); }
+.ms-cov-legend .sw { display: inline-block; width: 14px; height: 14px; border-radius: 2px; }
+.ms-cov-legend .sw.bar { background: var(--chart-1); }
+.ms-cov-legend .sw.light { background: var(--nhs-red); }
+.ms-cov-legend .sw.curve { background: var(--nhs-pale-blue); border-top: 2px dashed var(--chart-dep); border-radius: 0; }
+.ms-cov-legend .sw.base { height: 3px; background: var(--chart-dep); }
+.ms-cov-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 380px), 1fr)); gap: var(--space-3); margin-bottom: var(--space-3); }
+.ms-cov-panel { background: var(--nhs-surface); border: 1px solid var(--nhs-border); border-radius: 4px; padding: var(--space-3); min-width: 0; }
+.ms-cov-panel h5 { margin: 0 0 var(--space-1); font-size: 17px; color: var(--nhs-dark-blue); }
+.ms-cov-panel .ms-hint { margin: 0 0 var(--space-2); }
+.ms-cov-chart { width: 100%; }
+.ms-cov-chart:focus { outline: 3px solid var(--nhs-focus); outline-offset: 2px; }
+.ms-field { min-width: 0; max-width: 100%; }
+.ms-field select, .ms-field input { max-width: 100%; }

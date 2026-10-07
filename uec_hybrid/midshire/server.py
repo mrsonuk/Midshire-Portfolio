@@ -29,8 +29,8 @@ from .optimise import MODES, rerank, search as run_search, search_key
 from .packages import package_finance, apply_package, describe_changes, describe_package
 from .runner import run as run_scenario, target_status, within_at
 from ..workforce.costing import rota_cost, rate_table
-from ..workforce.roles import ROLES, AREA_LABEL, CONTRACTED_HOURS, RATIO_RESOURCES
-from ..workforce.rota import validate_rota, rota_from_csv, rota_to_csv, DAYS
+from ..workforce.roles import ROLES, AREA_LABEL, CONTRACTED_HOURS, RATIO_RESOURCES, SUPPORT_RESOURCES
+from ..workforce.rota import validate_rota, rota_from_csv, rota_to_csv, DAYS, staffing_by_week, understaffed_hours
 
 log = logging.getLogger(__name__)
 
@@ -310,6 +310,46 @@ def apply_scenario():
 # --------------------------------------------------------------------------- #
 # validation and instant (no-simulation) preview of rota, capacity and cost
 # --------------------------------------------------------------------------- #
+# staff groups that only work while their area is open (the rest cover 24 hours)
+_GROUP_AREA = {"utc_clinician": "utc", "sdec_nurse": "sdec", "specialty_doctor": "sdec",
+               "frailty_team": "frailty"}
+
+
+def _open_hours(inputs: dict, group: str) -> list[bool]:
+    area = _GROUP_AREA.get(group)
+    if not area:
+        return [True] * 24
+    if area not in inputs["areas"]["enabled"]:
+        return [False] * 24
+    hrs = (inputs.get("sdec") or {}).get("hours") if area == "sdec" else None
+    o, c = hrs or inputs["areas"]["hours"].get(area, [0, 24])
+    return [(o <= h < c) if o < c else (h >= o or h < c) for h in range(24)]
+
+
+def _light_days(week: list, demand: list, open_: list) -> list[list[int]]:
+    """For each weekday, the hours where staffing looks light against the shape
+    of arrivals (the shared ``understaffed_hours`` heuristic: a SECONDARY,
+    shape-only signal that says nothing about whether a headcount is enough).
+    An area that closes is compared only across the hours it is open."""
+    out = []
+    for d in range(7):
+        day = list(week[d * 24:(d + 1) * 24])
+        st = [v if open_[h] else 0 for h, v in enumerate(day)]
+        dm = [v if open_[h] else 0.0 for h, v in enumerate(demand)]
+        out.append(understaffed_hours(st, dm) if any(open_) and sum(st) else [])
+    return out
+
+
+def _roles_on(rota: list, group: str) -> dict:
+    """Who makes up a staff group, hour by hour of the week (for the hover)."""
+    out = {}
+    for role in sorted({r["role"] for r in rota if ROLES.get(r["role"], {}).get("staffs") == group}):
+        wk = staffing_by_week([r for r in rota if r["role"] == role]).get(group)
+        if wk and any(wk):
+            out[ROLES[role]["label"]] = wk
+    return out
+
+
 @bp.route("/api/m/preview", methods=["POST"])
 def preview():
     body = request.get_json(force=True) or {}
@@ -331,12 +371,17 @@ def preview():
     bm = build_model(base)
     cost = rota_cost(inputs["rota"], inputs["cost_table"])
     bcost = rota_cost(base["rota"], inputs["cost_table"])
+    demand = list(m.pathway.arrivals.get("hourly_profile") or [0.0] * 24)    # adult arrivals by hour
     staff = sorted({ROLES[r["role"]]["staffs"] for r in inputs["rota"]} |
                    {ROLES[r["role"]]["staffs"] for r in base["rota"]})
     out.update({
         "warnings": m.warnings,
         "staffing": {s: {"label": AREA_LABEL.get(s, s), "week": m.staffing_week.get(s, [0] * 168),
-                         "baseline_week": bm.staffing_week.get(s, [0] * 168)} for s in staff},
+                         "baseline_week": bm.staffing_week.get(s, [0] * 168),
+                         "support": s in SUPPORT_RESOURCES,
+                         "light_days": _light_days(m.staffing_week.get(s, [0] * 168), demand, _open_hours(inputs, s)),
+                         "roles": _roles_on(inputs["rota"], s)} for s in staff},
+        "demand": [round(x, 1) for x in demand],
         "spaces": {r: {"label": AREA_LABEL.get(r, r.replace("_", " ")),
                        "open_week": m.open_capacity.get(r), "physical_week": m.physical.get(r),
                        "baseline_open_week": bm.open_capacity.get(r)}

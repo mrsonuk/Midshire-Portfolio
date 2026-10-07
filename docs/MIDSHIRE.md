@@ -35,7 +35,7 @@ Neither source branch was changed, merged into, reset or force-pushed.
 | Decision to admit → waiting for bed → transfer to ward | `build.add_decision_to_admit`: DTA is a zero-length milestone (event count), the bed wait is an occupied state, ward transfer completes the departure; test 5 |
 | Data shows where waits accumulate | "Waiting patient-hours per day" ranking (named measure); no stage pre-selected |
 | Workforce and estates layers with an investment story | Workforce & investment: target → package search → extra rota rows, WTE, pay, estate, capital, recurring, annualised comparison cost → save / apply / compare |
-| Rota and cost inputs end to end | Rota editor, CSV import/export, cost table, estates costs, staffing-through-the-day chart (no model run needed), run, save; `workforce/rota.py`, `workforce/costing.py` |
+| Rota and cost inputs end to end | Rota editor, CSV import/export, cost table, estates costs, "Are we staffed for when patients arrive?" (one panel per staff group against the adult arrival curve; no model run needed), run, save; `workforce/rota.py`, `workforce/costing.py` |
 
 ## 3. What changed
 
@@ -257,7 +257,7 @@ tolerance, as before this work; see `docs/CUH_DATA_LOG.md`, "Engine 0.5.0").
   runs finish without forkserver, without any start method and with a broken
   worker pool) pass.
 * Browser checks (`docs/midshire/browser_check.js`, Playwright + Chromium, run
-  locally): 83 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
+  locally): 88 passed, 0 failed, at 1366×768, 1920×1080, 390 px with reduced
   motion and a 200% zoom equivalent; no console or network errors. They cover
   every page in the baseline and with a scenario open, the Selected day view
   on every day offered (Tuesday to Sunday) at three times of day, the Typical
@@ -339,6 +339,12 @@ run live.
    (extra staff, pay a year, one-off cost). "Show the extra shifts and the cost
    breakdown" has the rota rows. Change the target to 70%: "Reaches the 70% target" and
    the lowest-cost package that gets there.
+5b. **Are we staffed for when patients arrive? (1 min).** Under "Try your own
+   changes", each staff group has a panel: staff on shift by hour, the shaded
+   curve of when patients arrive, and red bars where staffing looks light
+   against arrivals (for example porters and resus nurses, flat all day while
+   arrivals peak). Hover to see who is on. Say that this compares shapes, not
+   whether the numbers are enough.
 6b. **"We have no budget" (1 min).** Choose "No extra resources: move existing
    staff and change how we work" and find the package again. It moves existing
    shifts to the hours the department is busiest (no extra hours) and tests two
@@ -384,6 +390,15 @@ run live.
   modelled day has the same expected demand. Differences between days under
   Selected day are chance plus the weekday / weekend rota, not a real weekday
   pattern. Closing this needs attendances by weekday from the trust.
+* **"Looks light against arrivals" is a shape signal.** The staffing panels
+  use the shared `understaffed_hours` heuristic from the workforce build: an
+  hour is light when its share of the day's arrivals is more than 1.2
+  percentage points above its share of the day's staff. It compares the shape
+  of the rota with the shape of all adult arrivals (the model's own hourly
+  arrival profile), not each area's own demand, and it says nothing about
+  whether a headcount is enough; running the changes does that. Areas that
+  close (SDEC, the UTC, the frailty unit) are compared only across their
+  opening hours, so a closed hour is never flagged.
 * **No-budget option.** Moved shifts keep paid hours the same, but the model
   averages unsocial-hours pay, so late-evening hours could cost more in practice.
   Faster ward discharges and quicker decisions are tested at an assumed 10%;
