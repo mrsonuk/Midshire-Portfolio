@@ -41,7 +41,9 @@ as another way into the same workflow. Every page can show a **Selected day**
 or a **Typical day** (the average of every modelled day). Patient flow is an animated flow map like the Cambridge control
 tower's, simplified to five groups left to right; selecting a group opens a map
 of its areas underneath, and the full step-by-step map is the expert view.
-Details, the requirement mapping and a presenter walkthrough are in
+The whole project from scratch (the problem, methodology, logic, outputs,
+checks and limitations) is in [`docs/PROJECT_OVERVIEW.md`](docs/PROJECT_OVERVIEW.md);
+details, the requirement mapping and a presenter walkthrough are in
 [`docs/MIDSHIRE.md`](docs/MIDSHIRE.md).
 
 ## Data boundaries

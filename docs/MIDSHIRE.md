@@ -214,7 +214,7 @@ validation baseline 68.6%)
 |---|---|---|---|---|---|
 | Combined, 90% | Not reached | +1 CT scanner, +4 fit-to-sit spaces | 70.4% (+3.9 pts, 95% CI +0.9 to +7.0) | 70.3% (+1.7 pts, CI +0.1 to +3.3) | £1.224m capital, £152k/yr recurring; annualised comparison cost £233.6k/yr |
 | Workforce only, 90% | Not reached | +1 RAT senior decision-maker 10:00-22:00, every day (84 paid h/week, 2.1 WTE) | 68.5% (+2.0, CI −0.3 to +4.3) | 67.9% (−0.6, CI −2.7 to +1.5) | £300.5k/yr pay |
-| Estate with staffing, 90% | Not reached | +20 inpatient beds, +1 CT, +4 fit-to-sit, +1 resus bay (+ resus nurses), +3 UTC rooms (+ UTC practitioners) | 71.0% (+4.5, CI +1.5 to +7.4) | 69.7% (+1.1, CI −0.1 to +2.3) | **Partially costed**: bed capital not supplied; £1.524m costed capital, £3.67m/yr recurring incl. 7.5 WTE |
+| Estate with staffing, 90% | Not reached | +20 inpatient beds, +1 CT, +4 fit-to-sit, +1 resus bay (+ resus nurses), +3 UTC rooms (+ UTC practitioners) | 71.0% (+4.4, CI +1.5 to +7.4) | 69.7% (+1.1, CI −0.1 to +2.3) | **Partially costed**: bed capital not supplied; £1.524m costed capital, £3.67m/yr recurring incl. 7.5 WTE |
 | Combined, 70% | Met in the tested model | the same CT + fit-to-sit package | 70.4% | 70.3% | as above |
 | No extra resources, 90% | Not reached | Two registrars moved to 12:00-02:00, one RAT clinician moved to 10:00-24:00, results and decisions 10% quicker (assumed) | 69.4% (+2.9, CI +0.1 to +5.8) | 66.8% (−1.8, CI −5.1 to +1.6) | No extra staff, space or beds; the process change is not costed |
 
