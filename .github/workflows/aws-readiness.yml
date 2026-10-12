@@ -34,5 +34,11 @@ jobs:
         run: python -m uec_hybrid.tests.public
       - name: Existing Cambridge and Midshire model tests
         run: python -m uec_hybrid.tests.run
+      - name: Validate budget Lightsail compose configuration
+        env:
+          POSTGRES_PASSWORD: test-password-for-compose-validation
+          MIDSHIRE_SESSION_SECRET: test-only-must-be-at-least-32-characters
+          SITE_DOMAIN: example.test
+        run: docker compose -f compose.lightsail.yaml config --quiet
       - name: Build AWS Docker container
         run: docker build --tag midshire-aws:ci .
