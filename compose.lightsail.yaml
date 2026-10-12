@@ -1,0 +1,70 @@
+# Budget-friendly, SINGLE-SERVER public demonstration.
+# Only Caddy (80/443) is exposed; the app and PostgreSQL are private.
+name: midshire-demo
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: midshire
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: midshire
+    volumes:
+      - midshire_postgres:/var/lib/postgresql/data
+    networks:
+      - backend
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U midshire -d midshire"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      MIDSHIRE_PUBLIC_MODE: "1"
+      MIDSHIRE_SESSION_SECRET: ${MIDSHIRE_SESSION_SECRET:?Set MIDSHIRE_SESSION_SECRET in .env}
+      MIDSHIRE_DATABASE_URL: postgresql+psycopg://midshire:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}@db:5432/midshire?sslmode=disable
+      MIDSHIRE_WORKERS: "1"
+      MIDSHIRE_MAX_RUNNING_JOBS: "1"
+      MIDSHIRE_MAX_QUEUED_JOBS: "3"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - backend
+    expose:
+      - "8000"
+    mem_limit: 3g
+    cpus: 1.75
+
+  https:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    depends_on:
+      - app
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN in .env}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - midshire_caddy_data:/data
+      - midshire_caddy_config:/config
+    networks:
+      - backend
+
+networks:
+  backend:
+    driver: bridge
+
+volumes:
+  midshire_postgres:
+  midshire_caddy_data:
+  midshire_caddy_config:
