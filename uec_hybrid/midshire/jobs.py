@@ -12,10 +12,13 @@ the inputs that produced them.
 from __future__ import annotations
 
 import logging
+import os
 import threading
 import time
 import traceback
 import uuid
+
+from .public import current_owner, enabled
 
 log = logging.getLogger(__name__)
 FAILED_MESSAGE = "This run couldn't be completed. Please try again. If it keeps happening, restart the tool."
@@ -24,26 +27,50 @@ _jobs: dict[str, dict] = {}
 _by_key: dict[str, str] = {}
 _lock = threading.RLock()
 MAX_KEEP = 50
+MAX_RUNNING = max(1, int(os.environ.get("MIDSHIRE_MAX_RUNNING_JOBS", "1" if enabled() else "2")))
+MAX_QUEUED = max(0, int(os.environ.get("MIDSHIRE_MAX_QUEUED_JOBS", "3")))
+_slots = threading.BoundedSemaphore(MAX_RUNNING)
+
+
+class CapacityError(Exception):
+    """The public demonstration has reached its compute quota."""
+
+
+def _visible(j: dict | None) -> bool:
+    if j is None:
+        return False
+    owner = current_owner()
+    return owner is None or j.get("owner") == owner
+
 
 
 def _public(j: dict) -> dict:
-    return {k: v for k, v in j.items() if k not in ("thread", "cancel_flag", "fn")}
+    return {k: v for k, v in j.items() if k not in ("thread", "cancel_flag", "fn", "owner")}
 
 
 def start(kind: str, key: str, fn, meta: dict | None = None) -> dict:
     """Start ``fn(progress, cancelled)`` in a thread unless a job with the same
     key is already queued or running (then return that one)."""
+    owner = current_owner()
+    # No cross-visitor attachment to someone else's in-flight what-if job.
+    owned_key = f"{owner}:{key}" if owner else key
     with _lock:
-        jid = _by_key.get(key)
+        jid = _by_key.get(owned_key)
         if jid and _jobs.get(jid, {}).get("status") in ("queued", "running"):
             return _public(_jobs[jid])
+        live = [j for j in _jobs.values() if j["status"] in ("queued", "running")]
+        if owner is not None and any(j.get("owner") == owner for j in live):
+            raise CapacityError("Finish your current simulation before starting another.")
+        if len(live) >= MAX_RUNNING + MAX_QUEUED:
+            raise CapacityError("All simulation slots are busy. Please try again later.")
         jid = uuid.uuid4().hex[:12]
-        job = {"id": jid, "kind": kind, "key": key, "status": "queued", "progress": 0.0,
+        job = {"id": jid, "kind": kind, "key": owned_key, "owner": owner,
+               "status": "queued", "progress": 0.0,
                "message": "Starting", "started": time.time(), "finished": None,
                "result_ref": None, "error": None, "meta": meta or {},
                "cancel_flag": threading.Event()}
         _jobs[jid] = job
-        _by_key[key] = jid
+        _by_key[owned_key] = jid
         _trim()
 
     def progress(msg=None, frac=None):
@@ -57,36 +84,45 @@ def start(kind: str, key: str, fn, meta: dict | None = None) -> dict:
         return job["cancel_flag"].is_set()
 
     def body():
-        job["status"] = "running"
-        try:
-            ref = fn(progress, cancelled)
+        with _slots:
             with _lock:
                 if cancelled():
-                    job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
+                    job["status"] = "cancelled"
                 else:
-                    job["status"], job["result_ref"] = "done", ref
-                    job["progress"], job["message"] = 1.0, "Done"
-        except Exception as e:                                   # explicit failed state
-            name = type(e).__name__
-            with _lock:
-                if name in ("Cancelled", "SearchCancelled") or cancelled():
-                    job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
+                    job["status"] = "running"
+            try:
+                if not cancelled():
+                    ref = fn(progress, cancelled)
+                    with _lock:
+                        if cancelled():
+                            job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
+                        else:
+                            job["status"], job["result_ref"] = "done", ref
+                            job["progress"], job["message"] = 1.0, "Done"
                 else:
-                    job["status"] = "failed"
-                    details = getattr(e, "details", None)
-                    if name == "BuildError" and details:
-                        # the inputs cannot be modelled: say which, in the user's terms
-                        job["message"] = "These changes can't be modelled. Please check the highlighted inputs."
-                        job["details"] = details
+                    with _lock:
+                        job["message"] = "Cancelled. Nothing was saved."
+            except Exception as e:
+                name = type(e).__name__
+                with _lock:
+                    if name in ("Cancelled", "SearchCancelled") or cancelled():
+                        job["status"], job["message"] = "cancelled", "Cancelled. Nothing was saved."
                     else:
-                        # never show a Python exception on screen; it goes to the server log
-                        job["message"] = FAILED_MESSAGE
-                        job["details"] = None
-                    job["error"] = None
-                    log.error("Midshire %s job %s failed: %s: %s\n%s", kind, jid, name, e,
-                              traceback.format_exc())
-        finally:
-            job["finished"] = time.time()
+                        job["status"] = "failed"
+                        details = getattr(e, "details", None)
+                        if name == "BuildError" and details:
+                            job["message"] = "These changes can't be modelled. Please check the highlighted inputs."
+                            job["details"] = details
+                        else:
+                            job["message"] = FAILED_MESSAGE
+                            job["details"] = None
+                        job["error"] = None
+                        log.error("Midshire %s job %s failed: %s: %s\n%s", kind, jid, name, e,
+                                  traceback.format_exc())
+            finally:
+                with _lock:
+                    job["finished"] = time.time()
+                    _trim()
 
     t = threading.Thread(target=body, name=f"midshire-{kind}-{jid}", daemon=True)
     job["thread"] = t
@@ -97,13 +133,29 @@ def start(kind: str, key: str, fn, meta: dict | None = None) -> dict:
 def get(jid: str) -> dict | None:
     with _lock:
         j = _jobs.get(jid)
-        return _public(j) if j else None
+        return _public(j) if _visible(j) else None
+
+
+def get_raw(jid: str) -> dict | None:
+    """Internal read for supported what-if results, with the same ownership check."""
+    with _lock:
+        j = _jobs.get(jid)
+        return j if _visible(j) else None
+
+
+def update_meta(jid: str, values: dict):
+    with _lock:
+        j = _jobs.get(jid)
+        if not _visible(j):
+            return False
+        j["meta"].update(values)
+        return True
 
 
 def cancel(jid: str) -> bool:
     with _lock:
         j = _jobs.get(jid)
-        if not j or j["status"] not in ("queued", "running"):
+        if not _visible(j) or j["status"] not in ("queued", "running"):
             return False
         j["cancel_flag"].set()
         j["message"] = "Stopping..."
@@ -123,3 +175,5 @@ def _trim():
     if len(_jobs) > MAX_KEEP:
         for j in sorted(done, key=lambda x: x["started"])[: len(_jobs) - MAX_KEEP]:
             _jobs.pop(j["id"], None)
+            if _by_key.get(j["key"]) == j["id"]:
+                _by_key.pop(j["key"], None)
