@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="midshire-csrf" content="{{ csrf_token }}">
 <title>{{ title }}</title>
 <link rel="stylesheet" href="/static/midshire.css?v={{ asset_v }}">
 </head>
@@ -11,7 +12,7 @@
 <header class="ms-header">
   <div class="ms-wrap">
     <h1 class="ms-title">{{ title }}</h1>
-    <p class="ms-subtitle">Adult emergency department</p>
+    <p class="ms-subtitle">Adult emergency department | Fictional planning example; not a live clinical service</p>
   </div>
 </header>
 
