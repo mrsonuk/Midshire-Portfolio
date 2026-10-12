@@ -21,6 +21,7 @@ from flask import Blueprint, Flask, Response, jsonify, render_template, request
 
 from . import config as mcfg
 from . import jobs
+from . import public
 from . import metrics as M
 from . import store
 from .assistant import answer as ask_answer, format_whatif, NAME as ASK_NAME, SUGGESTIONS as ASK_SUGGESTIONS
@@ -160,6 +161,7 @@ def _attach_view(result, inputs, scenario_id):
 def page():
     f = mcfg.fixture()
     return render_template("midshire.html", title=f["product_title"], status=f["status_line"],
+                           csrf_token=public.csrf_token() if public.enabled() else "",
                            asset_v=_asset_v())
 
 
@@ -204,7 +206,7 @@ def meta():
         "node_groups": mcfg.node_groups(),
         "labels": f["labels"], "definitions": M.DEFINITIONS, "roles": roles, "days": DAYS,
         "assistant": ASK_NAME, "assistant_suggestions": ASK_SUGGESTIONS, "step_minutes": M.STEP,
-        "storage": {"database": store.url().split("///")[-1].split("/")[-1],
+        "storage": {"database": "hosted" if public.enabled() else store.url().split("///")[-1].split("/")[-1],
                     "note": "Separate from the Cambridge build's database."},
     })
 
@@ -231,7 +233,7 @@ def scenarios():
         store.mark_shown(sc["id"])
     except PermissionError as e:
         return _err(str(e), 403)
-    except BuildError as e:
+    except (BuildError, LookupError) as e:
         return _input_error(e)
     return jsonify({"ok": True, "scenario": sc})
 
@@ -290,7 +292,10 @@ def scenario(sid):
 
 @bp.route("/api/m/reset", methods=["POST"])
 def reset():
-    sc = store.ensure_baseline(reset=True)
+    # A public visitor must not reset shared baseline or other visitors' state.
+    sc = store.get_scenario(store.BASELINE_ID) if public.enabled() else store.ensure_baseline(reset=True)
+    if public.enabled():
+        store.save_setting("shown", [])
     store.save_setting("applied", store.BASELINE_ID)
     return jsonify({"ok": True, "scenario": sc, "applied": store.BASELINE_ID,
                     "note": "Back to the baseline. Your saved scenarios are still in the list below."})
@@ -501,8 +506,8 @@ def _comparison_row(name, sid, kind, inputs, base_sc, base, target):
     }
 
 
-COMPARE_NOTE = ("Each scenario is compared with the baseline on the same patient arrivals, so the "
-                "difference comes from the changes rather than chance. Differences are in percentage points.")
+COMPARE_NOTE = ("Scenarios use the same simulation seed lists, but changing capacity can also change "
+                "random patient draws. Repeat tests show the resulting variation. Differences are in percentage points.")
 
 
 def comparison_rows(ids: list[str], target: dict, extra: list | None = None) -> dict:
@@ -657,6 +662,10 @@ def search_save():
     if not ids or any(i not in fx for i in ids):
         return _err("There is no package to save yet.")
     pkg, recs = apply_package(inputs, [fx[i] for i in sorted(ids)])
+    try:
+        pkg["target"] = _target(body, pkg)
+    except BuildError as e:
+        return _input_error(e)
     target = body.get("target")
     d = describe_package(sorted(ids), body.get("mode"), target if isinstance(target, dict) else None,
                          body.get("outcome"))
@@ -711,9 +720,9 @@ def ask():
         if _cached_run(inputs) is None:
             _run_job(inputs, label="Running the current scenario")
         job = _run_job(new_inputs, label="Testing the change")
-        jobs._jobs[job["id"]]["meta"].update({"whatif": True, "titles": titles, "notes": notes,
-                                              "base_hash": mcfg.model_hash(inputs),
-                                              "new_inputs": new_inputs, "base_inputs": inputs})
+        jobs.update_meta(job["id"], {"whatif": True, "titles": titles, "notes": notes,
+                                      "base_hash": mcfg.model_hash(inputs),
+                                      "new_inputs": new_inputs, "base_inputs": inputs})
         return job
 
     base_sc = store.get_scenario(store.BASELINE_ID)
@@ -732,7 +741,7 @@ def ask():
 
 @bp.route("/api/m/ask/whatif/<jid>", methods=["GET"])
 def ask_whatif(jid):
-    j = jobs._jobs.get(jid)
+    j = jobs.get_raw(jid)
     if j is None:
         return _err("That run is no longer available. Please start it again.", 404)
     if j["status"] != "done":
@@ -851,11 +860,32 @@ def load_precomputed() -> dict:
 def create_app(db_url: str | None = None, load_fixtures: bool = True) -> Flask:
     app = Flask(__name__, template_folder=str(HERE / "templates"),
                 static_folder=str(HERE / "static"))
-    app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024        # requests are untrusted input
+    if public.enabled():
+        secret = os.environ.get("MIDSHIRE_SESSION_SECRET", "")
+        if len(secret) < 32:
+            raise RuntimeError("MIDSHIRE_SESSION_SECRET must contain at least 32 characters.")
+        if db_url is None and not os.environ.get("MIDSHIRE_DATABASE_URL", "").startswith("postgresql+"):
+            raise RuntimeError("Public deployment requires MIDSHIRE_DATABASE_URL pointing at PostgreSQL.")
+        app.secret_key = secret
+        app.config.update(SESSION_COOKIE_SECURE=True, SESSION_COOKIE_HTTPONLY=True,
+                          SESSION_COOKIE_SAMESITE="Lax", SESSION_COOKIE_NAME="midshire_demo",
+                          PERMANENT_SESSION_LIFETIME=__import__("datetime").timedelta(days=7),
+                          MAX_CONTENT_LENGTH=512 * 1024)
+        app.before_request(public.guard_request)
+    else:
+        app.config["MAX_CONTENT_LENGTH"] = 2 * 1024 * 1024
     store.init(db_url, force=db_url is not None)
     if load_fixtures:
         app.config["PRECOMPUTED"] = load_precomputed()
     app.register_blueprint(bp)
+
+    @app.route("/healthz")
+    def healthz():
+        return jsonify({"status": "ok"})
+
+    @app.errorhandler(jobs.CapacityError)
+    def _capacity(e):
+        return jsonify({"error": str(e), "details": []}), 429, {"Retry-After": "30"}
 
     @app.errorhandler(Exception)
     def _unexpected(e):
@@ -869,6 +899,10 @@ def create_app(db_url: str | None = None, load_fixtures: bool = True) -> Flask:
     @app.after_request
     def _headers(resp):
         resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        if public.enabled():
+            resp.headers["Cache-Control"] = "no-store"
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000"
         resp.headers["Content-Security-Policy"] = (
             "default-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; "
             "connect-src 'self'; frame-ancestors 'none'")
