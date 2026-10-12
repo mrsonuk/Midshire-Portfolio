@@ -24,10 +24,11 @@ import threading
 import uuid
 from pathlib import Path
 
-from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine
+from sqlalchemy import Column, DateTime, Integer, String, Text, create_engine, or_
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 from . import config as mcfg
+from .public import current_owner
 
 _DEFAULT = Path(__file__).resolve().parent.parent.parent / "uec_midshire.sqlite3"
 BASELINE_ID = "baseline"
@@ -42,6 +43,7 @@ class ScenarioRow(Base):
     __tablename__ = "midshire_scenarios"
     id = Column(String(40), primary_key=True)
     name = Column(String(200), nullable=False)
+    owner_id = Column(String(64), nullable=True, index=True)  # NULL only for shared baseline/library
     kind = Column(String(20), nullable=False)          # baseline | scenario | precomputed
     parent_id = Column(String(40), nullable=True)
     version = Column(Integer, nullable=False, default=1)
@@ -146,20 +148,31 @@ def shown_ids() -> list[str]:
 def mark_shown(sid: str):
     if not sid or sid == BASELINE_ID:
         return
+    if current_owner() is not None and get_scenario(sid) is None:
+        return
     ids = shown_ids()
     if sid not in ids:
         save_setting("shown", ids + [sid])
 
 
 def get_scenario(sid: str) -> dict | None:
+    owner = current_owner()
     with _s() as s:
         r = s.get(ScenarioRow, sid)
+        if owner is not None and r is not None:
+            if r.kind not in ("baseline", "precomputed") and r.owner_id != owner:
+                return None
         return _row(r) if r else None
 
 
 def list_scenarios() -> list[dict]:
+    owner = current_owner()
     with _s() as s:
-        rows = s.query(ScenarioRow).order_by(ScenarioRow.kind, ScenarioRow.created_at).all()
+        query = s.query(ScenarioRow)
+        if owner is not None:
+            query = query.filter(or_(ScenarioRow.kind.in_(("baseline", "precomputed")),
+                                     ScenarioRow.owner_id == owner))
+        rows = query.order_by(ScenarioRow.kind, ScenarioRow.created_at).all()
         out = []
         for r in rows:
             d = _row(r)
@@ -174,16 +187,22 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
     refused - it can only be reset from the fixture."""
     if sid == BASELINE_ID or kind == "baseline":
         raise PermissionError("The baseline can't be changed. Save your changes as a new scenario.")
+    owner = current_owner()
+    if owner is not None and kind != "scenario":
+        raise PermissionError("Shared example scenarios can't be changed.")
     with _lock, _s() as s:
         row = s.get(ScenarioRow, sid) if sid else None
+        if owner is not None and sid and row is None:
+            raise LookupError("That scenario couldn't be found.")
         if row is None:
             row = ScenarioRow(id=sid or uuid.uuid4().hex[:12], name=name[:200], kind=kind,
-                              parent_id=parent_id, inputs=json.dumps(inputs), note=note[:2000],
-                              version=1, created_at=_now(), updated_at=_now())
+                              owner_id=owner, parent_id=parent_id, inputs=json.dumps(inputs),
+                              note=note[:2000], version=1, created_at=_now(), updated_at=_now())
             s.add(row)
         else:
-            if row.kind == "baseline":
-                raise PermissionError("The baseline can't be changed. Save your changes as a new scenario.")
+            if row.kind == "baseline" or (owner is not None and
+                                         (row.owner_id != owner or row.kind != "scenario")):
+                raise PermissionError("That scenario can't be changed.")
             row.name, row.inputs, row.note = name[:200], json.dumps(inputs), note[:2000]
             row.version += 1
             row.updated_at = _now()
@@ -194,8 +213,12 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
 def delete_scenario(sid: str) -> bool:
     if sid == BASELINE_ID:
         raise PermissionError("The baseline can't be deleted.")
+    owner = current_owner()
     with _lock, _s() as s:
-        n = s.query(ScenarioRow).filter_by(id=sid).delete()
+        q = s.query(ScenarioRow).filter_by(id=sid)
+        if owner is not None:
+            q = q.filter_by(owner_id=owner, kind="scenario")
+        n = q.delete()
         s.commit()
         return bool(n)
 
@@ -233,19 +256,27 @@ def put_run(payload: dict, source: str = "computed") -> dict:
     return out
 
 
+def _setting_key(key: str) -> str:
+    owner = current_owner()
+    if owner is not None and key in ("applied", "shown"):
+        return f"{key}:{owner}"
+    return key
+
+
 def get_setting(key: str):
     with _s() as s:
-        r = s.get(SettingRow, key)
+        r = s.get(SettingRow, _setting_key(key))
         return json.loads(r.value) if r else None
 
 
 def save_setting(key: str, value):
     with _lock, _s() as s:
-        r = s.get(SettingRow, key)
+        scoped_key = _setting_key(key)
+        r = s.get(SettingRow, scoped_key)
         if r:
             r.value = json.dumps(value)
         else:
-            s.add(SettingRow(key=key, value=json.dumps(value)))
+            s.add(SettingRow(key=scoped_key, value=json.dumps(value)))
         s.commit()
 
 
