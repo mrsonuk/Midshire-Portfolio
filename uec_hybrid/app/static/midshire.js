@@ -53,6 +53,8 @@
   class ApiError extends Error { constructor(msg, status, details) { super(msg); this.status = status; this.details = details || []; } }
   async function api(path, body, method) {
     const opts = { method: method || (body === undefined ? "GET" : "POST"), headers: {} };
+    const csrf = $('meta[name="midshire-csrf"]')?.content;
+    if (opts.method !== "GET" && csrf) opts.headers["X-Midshire-CSRF"] = csrf;
     if (body !== undefined && !(body instanceof FormData)) { opts.headers["Content-Type"] = "application/json"; opts.body = JSON.stringify(body); }
     else if (body instanceof FormData) opts.body = body;
     let r;
