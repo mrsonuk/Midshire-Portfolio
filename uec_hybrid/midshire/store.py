@@ -195,6 +195,8 @@ def save_scenario(name: str, inputs: dict, kind: str = "scenario", note: str = "
         if owner is not None and sid and row is None:
             raise LookupError("That scenario couldn't be found.")
         if row is None:
+            if owner is not None and s.query(ScenarioRow).filter_by(owner_id=owner, kind="scenario").count() >= 20:
+                raise PermissionError("At most 20 scenarios can be saved per visitor.")
             row = ScenarioRow(id=sid or uuid.uuid4().hex[:12], name=name[:200], kind=kind,
                               owner_id=owner, parent_id=parent_id, inputs=json.dumps(inputs),
                               note=note[:2000], version=1, created_at=_now(), updated_at=_now())
