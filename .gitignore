@@ -13,3 +13,8 @@ node_modules/
 
 # stray editor backups
 *.bak
+
+# Local deployment credentials: never commit these
+.env
+.env.*
+!.env.example
