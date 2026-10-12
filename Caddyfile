@@ -1,0 +1,6 @@
+# Caddy automatically obtains and renews a public TLS certificate
+# once the hostname resolves to the Lightsail instance and 80/443 are open.
+{$SITE_DOMAIN} {
+    encode gzip
+    reverse_proxy app:8000
+}
