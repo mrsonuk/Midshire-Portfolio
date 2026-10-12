@@ -7,3 +7,6 @@ flask>=3.0
 sqlalchemy>=2.0
 matplotlib>=3.7
 openpyxl>=3.1
+# AWS production web server and RDS PostgreSQL adapter
+gunicorn>=23.0,<24
+psycopg[binary]>=3.2,<4
