@@ -89,10 +89,14 @@ def _inputs_from_body(body):
         if not isinstance(inp, dict):
             raise BuildError("inputs must be an object")
         base = mcfg.baseline_inputs()
-        allowed = set(base)
+        allowed = set(base) | {"process"}
         unknown = set(inp) - allowed
         if unknown:
             raise BuildError(f"unknown input sections: {sorted(unknown)}")
+        if "process" in inp:
+            process = inp["process"]
+            if not isinstance(process, dict) or set(process) - {"decision_time_scale"}:
+                raise BuildError("Unknown process changes. Only decision time can be adjusted.")
         merged = copy.deepcopy(base)
         merged.update(copy.deepcopy(inp))
         # fixed parts of the demonstrator a draft may not redefine
