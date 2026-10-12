@@ -136,13 +136,15 @@ it as a permanent client service.
 Paste this block from inside the \`~/Simulation_model\` directory:
 
 \`\`\`bash
+read -r -p "Paste the Lightsail STATIC public IPv4 address: " MIDSHIRE_STATIC_IP
+export MIDSHIRE_STATIC_IP
 python3 - <<'PY'
 import os, secrets
 from pathlib import Path
 path = Path(".env")
 if path.exists():
     raise SystemExit(".env already exists: refusing to overwrite your working passwords.")
-ip = input("Paste the Lightsail STATIC public IPv4 address: ").strip()
+ip = os.environ["MIDSHIRE_STATIC_IP"].strip()
 parts = ip.split(".")
 if len(parts) != 4 or not all(p.isdecimal() and 0 <= int(p) <= 255 for p in parts):
     raise SystemExit("This does not look like an IPv4 address.")
@@ -155,6 +157,7 @@ path.write_text(
 os.chmod(path, 0o600)
 print("Your demo URL will be: https://" + site)
 PY
+unset MIDSHIRE_STATIC_IP
 \`\`\`
 
 IMPORTANT: The \`.env\` file contains TWO SECRETS. The branch's
