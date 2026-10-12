@@ -128,6 +128,7 @@ This branch is designed for a **limited public pilot** with one web worker and o
 * Maximum in-flight jobs: **one running + three queued**, and only one queued/running job per visitor. The worker job status remains in memory; after host restart, a new request must start unfinished runs again. Completed results remain in RDS.
 * A true multi-instance deployment needs a durable job queue (Amazon SQS), separate worker service (ECS/Fargate), result store in PostgreSQL, and appropriate worker state persistence before increasing instance count.
 * Prepared examples are the fastest way for groups to explore baseline, no-extra-resource and investment scenarios. Arbitrary new package searches may take substantial computation time.
+* Editing the illustrative unit costs results in a separate full package search, rather than reusing the original priced package and potentially showing an inconsistent saved scenario; this may take additional time.
 
 **Cost and removal:** Beanstalk uses EC2, ALB, RDS, Secrets Manager, WAF, CloudWatch and data transfer; all incur AWS charges. Set an AWS Budget alert. To remove the demo, terminate the Beanstalk environment, delete RDS only after backup/export decisions, and separately remove the ALB/WAF associations, DNS, secrets and other associated resources. Nothing is removed automatically from your account by this branch.
 
