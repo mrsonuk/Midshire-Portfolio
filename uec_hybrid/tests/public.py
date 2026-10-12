@@ -65,6 +65,15 @@ def run():
         assert priced_key != default_key and priced_key.startswith("search:")
         assert _search_storage_key(with_new_price, original_target, "combined") == priced_key
 
+        # The no-extra-resources package includes an assumed quicker-decision
+        # process change; the editor must accept only that validated field.
+        process_draft = deepcopy(original)
+        process_draft["process"] = {"decision_time_scale": 0.9}
+        assert post(a, a_token, "/api/m/preview", {"inputs": process_draft}).status_code == 200
+        unexpected_process = deepcopy(process_draft)
+        unexpected_process["process"]["unrecognised"] = 1
+        assert post(a, a_token, "/api/m/preview", {"inputs": unexpected_process}).status_code == 400
+
         denied = a.post("/api/m/scenarios", json={"name": "No CSRF", "inputs": original}, base_url=HOST)
         assert denied.status_code == 403, denied.get_json()
         denied2 = post(a, b_token, "/api/m/scenarios", {"name": "Wrong token", "inputs": original})
