@@ -52,6 +52,19 @@ def run():
                                  headers={"X-Midshire-CSRF": tk})
 
         original = mcfg.baseline_inputs()
+        # Package search cache must not serve stale inputs when visitors change prices.
+        from copy import deepcopy
+        from ..midshire.server import _search_storage_key
+        from ..midshire.optimise import search_key
+        original_target = original["target"]
+        default_key = search_key(original, original_target, "combined")
+        assert _search_storage_key(original, original_target, "combined") == default_key
+        with_new_price = deepcopy(original)
+        with_new_price["estates"]["items"]["ct_scanner"]["capital"] += 1234
+        priced_key = _search_storage_key(with_new_price, original_target, "combined")
+        assert priced_key != default_key and priced_key.startswith("search:")
+        assert _search_storage_key(with_new_price, original_target, "combined") == priced_key
+
         denied = a.post("/api/m/scenarios", json={"name": "No CSRF", "inputs": original}, base_url=HOST)
         assert denied.status_code == 403, denied.get_json()
         denied2 = post(a, b_token, "/api/m/scenarios", {"name": "Wrong token", "inputs": original})
