@@ -597,8 +597,24 @@ def compare():
 # --------------------------------------------------------------------------- #
 # package search
 # --------------------------------------------------------------------------- #
+def _search_storage_key(inputs, target, mode):
+    """Separate finance-edited searches from committed default-price examples.
+
+    Ranking can change when unit costs change, so a repriced package must
+    carry the matching scenario inputs and validation run, not old cached
+    package inputs. Keep the original key for default prices and precomputed
+    fixtures, but fully rerun a package search when finance assumptions differ.
+    """
+    original = search_key(inputs, target, mode)
+    original_finance = mcfg.finance_hash(mcfg.baseline_inputs())
+    actual_finance = mcfg.finance_hash(inputs)
+    if actual_finance == original_finance:
+        return original
+    return "search:" + mcfg.stable_hash({"selection": original, "finance": actual_finance})
+
+
 def _search_cached(inputs, target, mode):
-    key = search_key(inputs, target, mode)
+    key = _search_storage_key(inputs, target, mode)
     hit = store.get_blob(key)
     if hit is None:
         return None
@@ -612,7 +628,7 @@ def _search_cached(inputs, target, mode):
 
 
 def _start_search(inputs, target, mode):
-    key = search_key(inputs, target, mode)
+    key = _search_storage_key(inputs, target, mode)
 
     def fn(progress, cancelled):
         res = run_search(inputs, target, progress=progress, cancel=cancelled, mode=mode)
