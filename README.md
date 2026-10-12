@@ -1,5 +1,7 @@
 # Midshire University Hospitals Trust Control Tower (demonstrator)
 
+> **AWS public demonstration branch:** see [AWS deployment and security checklist](docs/AWS_PUBLIC_DEMO.md). The original local demo instructions below still work; never expose the local Flask server directly to the internet.
+
 This branch adds an **adult ED simulation and planning demonstrator** under the
 fictional name *Midshire University Hospitals Trust*. It is built on the
 Cambridge (RGT) control tower below and leaves that build intact. Midshire is a
