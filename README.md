@@ -1,7 +1,5 @@
 # Midshire University Hospitals Trust Control Tower (demonstrator)
 
-> **First time using AWS with $100 credits?** Start with [the Lightsail step-by-step beginner guide](docs/AWS_LIGHTSAIL_START_HERE.md) (about $24/month for the recommended starter server). For the larger, more expensive Elastic Beanstalk/RDS architecture see [AWS deployment and security checklist](docs/AWS_PUBLIC_DEMO.md). The local Flask server must never be exposed directly to the internet.
-
 This branch adds an **adult ED simulation and planning demonstrator** under the
 fictional name *Midshire University Hospitals Trust*. It is built on the
 Cambridge (RGT) control tower below and leaves that build intact. Midshire is a
